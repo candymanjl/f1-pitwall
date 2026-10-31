@@ -1,6 +1,7 @@
 import { DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT } from "../data/pitlane";
 import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
+import { MAP_CAR_R, MAP_CAR_R_SELECTED, MAP_LINE_WIDTH } from "../lib/mapMarks";
 import {
   GAP_WEDGE_FILLS,
   ghostFrac,
@@ -12,10 +13,12 @@ import {
   wrap01,
   type CircleCar,
 } from "../lib/pitcircle";
+import { appendDriverDot } from "../lib/svgcar";
 import { formatDelta } from "../lib/time";
 import { panel } from "../ui/panel";
+import { mountTowerSplitter } from "../ui/splitter";
 import { renderTower } from "../ui/tower";
-import { hasDriverSelection, isDriverSelected, selectDriver, setPitLoss, setPitMode, state } from "../state";
+import { hasDriverSelection, isDriverSelected, setPitLoss, setPitMode, state } from "../state";
 
 function svgEl<K extends keyof SVGElementTagNameMap>(
   name: K,
@@ -128,7 +131,7 @@ function drawCircle(svg: SVGSVGElement): void {
       r,
       fill: "none",
       stroke: "#e8edf7",
-      "stroke-width": 2.2,
+      "stroke-width": MAP_LINE_WIDTH,
     }),
   );
 
@@ -184,23 +187,18 @@ function drawCircle(svg: SVGSVGElement): void {
     const { x, y } = pointOnCircle(cx, cy, rr, car.frac);
     const on = isDriverSelected(row.driver.driver_number);
     const dim = hasDriverSelection() && !on;
-    const c = svgEl("circle", {
-      cx: x,
-      cy: y,
-      r: on ? 7.5 : 5,
-      fill: teamColor(row.driver.team_colour),
-      class: `car-dot${on ? " on" : dim ? " dim" : ""}`,
-      "data-driver": row.driver.driver_number,
-      stroke: on ? "#f8fafc" : car.inPit ? "#fbbf24" : "none",
-      "stroke-width": on || car.inPit ? 1.6 : 0,
+    const lab = pointOnCircle(cx, cy, rr + 18, car.frac);
+    appendDriverDot(svg, x, y, {
+      n: row.driver.driver_number,
+      color: teamColor(row.driver.team_colour),
+      selected: on,
+      dim,
+      visualR: on ? MAP_CAR_R_SELECTED : MAP_CAR_R,
+      stroke: car.inPit && !on ? "#fbbf24" : undefined,
+      label: `${row.pos} ${row.driver.name_acronym}`,
+      labelX: lab.x,
+      labelY: lab.y,
     });
-    c.style.cursor = "pointer";
-    c.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      selectDriver(row.driver.driver_number, ev);
-    });
-    svg.append(c);
-    svg.append(labelAt(cx, cy, rr + 16, car.frac, `${row.pos} ${row.driver.name_acronym}`, "#e5e7eb"));
   }
 
   const sel = snap.rows.find((row) => row.driver.driver_number === state.selectedDriver);
@@ -213,7 +211,7 @@ function drawCircle(svg: SVGSVGElement): void {
       svgEl("circle", {
         cx: gx,
         cy: gy,
-        r: 6,
+        r: MAP_CAR_R,
         fill: "none",
         stroke: "#f8fafc",
         "stroke-dasharray": "3 3",
@@ -332,6 +330,10 @@ export function mountPitCircle(parent: HTMLElement): { update: () => void } {
   right.body.append(wrap);
   const page = el("div", { class: "page pitcircle" }, [left.root, right.root]);
   parent.append(page);
+  mountTowerSplitter(page, { onResize: () => drawCircle(svg) });
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => drawCircle(svg)).observe(wrap);
+  }
 
   const update = () => {
     const issue = !state.snap && !state.lock ? state.error || (state.loading ? null : "No session data loaded.") : null;

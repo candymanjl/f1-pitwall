@@ -1,4 +1,5 @@
 /** @vitest-environment happy-dom */
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Driver, TimingSnapshot, TowerRow } from "../data/types";
 import { state } from "../state";
@@ -134,5 +135,72 @@ describe("mountStatusBar", () => {
     expect(root.textContent).toContain("Wind 3.6 m/s 210°");
     expect(root.querySelector("canvas.gapline")).toBeTruthy();
     expect(root.querySelector("svg.wind-map")).toBeTruthy();
+  });
+
+  it("draws a thick flowing wind arrow whose period follows wind_speed", async () => {
+    const host = document.createElement("div");
+    const api = mountStatusBar(host);
+    state.snap = snap();
+    state.bundle = {
+      meeting: {
+        meeting_key: 1,
+        meeting_name: "Test GP",
+        circuit_short_name: "Test",
+        country_name: "Test",
+        location: "Test",
+        date_start: "2025-10-26T20:00:00.000Z",
+        year: 2025,
+      },
+      session: {
+        session_key: 1,
+        meeting_key: 1,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: "2025-10-26T20:00:00.000Z",
+        date_end: "2025-10-26T22:00:00.000Z",
+        circuit_short_name: "Test",
+        country_name: "Test",
+        location: "Test",
+        year: 2025,
+      },
+      weekendSessions: [],
+      drivers: [driver(1, "VER"), driver(44, "HAM")],
+      laps: [],
+      intervals: [],
+      positions: [],
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [
+        [0, 0],
+        [100, 0],
+        [100, 80],
+        [0, 80],
+        [0, 0],
+      ],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+    };
+    api.update();
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    const svg = host.querySelector("svg.wind-map") as SVGSVGElement;
+    const shaft = svg.querySelector(".wind-arrow-shaft");
+    const flow = svg.querySelector(".wind-arrow-flow");
+    expect(shaft).toBeTruthy();
+    expect(flow).toBeTruthy();
+    expect(Number(shaft!.getAttribute("stroke-width"))).toBeGreaterThanOrEqual(4);
+    expect(svg.style.getPropertyValue("--wind-flow-ms")).toMatch(/ms/);
+    const breeze = Number.parseInt(svg.style.getPropertyValue("--wind-flow-ms"), 10);
+    state.snap = { ...snap(), weather: { ...snap().weather!, wind_speed: 0 } };
+    api.update();
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    const calm = Number.parseInt(svg.style.getPropertyValue("--wind-flow-ms"), 10);
+    expect(calm).toBeGreaterThan(breeze);
+    expect(host.querySelector(".wind-arrow-flow")).toBe(flow);
+    const css = readFileSync("src/styles.css", "utf8");
+    expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
+    expect(css).toMatch(/@keyframes wind-flow/);
   });
 });

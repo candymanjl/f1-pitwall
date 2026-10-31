@@ -6,6 +6,7 @@ import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
 import { applyLiveMessage } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
+import { followLiveFromScrub, followLiveOnPlay, liveEdgeMs, stepPlayback } from "./lib/playback";
 import { nextSelection } from "./lib/select";
 import { parseTs } from "./lib/time";
 import type { DataMode } from "./config";
@@ -24,6 +25,8 @@ export type AppState = {
   start: number;
   end: number;
   playing: boolean;
+  /** True only when the cursor is parked on the live edge and Play is following it. */
+  followLive: boolean;
   speed: number;
   mode: DataMode;
   pitLoss: { green: number; vsc: number; sc: number };
@@ -60,6 +63,7 @@ export const state: AppState = {
   start: 0,
   end: 1,
   playing: false,
+  followLive: false,
   speed: 4,
   mode: readMode(),
   pitLoss: readPitLoss(),
@@ -113,12 +117,14 @@ export function setPage(page: PageId): void {
 
 export function setClock(t: number): void {
   state.t = Math.min(state.end, Math.max(state.start, t));
+  state.followLive = followLiveFromScrub(state.t, state.end, Date.now(), state.mode);
   refreshSnap();
   emit();
 }
 
 export function setPlaying(playing: boolean): void {
   state.playing = playing;
+  state.followLive = playing && followLiveOnPlay(state.t, state.end, Date.now(), state.mode);
   emit();
 }
 
@@ -315,6 +321,7 @@ export async function changeSession(sessionKey: number): Promise<void> {
   state.loading = "Loading session data from OpenF1…";
   state.error = "";
   state.playing = false;
+  state.followLive = false;
   emit();
   try {
     const bundle = await loadBundle(sessionKey);
@@ -360,14 +367,21 @@ let liveTimer = 0;
 function tick(now: number): void {
   const dt = now - lastTick;
   lastTick = now;
-  if (state.mode === "historical" && state.playing && state.bundle) {
-    const next = state.t + dt * state.speed;
-    if (next >= state.end) {
-      state.t = state.end;
-      state.playing = false;
-    } else {
-      state.t = next;
-    }
+  if (state.playing && state.bundle) {
+    const next = stepPlayback({
+      t: state.t,
+      start: state.start,
+      end: state.end,
+      playing: state.playing,
+      speed: state.speed,
+      dt,
+      mode: state.mode,
+      followLive: state.followLive,
+      now: Date.now(),
+    });
+    state.t = next.t;
+    state.playing = next.playing;
+    state.followLive = next.followLive;
     refreshSnap();
     emit();
   }
@@ -379,8 +393,8 @@ export function startClock(): void {
   requestAnimationFrame(tick);
   if (liveTimer) window.clearInterval(liveTimer);
   liveTimer = window.setInterval(() => {
-    if (state.mode !== "live" || !state.bundle) return;
-    state.t = Date.now();
+    if (state.mode !== "live" || !state.bundle || !state.followLive || !state.playing) return;
+    state.t = liveEdgeMs(state.end, Date.now());
     refreshSnap();
     emit();
   }, LIVE_POLL_MS);
@@ -401,7 +415,9 @@ export function syncLiveFeed(): void {
     onMessage: (topic, payload, mode) => {
       if (!state.bundle) return;
       state.bundle = applyLiveMessage(state.bundle, topic, payload, state.sessionKey, mode);
-      if (state.mode === "live") state.t = Date.now();
+      if (state.mode === "live" && state.followLive && state.playing) {
+        state.t = liveEdgeMs(state.end, Date.now());
+      }
       refreshSnap();
       emit();
     },
