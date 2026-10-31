@@ -1,9 +1,9 @@
 import { DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT } from "../data/pitlane";
-import { teamColor } from "../lib/colors";
+import { bindDriverSelect } from "../lib/bindSelect";
+import { teamColor, teamFill } from "../lib/colors";
 import { el } from "../lib/dom";
 import { MAP_CAR_R, MAP_CAR_R_SELECTED, MAP_LINE_WIDTH } from "../lib/mapMarks";
 import {
-  GAP_WEDGE_FILLS,
   gapFrac,
   ghostFrac,
   neighborsAt,
@@ -98,6 +98,7 @@ function carsOnCircle(): CircleCar[] {
       inPit: row.inPit,
       retired: row.retired,
       pace: typeof row.lastLap === "number" && row.lastLap > 0 ? row.lastLap : snap.medianGreenLap,
+      color: teamColor(row.driver.team_colour),
     };
   });
 }
@@ -118,13 +119,13 @@ function drawCircle(svg: SVGSVGElement): void {
   const cars = carsOnCircle();
 
   const gaps = onTrackGaps(cars, lap);
-  for (const [i, g] of gaps.entries()) {
+  for (const g of gaps) {
     const d = wedgePath(cx, cy, r, g.from, g.to);
     if (!d) continue;
     svg.append(
       svgEl("path", {
         d,
-        fill: GAP_WEDGE_FILLS[i % GAP_WEDGE_FILLS.length],
+        fill: g.fill,
         stroke: "none",
         class: "gap-wedge",
         "data-behind": g.behind,
@@ -172,8 +173,8 @@ function drawCircle(svg: SVGSVGElement): void {
         y1: inner.y,
         x2: outer.x,
         y2: outer.y,
-        stroke: "#64748b",
-        "stroke-width": 1,
+        stroke: g.color,
+        "stroke-width": 1.4,
         class: "gap-leader",
       }),
     );
@@ -182,7 +183,7 @@ function drawCircle(svg: SVGSVGElement): void {
         cx: inner.x,
         cy: inner.y,
         r: 2.4,
-        fill: "#94a3b8",
+        fill: g.color,
       }),
     );
     svg.append(labelAt(cx, cy, r + 34, g.mid, formatDelta(g.gap), "#cbd5e1", "gap-callout"));
@@ -216,17 +217,51 @@ function drawCircle(svg: SVGSVGElement): void {
     const selCar = cars.find((c) => c.driver === sel.driver.driver_number);
     const gf = ghostFrac(selCar?.frac ?? 0, loss, lap);
     const { x: gx, y: gy } = pointOnCircle(cx, cy, r, gf);
-    svg.append(
+    const ghostColor = teamColor(sel.driver.team_colour);
+    const ghostR = MAP_CAR_R + 6;
+    const ghost = svgEl("g", { class: "pit-ghost-g" });
+    ghost.append(
       svgEl("circle", {
         cx: gx,
         cy: gy,
-        r: MAP_CAR_R,
+        r: ghostR + 8,
         fill: "none",
         stroke: "#f8fafc",
-        "stroke-dasharray": "3 3",
+        "stroke-width": 2,
+        "stroke-dasharray": "5 4",
+        class: "pit-ghost-ring",
+      }),
+      svgEl("circle", {
+        cx: gx,
+        cy: gy,
+        r: ghostR,
+        fill: teamFill(sel.driver.team_colour, 0.55),
+        stroke: "#07080d",
+        "stroke-width": 2.6,
         class: "pit-ghost",
       }),
+      svgEl("circle", {
+        cx: gx,
+        cy: gy,
+        r: ghostR + 2.4,
+        fill: "none",
+        stroke: ghostColor,
+        "stroke-width": 2.2,
+        class: "pit-ghost-outline",
+      }),
+      svgEl(
+        "text",
+        {
+          x: gx,
+          y: gy - ghostR - 10,
+          "text-anchor": "middle",
+          fill: ghostColor,
+          class: "car-label drv-label pit-ghost-label",
+        },
+        `${sel.driver.name_acronym} REJOIN`,
+      ),
     );
+    svg.append(ghost);
     const others = cars.filter((c) => c.driver !== sel.driver.driver_number);
     const { ahead, behind } = neighborsAt(others, gf);
     svg.append(
@@ -340,6 +375,8 @@ export function mountPitCircle(parent: HTMLElement): { update: () => void } {
   const page = el("div", { class: "page pitcircle" }, [left.root, right.root]);
   parent.append(page);
   mountTowerSplitter(page, { onResize: () => drawCircle(svg) });
+  bindDriverSelect(left.body);
+  bindDriverSelect(svg);
   if (typeof ResizeObserver !== "undefined") {
     new ResizeObserver(() => drawCircle(svg)).observe(wrap);
   }

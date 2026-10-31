@@ -1,3 +1,4 @@
+import { bindDriverSelect } from "../lib/bindSelect";
 import { el } from "../lib/dom";
 import { panel } from "../ui/panel";
 import { renderTower } from "../ui/tower";
@@ -7,6 +8,7 @@ export function mountTiming(parent: HTMLElement): { update: () => void } {
   const tablePanel = panel("Live timing  ·  2025-style sectors  ·  no team radio");
   const page = el("div", { class: "page timing" }, [tablePanel.root]);
   parent.append(page);
+  bindDriverSelect(tablePanel.body);
 
   const update = () => {
     const snap = state.snap;

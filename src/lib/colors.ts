@@ -22,6 +22,17 @@ export function teamColor(hex: string | undefined): string {
   return hex.startsWith("#") ? hex : `#${hex}`;
 }
 
+/** Translucent team fill that stays tied to a driver, not an array index. */
+export function teamFill(hex: string | undefined, alpha = 0.22): string {
+  const raw = teamColor(hex).replace("#", "");
+  if (raw.length !== 6) return `rgba(148, 163, 184, ${alpha})`;
+  const r = Number.parseInt(raw.slice(0, 2), 16);
+  const g = Number.parseInt(raw.slice(2, 4), 16);
+  const b = Number.parseInt(raw.slice(4, 6), 16);
+  if (![r, g, b].every(Number.isFinite)) return `rgba(148, 163, 184, ${alpha})`;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export function tyreColor(compound: string | null | undefined): string {
   return TYRE[(compound ?? "").toUpperCase()] ?? TYRE.UNKNOWN;
 }

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Driver, SessionBundle, TimingSnapshot, TowerRow } from "../data/types";
 import { DEFAULT_PIT_LOSS } from "../config";
+import { MAP_CAR_R } from "../lib/mapMarks";
 import { selectDriver, state } from "../state";
 import { mountPitCircle } from "./pitcircle";
 
@@ -156,9 +157,19 @@ describe("pit circle page", () => {
     expect(text).toContain("clockwise");
     expect(text).toContain("ghost");
     expect(svg.querySelector(".pit-ghost")).toBeTruthy();
+    expect(svg.querySelector(".pit-ghost-ring")).toBeTruthy();
+    expect(svg.querySelector(".pit-ghost-label")?.textContent).toMatch(/VER\s+REJOIN/);
+    expect(Number(svg.querySelector(".pit-ghost")?.getAttribute("r"))).toBeGreaterThan(MAP_CAR_R);
+    expect(svg.querySelector(".pit-ghost")?.getAttribute("fill")).toMatch(/rgba\(54,\s*113,\s*198/);
     expect(svg.querySelector(".pit-lane")).toBeTruthy();
     expect(svg.querySelectorAll(".gap-wedge").length).toBeGreaterThanOrEqual(6);
     expect(svg.querySelectorAll(".car-dot").length).toBe(7);
+    const verDot = svg.querySelector("[data-driver='1'] .car-dot");
+    expect(verDot?.getAttribute("fill")?.toLowerCase()).toBe("#3671c6");
+    const verLab = svg.querySelector("[data-driver='1'] .drv-label");
+    expect(verLab?.getAttribute("fill")?.toLowerCase()).toBe("#3671c6");
+    const aheadVer = [...svg.querySelectorAll(".gap-wedge")].find((w) => w.getAttribute("data-ahead") === "1");
+    expect(aheadVer?.getAttribute("fill")).toMatch(/rgba\(54,\s*113,\s*198/);
     expect(svg.querySelectorAll(".gap-leader").length).toBeGreaterThanOrEqual(6);
     expect(root.querySelector("table.tower")).toBeTruthy();
     expect(root.querySelector(".splitter")).toBeTruthy();
