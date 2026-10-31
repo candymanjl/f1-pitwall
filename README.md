@@ -26,7 +26,7 @@ After that, every merge to `main` rebuilds and updates the site automatically.
 
 ## Using the dashboard
 
-1. The header has six pages: **Track map**, **Timing**, **Telemetry**, **Race trace**, **Pit circle**, **Strategy**.
+1. The header has seven pages: **Track map**, **Timing**, **Telemetry**, **Race trace**, **Pit circle**, **Tyres**, **Strategy**.
 2. Use **Year / Meeting / Session** to pick any OpenF1 weekend from 2023 onward.
 3. **Play / Pause**, the speed menu, and the scrubber move a replay clock. Every page shows the field as it was at that moment.
 4. Click a driver row to select them (pit ghost, strategy model, race-trace reference).
@@ -52,7 +52,8 @@ The site shows a yellow banner instead of a raw error. Use **Open Settings** to 
 | Telemetry | Up to 4 drivers × a lap each; speed / throttle / brake / gear / rpm / DRS / delta, aligned by distance (`/car_data` joined to `/location`), shared cursor + mini map |
 | Race trace | Gap vs leader, vs average, or vs a chosen driver; pit markers; SC / VSC bands; driver toggles |
 | Pit circle | One revolution = one green-flag lap; cars by gap to leader; interval labels; pit ghost for the selected driver |
-| Strategy | Clean-lap pace and deg (estimate), leftover tyre sets inferred from weekend `/stints` (estimate), held-up flag, 1/2/3-stop comparison, undercut/overcut panel — all labelled as estimates |
+| Tyres | Degradation model per compound (S/M/H and I/W): offset vs a new Soft, lifespan, linear fade or cliff. Base lap and fuel gain. Sliders, fit from practice long runs or the race so far, lap-time and cumulative-loss charts. Saved in this browser and used by Strategy. |
+| Strategy | Clean-lap pace and deg (estimate), leftover tyre sets inferred from weekend `/stints` (estimate), held-up flag, 1/2/3-stop comparison from the Tyres model, pit windows, undercut/overcut panel — all labelled as estimates |
 
 ### Known OpenF1 limits
 

@@ -189,6 +189,7 @@ export type PageId =
   | "telemetry"
   | "racetrace"
   | "pitcircle"
+  | "tyres"
   | "strategy";
 
 export const PAGES: { id: PageId; label: string }[] = [
@@ -197,5 +198,6 @@ export const PAGES: { id: PageId; label: string }[] = [
   { id: "telemetry", label: "Telemetry" },
   { id: "racetrace", label: "Race trace" },
   { id: "pitcircle", label: "Pit circle" },
+  { id: "tyres", label: "Tyres" },
   { id: "strategy", label: "Strategy" },
 ];

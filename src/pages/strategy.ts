@@ -1,4 +1,5 @@
-import { cutPanel, driverStrategy, stopPlans } from "../data/strategy";
+import { driverStrategy, strategyBrief } from "../data/strategy";
+import { compoundLetter } from "../data/tyres";
 import { tyreColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { formatDelta, formatLap } from "../lib/time";
@@ -66,14 +67,19 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
 
     const loss = state.pitLoss[state.pitMode];
     const dn = state.selectedDriver ?? snap.rows[0].driver.driver_number;
-    const plans = stopPlans(bundle, snap, dn, loss);
+    const brief = strategyBrief(bundle, snap, dn, loss);
+    const plans = brief.plans;
     const d = snap.rows.find((r) => r.driver.driver_number === dn);
-    planP.setTitle(`Strategy  ·  ${d?.driver.name_acronym ?? ""}  ·  estimates`);
+    planP.setTitle(`Strategy  ·  ${d?.driver.name_acronym ?? ""}  ·  tyre model`);
     const wrap = el("div", { class: "plans" });
-    const maxT = Math.max(...plans.map((p) => p.total));
+    const maxT = Math.max(1, ...plans.map((p) => p.total));
+    if (!plans.length) {
+      wrap.append(el("div", { class: "help", text: "No legal 1/2/3-stop plan with the sets and compound rule." }));
+    }
     for (const plan of plans) {
       const box = el("div", { class: `plan ${plan.finish === "best" ? "best" : ""}` });
-      box.append(el("div", { text: `${plan.stops} stop  ·  ${plan.finish}` }));
+      const mix = plan.stints.map((st) => `${compoundLetter(st.compound)}${st.laps}`).join(" ");
+      box.append(el("div", { text: `${plan.stops} stop  ·  ${mix}  ·  ${plan.finish}` }));
       const bar = el("div", { class: "bar" });
       let x = 0;
       for (const st of plan.stints) {
@@ -90,10 +96,12 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
       box.append(el("div", { class: "legend", text: `Σ ${plan.total.toFixed(1)}s remaining  ·  pit loss ${plan.pitLoss.toFixed(1)}s (est.)` }));
       wrap.append(box);
     }
-    wrap.append(el("div", { class: "help", text: "Transparent model: remaining laps split evenly across stints, using current clean-lap pace and linear deg. Safety-car laps excluded. Not a race engineer tool." }));
+    wrap.append(el("div", { class: "legend", text: `Pit windows  ·  ${brief.windows}` }));
+    wrap.append(el("div", { class: "legend", text: brief.rule }));
+    wrap.append(el("div", { class: "help", text: "Stint times come from the Tyres page: offset vs a new Soft, linear fade or cliff, lifespan, and fuel. Dry plans that use only one dry compound are left out. Edit the model on Tyres." }));
     planP.body.replaceChildren(wrap);
 
-    const cuts = cutPanel(bundle, snap, dn, loss);
+    const cuts = brief.cuts;
     const grid = el("div", { class: "cuts" });
     const card = (title: string, body: { name: string; fresh: string; gap: string; verdict: string } | null) => {
       const c = el("div", { class: "cut" });
@@ -111,7 +119,7 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
     grid.append(
       card("vs car ahead · undercut", cuts.vsAhead),
       card("vs car behind", cuts.vsBehind),
-      card("overcut vs ahead", cuts.vsAhead ? { ...cuts.vsAhead, verdict: cuts.vsAhead.verdict.includes("VIABLE") ? "OVERCUT WEAKER" : "OVERCUT OPTION" } : null),
+      card("overcut vs ahead", cuts.overcut),
     );
     cutP.body.replaceChildren(grid);
   };

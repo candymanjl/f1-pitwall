@@ -8,6 +8,7 @@ import { mountPitCircle } from "../pages/pitcircle";
 import { mountRaceTrace } from "../pages/racetrace";
 import { mountStrategy } from "../pages/strategy";
 import { mountTelemetry } from "../pages/telemetry";
+import { mountTyres } from "../pages/tyres";
 import { mountTiming } from "../pages/timing";
 import { mountTrackMap } from "../pages/trackmap";
 import {
@@ -32,6 +33,7 @@ const mounts: Record<string, (parent: HTMLElement) => PageMount> = {
   telemetry: mountTelemetry,
   racetrace: mountRaceTrace,
   pitcircle: mountPitCircle,
+  tyres: mountTyres,
   strategy: mountStrategy,
 };
 
