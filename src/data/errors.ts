@@ -45,17 +45,38 @@ export function isLiveLock(err: unknown): boolean {
   return classifyOpenF1Failure({ cause: err }).kind === "live-lock";
 }
 
+/** Hide the lock banner once we have a token — a 401 then is a request/auth bug, not the public lock. */
+export function shouldShowLiveLockBanner(lock: "live" | null | undefined, authed: boolean): boolean {
+  return lock === "live" && !authed;
+}
+
 export function classifyOpenF1Failure(input: {
   status?: number | null;
   body?: unknown;
   cause?: unknown;
   path?: string;
+  authenticated?: boolean;
 }): OpenF1Error {
   const detail = extractDetail(input.body);
   const causeMsg = input.cause instanceof Error ? input.cause.message : input.cause ? String(input.cause) : "";
   const text = `${detail} ${causeMsg}`;
   const status = input.status ?? null;
   const path = input.path ? ` on ${input.path}` : "";
+  const prior = input.cause instanceof OpenF1Error ? input.cause : null;
+  const looksLocked =
+    LIVE_LOCK_RE.test(text) ||
+    (status === 401 && !detail) ||
+    isNetworkFailure(input.cause) ||
+    prior?.kind === "live-lock";
+
+  if (input.authenticated && looksLocked) {
+    return new OpenF1Error(
+      "http",
+      "Signed in, but OpenF1 still rejected the request. The bearer token may not have been sent — retry.",
+      status ?? prior?.status ?? 401,
+      detail || causeMsg || prior?.detail || "",
+    );
+  }
 
   if (LIVE_LOCK_RE.test(text)) {
     return new OpenF1Error(

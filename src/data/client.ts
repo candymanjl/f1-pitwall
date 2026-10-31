@@ -1,4 +1,5 @@
 import { API_BASE, HISTORICAL_TTL_MS, RATE_MIN_GAP_MS, RATE_PER_MINUTE } from "../config";
+import { hasUsableAuth } from "./auth";
 import { authorizedFetch } from "./clientAuth";
 import { classifyOpenF1Failure, OpenF1Error } from "./errors";
 
@@ -86,7 +87,7 @@ async function httpError(res: Response, path: string): Promise<OpenF1Error> {
       body = null;
     }
   }
-  return classifyOpenF1Failure({ status: res.status, body, path });
+  return classifyOpenF1Failure({ status: res.status, body, path, authenticated: hasUsableAuth() });
 }
 
 export async function apiGet<T>(
@@ -124,7 +125,7 @@ export async function apiGet<T>(
       return res.json();
     } catch (err) {
       if (err instanceof OpenF1Error) throw err;
-      throw classifyOpenF1Failure({ cause: err, path });
+      throw classifyOpenF1Failure({ cause: err, path, authenticated: hasUsableAuth() });
     }
   });
 

@@ -1,7 +1,7 @@
 import { LIVE_LOCK_RETRY_MS, LIVE_POLL_MS, readMode, readPitLoss, SPEEDS, writeMode, writePitLoss } from "./config";
-import { peekAuth } from "./data/auth";
+import { hasUsableAuth, peekAuth } from "./data/auth";
 import { snapshotAt } from "./data/derive";
-import { classifyOpenF1Failure, type OpenF1Error } from "./data/errors";
+import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
 import { applyLiveMessage } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
@@ -161,51 +161,74 @@ export function setPanelError(key: keyof AppState["panelErrors"], message: strin
 }
 
 export function applyFetchError(err: unknown): OpenF1Error {
-  const e = classifyOpenF1Failure({ cause: err });
+  const e = classifyOpenF1Failure({
+    cause: err,
+    status: err instanceof OpenF1Error ? err.status : undefined,
+    authenticated: hasUsableAuth(),
+  });
   state.loading = "";
-  if (e.kind === "live-lock") {
+  if (e.kind === "live-lock" && !hasUsableAuth()) {
     state.lock = "live";
     state.error = "";
     if (!state.retryAt || state.retryAt < Date.now()) state.retryAt = Date.now() + LIVE_LOCK_RETRY_MS;
     startLockRetry();
   } else {
     state.lock = null;
-    state.error = e.message;
+    state.error = e.kind === "live-lock" ? "" : e.message;
     stopLockRetry();
   }
   emit(true);
   return e;
 }
 
+export function clearLiveLock(): void {
+  state.lock = null;
+  state.error = "";
+  state.retryAt = 0;
+  stopLockRetry();
+  emit(true);
+}
+
 export async function retryNow(): Promise<void> {
-  if (state.lock === "live") state.retryAt = Date.now() + LIVE_LOCK_RETRY_MS;
-  else state.retryAt = 0;
-  await reloadAll();
+  if (hasUsableAuth()) {
+    clearLiveLock();
+  } else if (state.lock === "live") {
+    state.retryAt = Date.now() + LIVE_LOCK_RETRY_MS;
+  } else {
+    state.retryAt = 0;
+  }
+  await reloadAll({ force: true });
 }
 
 let reloadInFlight: Promise<void> | null = null;
+let reloadGen = 0;
 
-export async function reloadAll(): Promise<void> {
-  if (reloadInFlight) return reloadInFlight;
-  reloadInFlight = (async () => {
+export async function reloadAll(opts: { force?: boolean } = {}): Promise<void> {
+  if (reloadInFlight && !opts.force) return reloadInFlight;
+  const gen = ++reloadGen;
+  const work = (async () => {
     state.loading = state.lock ? "Retrying OpenF1…" : "Loading meetings…";
     state.error = "";
     emit(true);
     try {
       state.meetings = await loadMeetings(state.year);
+      if (gen !== reloadGen) return;
       state.sessions = await loadSessions(state.meetingKey);
+      if (gen !== reloadGen) return;
       if (state.sessionKey) await changeSession(state.sessionKey);
       else {
         state.loading = "";
         emit(true);
       }
     } catch (err) {
+      if (gen !== reloadGen) return;
       applyFetchError(err);
     }
   })().finally(() => {
-    reloadInFlight = null;
+    if (reloadInFlight === work) reloadInFlight = null;
   });
-  return reloadInFlight;
+  reloadInFlight = work;
+  return work;
 }
 
 let lockTimer = 0;
