@@ -66,6 +66,7 @@ Live mode currently advances the clock to “now” and keeps the same session b
 
 ```bash
 npm install
+npm test
 npm run dev
 ```
 

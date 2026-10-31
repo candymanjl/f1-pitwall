@@ -3,6 +3,7 @@ import type {
   FlagMode,
   Lap,
   Pit,
+  RaceControl,
   SectorKind,
   SessionBundle,
   TimingSnapshot,
@@ -13,13 +14,37 @@ function sortByDate<T extends { date: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => parseTs(a.date) - parseTs(b.date));
 }
 
-function flattenSegments(lap: Lap | null): number[] {
-  if (!lap) return [];
-  return [
-    ...(lap.segments_sector_1 ?? []),
-    ...(lap.segments_sector_2 ?? []),
-    ...(lap.segments_sector_3 ?? []),
-  ].filter((v): v is number => v != null);
+function nums(values: Array<number | null> | null | undefined): number[] {
+  return (values ?? []).filter((v): v is number => v != null);
+}
+
+/** Sector times and mini-sectors that have actually elapsed by `now`. */
+export function visibleLapTiming(lap: Lap | null, now: number): {
+  s1: number | null;
+  s2: number | null;
+  s3: number | null;
+  segments: number[];
+} {
+  if (!lap) return { s1: null, s2: null, s3: null, segments: [] };
+  const start = parseTs(lap.date_start);
+  if (!Number.isFinite(start)) return { s1: null, s2: null, s3: null, segments: [] };
+  const s1 = lap.duration_sector_1;
+  const s2 = lap.duration_sector_2;
+  const s3 = lap.duration_sector_3;
+  const lapDone = lap.lap_duration != null && start + lap.lap_duration * 1000 <= now;
+  const s1Done = lapDone || (s1 != null && start + s1 * 1000 <= now);
+  const s2Done = lapDone || (s1Done && s2 != null && start + (s1! + s2) * 1000 <= now);
+  const s3Done = lapDone || (s2Done && s3 != null && start + (s1! + s2! + s3) * 1000 <= now);
+  const segments: number[] = [];
+  if (s1Done) segments.push(...nums(lap.segments_sector_1));
+  if (s2Done) segments.push(...nums(lap.segments_sector_2));
+  if (s3Done) segments.push(...nums(lap.segments_sector_3));
+  return {
+    s1: s1Done ? s1 : null,
+    s2: s2Done ? s2 : null,
+    s3: s3Done ? s3 : null,
+    segments,
+  };
 }
 
 function completedBefore(laps: Lap[], t: number): Lap[] {
@@ -55,31 +80,80 @@ function classify(
   return "yellow";
 }
 
-function scBands(bundle: SessionBundle): TimingSnapshot["scBands"] {
-  const events = [...bundle.raceControl].sort((a, b) => parseTs(a.date) - parseTs(b.date));
+function up(value: string | null | undefined): string {
+  return (value ?? "").toUpperCase();
+}
+
+function isVscMessage(msg: string): boolean {
+  return msg.includes("VIRTUAL SAFETY CAR") || /(^|[^A-Z])VSC([^A-Z]|$)/.test(msg);
+}
+
+function isScMessage(msg: string, cat: string): boolean {
+  if (isVscMessage(msg)) return false;
+  return cat === "SAFETYCAR" || msg.includes("SAFETY CAR");
+}
+
+/** Withdrawal / ending: SC still out or coming in — never a new deployment. */
+function isWithdrawalOrEnding(msg: string): boolean {
+  if (msg.includes("IN THIS LAP")) return true;
+  if (msg.includes("ENDING")) return true;
+  if (msg.includes("SAFETY CAR IN")) return true;
+  if (/\b(SAFETY CAR|VIRTUAL SAFETY CAR|\bVSC\b).*\bOVER\b/.test(msg)) return true;
+  return false;
+}
+
+function isDeployment(msg: string, vscOrSc: boolean): boolean {
+  return vscOrSc && msg.includes("DEPLOYED") && !isWithdrawalOrEnding(msg);
+}
+
+/** Green-flag racing has resumed. Pit-exit green lights do not count. */
+function isGreenResume(ev: RaceControl, msg: string): boolean {
+  if (msg.includes("GREEN LIGHT") && (msg.includes("PIT") || msg.includes("EXIT"))) return false;
+  if (msg.includes("GREEN FLAG") || msg.includes("TRACK CLEAR")) return true;
+  if (ev.flag === "GREEN" && !msg.includes("GREEN LIGHT")) return true;
+  return false;
+}
+
+function isExplicitEnding(msg: string): boolean {
+  return msg.includes("ENDING") || /\b(SAFETY CAR|VIRTUAL SAFETY CAR|\bVSC\b).*\bOVER\b/.test(msg);
+}
+
+export function safetyCarBands(
+  events: RaceControl[],
+  sessionEnd: number,
+): TimingSnapshot["scBands"] {
+  const sorted = [...events].sort((a, b) => parseTs(a.date) - parseTs(b.date));
   const bands: TimingSnapshot["scBands"] = [];
   let open: { start: number; kind: "SC" | "VSC" } | null = null;
-  const end = parseTs(bundle.session.date_end);
-  for (const ev of events) {
-    const msg = (ev.message ?? "").toUpperCase();
-    const cat = (ev.category ?? "").toUpperCase();
-    const isVsc = msg.includes("VIRTUAL SAFETY CAR") || msg.includes("VSC");
-    const isSc = !isVsc && (cat === "SAFETYCAR" || msg.includes("SAFETY CAR"));
-    const deployed = msg.includes("DEPLOYED") || msg.includes("IN THIS LAP");
-    const ending = msg.includes("ENDING") || msg.includes("ENDING") || msg.includes("OVER");
-    if ((isVsc || isSc) && deployed && !ending) {
-      if (open) bands.push({ start: open.start, end: parseTs(ev.date), kind: open.kind });
-      open = { start: parseTs(ev.date), kind: isVsc ? "VSC" : "SC" };
-    } else if (open && (ending || msg.includes("SAFETY CAR IN") || ev.flag === "GREEN")) {
-      if (msg.includes("GREEN LIGHT") && !msg.includes("SAFETY") && !msg.includes("VSC")) continue;
-      if (ending || msg.includes("SAFETY CAR IN") || msg.includes("VIRTUAL SAFETY CAR ENDING")) {
-        bands.push({ start: open.start, end: parseTs(ev.date), kind: open.kind });
-        open = null;
-      }
+  for (const ev of sorted) {
+    const msg = up(ev.message);
+    const cat = up(ev.category);
+    const t = parseTs(ev.date);
+    if (!Number.isFinite(t)) continue;
+    const vsc = isVscMessage(msg);
+    const sc = isScMessage(msg, cat);
+    const withdrawal = isWithdrawalOrEnding(msg);
+    const deploy = isDeployment(msg, vsc || sc);
+    const green = isGreenResume(ev, msg);
+    const ending = isExplicitEnding(msg);
+
+    if (open && (green || ending)) {
+      bands.push({ start: open.start, end: t, kind: open.kind });
+      open = null;
+      continue;
+    }
+    if (withdrawal) continue;
+    if (deploy) {
+      if (open) bands.push({ start: open.start, end: t, kind: open.kind });
+      open = { start: t, kind: vsc ? "VSC" : "SC" };
     }
   }
-  if (open) bands.push({ start: open.start, end, kind: open.kind });
+  if (open) bands.push({ start: open.start, end: sessionEnd, kind: open.kind });
   return bands.filter((b) => Number.isFinite(b.start) && Number.isFinite(b.end) && b.end > b.start);
+}
+
+function scBands(bundle: SessionBundle): TimingSnapshot["scBands"] {
+  return safetyCarBands(bundle.raceControl, parseTs(bundle.session.date_end));
 }
 
 function flagAt(t: number, bands: TimingSnapshot["scBands"]): FlagMode {
@@ -200,6 +274,17 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
     let interval: number | string | null = driverIv?.interval ?? null;
 
     const bestLap = best && best.lap < Infinity ? best.lap : null;
+    const live = visibleLapTiming(cur, now);
+    const pb = {
+      s1: best?.s1 === Infinity ? null : best?.s1 ?? null,
+      s2: best?.s2 === Infinity ? null : best?.s2 ?? null,
+      s3: best?.s3 === Infinity ? null : best?.s3 ?? null,
+    };
+    const ob = {
+      s1: overallBest.s1 === Infinity ? null : overallBest.s1,
+      s2: overallBest.s2 === Infinity ? null : overallBest.s2,
+      s3: overallBest.s3 === Infinity ? null : overallBest.s3,
+    };
     drafts.push({
       pos: posEvt?.position ?? 99,
       driver,
@@ -211,13 +296,13 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
       gap,
       status: retired ? "OUT" : inPit ? "IN PIT" : "ON TRACK",
       currentLap: cur?.lap_number ?? last?.lap_number ?? null,
-      s1: cur?.duration_sector_1 ?? last?.duration_sector_1 ?? null,
-      s2: cur?.duration_sector_2 ?? last?.duration_sector_2 ?? null,
-      s3: cur?.duration_sector_3 ?? last?.duration_sector_3 ?? null,
-      s1Kind: classify(cur?.duration_sector_1 ?? last?.duration_sector_1 ?? null, best?.s1 === Infinity ? null : best?.s1 ?? null, overallBest.s1 === Infinity ? null : overallBest.s1),
-      s2Kind: classify(cur?.duration_sector_2 ?? last?.duration_sector_2 ?? null, best?.s2 === Infinity ? null : best?.s2 ?? null, overallBest.s2 === Infinity ? null : overallBest.s2),
-      s3Kind: classify(cur?.duration_sector_3 ?? last?.duration_sector_3 ?? null, best?.s3 === Infinity ? null : best?.s3 ?? null, overallBest.s3 === Infinity ? null : overallBest.s3),
-      segments: flattenSegments(cur ?? last),
+      s1: live.s1,
+      s2: live.s2,
+      s3: live.s3,
+      s1Kind: classify(live.s1, pb.s1, ob.s1),
+      s2Kind: classify(live.s2, pb.s2, ob.s2),
+      s3Kind: classify(live.s3, pb.s3, ob.s3),
+      segments: live.segments,
       inPit,
       retired,
       progress: (() => {
@@ -231,13 +316,18 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
 
   }
 
-  if (!hasIntervals) {
+  if (!hasIntervals && !isRace) {
     drafts.sort((a, b) => a.bestForSort - b.bestForSort);
     const leaderBest = drafts[0]?.bestForSort ?? 0;
     drafts.forEach((row, i) => {
       row.pos = i + 1;
       row.gap = i === 0 ? null : row.bestForSort - leaderBest;
       row.interval = i === 0 ? null : row.bestForSort - drafts[i - 1].bestForSort;
+    });
+  } else if (!hasIntervals && isRace) {
+    drafts.sort((a, b) => {
+      if (a.retired !== b.retired) return a.retired ? 1 : -1;
+      return a.pos - b.pos;
     });
   } else {
     drafts.sort((a, b) => {
