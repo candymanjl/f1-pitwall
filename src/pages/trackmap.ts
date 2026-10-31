@@ -1,0 +1,126 @@
+import { snapshotAt } from "../data/derive";
+import { pointAt, project } from "../data/track";
+import type { SessionBundle, TimingSnapshot } from "../data/types";
+import { teamColor } from "../lib/colors";
+import { el } from "../lib/dom";
+import { asNumber } from "../lib/time";
+import { panel } from "../ui/panel";
+import { renderTower } from "../ui/tower";
+import { setSelectedDriver, state } from "../state";
+
+function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot): void {
+  const w = svg.clientWidth || 800;
+  const h = svg.clientHeight || 600;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.replaceChildren();
+  const pts = bundle.track;
+  if (pts.length < 2) {
+    const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    t.setAttribute("x", String(w / 2));
+    t.setAttribute("y", String(h / 2));
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("fill", "#8b93a7");
+    t.textContent = "Loading track outline from /location…";
+    svg.append(t);
+    return;
+  }
+  const { map } = project(pts, w, h, 36);
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute(
+    "d",
+    pts.map((p, i) => {
+      const [px, py] = map(p[0], p[1]);
+      return `${i === 0 ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`;
+    }).join(" "),
+  );
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "#e8edf7");
+  path.setAttribute("stroke-width", "2.2");
+  svg.append(path);
+
+  const [f1, f2] = bundle.sectorFracs;
+  const marks = [
+    { frac: 0, label: "S/F" },
+    { frac: f1, label: "SECTOR 1" },
+    { frac: f1 + f2, label: "SECTOR 2" },
+  ];
+  for (const m of marks) {
+    const [x, y] = pointAt(pts, m.frac);
+    const [px, py] = map(x, y);
+    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    c.setAttribute("cx", String(px));
+    c.setAttribute("cy", String(py));
+    c.setAttribute("r", "3.5");
+    c.setAttribute("fill", "#94a3b8");
+    svg.append(c);
+    const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    lab.setAttribute("x", String(px + 8));
+    lab.setAttribute("y", String(py - 8));
+    lab.setAttribute("class", "car-label");
+    lab.setAttribute("fill", "#94a3b8");
+    lab.textContent = m.label;
+    svg.append(lab);
+  }
+  for (const corner of bundle.corners) {
+    const [px, py] = map(corner.x, corner.y);
+    const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    t.setAttribute("x", String(px));
+    t.setAttribute("y", String(py));
+    t.setAttribute("class", "car-label");
+    t.setAttribute("fill", "#64748b");
+    t.textContent = String(corner.n);
+    svg.append(t);
+  }
+
+  const leaderProg = snap.rows[0]?.progress ?? 0;
+  for (const row of snap.rows) {
+    if (row.retired) continue;
+    const gap = row.pos === 1 ? 0 : asNumber(row.gap) ?? 0;
+    const frac = ((leaderProg - gap / Math.max(1, snap.medianGreenLap)) % 1 + 1) % 1;
+    const [x, y] = pointAt(pts, frac);
+    const [px, py] = map(x, y);
+    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    c.setAttribute("cx", String(px));
+    c.setAttribute("cy", String(py));
+    c.setAttribute("r", row.driver.driver_number === state.selectedDriver ? "6" : "4.5");
+    c.setAttribute("fill", teamColor(row.driver.team_colour));
+    c.setAttribute("stroke", "#07080d");
+    c.setAttribute("stroke-width", "1");
+    svg.append(c);
+    const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    lab.setAttribute("x", String(px + 8));
+    lab.setAttribute("y", String(py - 6));
+    lab.setAttribute("class", "car-label");
+    lab.textContent = row.driver.name_acronym;
+    svg.append(lab);
+  }
+}
+
+export function mountTrackMap(parent: HTMLElement): { update: () => void } {
+  const left = panel("Timing tower");
+  const right = panel("Track map  ·  outline from OpenF1 /location");
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.classList.add("track");
+  const wrap = el("div", { class: "chart-wrap" });
+  wrap.append(svg);
+  right.body.append(wrap);
+  const page = el("div", { class: "page trackmap" }, [left.root, right.root]);
+  parent.append(page);
+
+  const update = () => {
+    const bundle = state.bundle;
+    const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t) : null);
+    left.body.replaceChildren();
+    if (snap) {
+      left.body.append(
+        renderTower(snap.rows, {
+          cols: "basic",
+          selected: state.selectedDriver,
+          onSelect: setSelectedDriver,
+        }),
+      );
+    }
+    if (bundle && snap) drawMap(svg, bundle, snap);
+  };
+  return { update };
+}
