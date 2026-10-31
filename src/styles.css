@@ -97,7 +97,41 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 .page { flex: 1; min-height: 0; display: grid; gap: 0.625rem; }
 .page.trackmap, .page.pitcircle { grid-template-columns: 26.25rem 1fr; }
 .page.timing { grid-template-rows: 1fr; }
-.page.telemetry { grid-template-columns: 13.75rem 1fr 13.75rem; }
+.page.telemetry { grid-template-columns: var(--telem-side, 22rem) 0.75rem minmax(0, 1fr) 13.75rem; }
+.telem-split {
+  cursor: col-resize; touch-action: none; position: relative; background: transparent; border: 0; padding: 0;
+  min-width: 0.75rem;
+}
+.telem-split::before {
+  content: ""; position: absolute; left: 50%; top: 0.5rem; bottom: 0.5rem; width: 3px;
+  transform: translateX(-50%); border-radius: 2px; background: #2c3348;
+}
+.telem-split:hover::before, .telem-split.dragging::before { background: #f4d20c; }
+.telem-slot {
+  display: flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.45rem; min-width: 0;
+}
+.telem-slot select {
+  min-width: 0; flex: 1 1 4.5rem; width: 0; color-scheme: dark;
+  background: #121623; color: var(--text); border: 1px solid #2a3144; border-radius: 0.25rem;
+  padding: 0.25rem 0.3rem;
+}
+.telem-fast, .telem-remove, .telem-add, .telem-bulk-btn {
+  background: #151a27; color: var(--text); border: 1px solid #2a3144; border-radius: 0.25rem;
+  font-weight: 700; font-size: 0.75rem;
+}
+.telem-fast, .telem-remove { flex: 0 0 auto; padding: 0.25rem 0.45rem; }
+.telem-fast:disabled { opacity: 0.4; cursor: default; }
+.telem-add {
+  margin: 0.35rem 0.45rem; padding: 0.4rem 0.75rem; align-self: flex-start;
+  background: #1a1400; color: #f4d20c; border-color: #f4d20c;
+}
+.telem-add:hover { background: #2a2208; }
+.telem-bulk { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; padding: 0.15rem 0.45rem 0.35rem; }
+.telem-bulk input {
+  width: 3.6rem; background: #121623; color: var(--text); border: 1px solid #2a3144;
+  border-radius: 0.25rem; padding: 0.25rem 0.35rem; color-scheme: dark;
+}
+.telem-bulk-btn { padding: 0.3rem 0.5rem; }
 .page.telemetry .panel-b { display: flex; flex-direction: column; }
 .telem-body { flex: 1; height: auto; min-height: 0; display: flex; flex-direction: column; gap: 0.4rem; }
 .telem-tools, .corner-row { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; padding: 0.45rem 0.5rem 0; }
@@ -486,6 +520,7 @@ svg.mini { width: 100%; height: 10rem; display: block; }
   .page.trackmap, .page.pitcircle, .page.telemetry, .page.racetrace, .page.strategy {
     grid-template-columns: 1fr;
   }
+  .telem-split { display: none; }
   body { overflow: auto; }
   #app { height: auto; min-height: 100%; }
   main { height: auto; }

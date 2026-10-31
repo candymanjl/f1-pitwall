@@ -1,4 +1,11 @@
 import { apiGet } from "../data/client";
+import {
+  defaultLapForDriver,
+  ensureMinDrivers,
+  fastestCompleteLap,
+  slotsAtFastest,
+  slotsAtLap,
+} from "../data/telemetryLaps";
 import { cumulativeDistance, detectCorners, lapWindow, pointAt, project } from "../data/track";
 import type { CarSample, LocationSample } from "../data/types";
 import {
@@ -20,6 +27,7 @@ import {
 } from "../data/telemetryView";
 import { TRACE, teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
+import { bindColumnSplitter, readSplitWidth, writeSplitWidth } from "../lib/splitter";
 import { clamp, parseTs } from "../lib/time";
 import { panel } from "../ui/panel";
 import { isLiveLock } from "../data/errors";
@@ -414,8 +422,32 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
   const body = el("div", { class: "telem-body" }, [tools, wrap, brushBlock]);
   mid.body.append(body);
 
-  const page = el("div", { class: "page telemetry" }, [left.root, mid.root, right.root]);
+  const split = el("div", { class: "telem-split" });
+  split.setAttribute("role", "separator");
+  split.setAttribute("aria-orientation", "vertical");
+  split.setAttribute("aria-label", "Resize drivers panel");
+  split.tabIndex = 0;
+  const page = el("div", { class: "page telemetry" }, [left.root, split, mid.root, right.root]);
   parent.append(page);
+  const SIDE_KEY = "f1pitwall.telemetryDriversWidth";
+  const SIDE_MIN = 280;
+  const SIDE_MAX = 560;
+  let sideWidth = readSplitWidth(SIDE_KEY, 352, SIDE_MIN, SIDE_MAX);
+  const applySide = (px: number) => {
+    sideWidth = px;
+    page.style.setProperty("--telem-side", `${px}px`);
+    split.setAttribute("aria-valuemin", String(SIDE_MIN));
+    split.setAttribute("aria-valuemax", String(SIDE_MAX));
+    split.setAttribute("aria-valuenow", String(Math.round(px)));
+    writeSplitWidth(SIDE_KEY, px);
+  };
+  applySide(sideWidth);
+  bindColumnSplitter(split, {
+    width: () => sideWidth,
+    onWidth: applySide,
+    min: SIDE_MIN,
+    max: SIDE_MAX,
+  });
   let series: Series[] = [];
   let lastKey = "";
   let cornerKey = "*";
@@ -526,66 +558,113 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
   syncTools();
   placeBrush();
 
+  const commitSlots = (next: { driver: number; lap: number }[]) => {
+    const capped = next.slice(0, 4);
+    const same =
+      capped.length === state.telemetry.length &&
+      capped.every((slot, index) => slot.driver === state.telemetry[index].driver && slot.lap === state.telemetry[index].lap);
+    if (same) return;
+    lastKey = "";
+    setTelemetrySlots(capped);
+  };
+
   const renderPickers = () => {
     left.body.replaceChildren();
     const bundle = state.bundle;
     if (!bundle) return;
+    const pits = bundle.pits ?? [];
     const slots = [...state.telemetry].slice(0, 4);
-    while (slots.length < 2 && bundle.drivers.length) {
-      const d = bundle.drivers[slots.length] ?? bundle.drivers[0];
-      slots.push({ driver: d.driver_number, lap: 5 });
-    }
     slots.forEach((slot, i) => {
-      const wrap = el("div", { class: "chip" });
+      const wrap = el("div", { class: "telem-slot" });
       const swatch = el("span", { class: "swatch" });
       swatch.style.background = TRACE[i % TRACE.length];
       const ds = el("select") as HTMLSelectElement;
+      ds.setAttribute("aria-label", `Driver ${i + 1}`);
       for (const d of bundle.drivers) {
         const o = el("option", { value: String(d.driver_number), text: d.name_acronym }) as HTMLOptionElement;
         if (d.driver_number === slot.driver) o.selected = true;
         ds.append(o);
       }
       const ls = el("select") as HTMLSelectElement;
+      ls.setAttribute("aria-label", `Lap for driver ${i + 1}`);
       const laps = bundle.laps.filter((l) => l.driver_number === slot.driver && l.lap_duration);
       for (const l of laps) {
         const o = el("option", { value: String(l.lap_number), text: `Lap ${l.lap_number}` }) as HTMLOptionElement;
         if (l.lap_number === slot.lap) o.selected = true;
         ls.append(o);
       }
-      const apply = () => {
-        slots[i] = { driver: Number(ds.value), lap: Number(ls.value) };
-        lastKey = "";
-        setTelemetrySlots(slots.slice(0, 4));
+      ds.onchange = () => {
+        const driver = Number(ds.value);
+        const keep = bundle.laps.some(
+          (lap) => lap.driver_number === driver && lap.lap_number === slot.lap && lap.lap_duration,
+        );
+        const lap = keep ? slot.lap : defaultLapForDriver(bundle.laps, driver, pits);
+        slots[i] = { driver, lap };
+        commitSlots(slots);
       };
-      ds.onchange = apply;
-      ls.onchange = apply;
-      wrap.append(swatch, ds, ls);
+      ls.onchange = () => {
+        slots[i] = { driver: Number(ds.value), lap: Number(ls.value) };
+        commitSlots(slots);
+      };
+      const fastLap = fastestCompleteLap(bundle.laps, slot.driver, pits);
+      const fast = el("button", { class: "telem-fast", type: "button", text: "Fastest" }) as HTMLButtonElement;
+      if (fastLap == null) {
+        fast.disabled = true;
+        fast.title = "No complete lap with all three sectors";
+      } else {
+        fast.title = `Load lap ${fastLap}, the fastest complete lap`;
+        fast.onclick = () => {
+          slots[i] = { driver: slot.driver, lap: fastLap };
+          commitSlots(slots);
+        };
+      }
+      wrap.append(swatch, ds, ls, fast);
       if (slots.length > 2) {
-        const rm = el("button", { class: "ghost", text: "×" });
+        const rm = el("button", { class: "telem-remove", type: "button", text: "×" }) as HTMLButtonElement;
         rm.title = "Remove driver";
+        rm.setAttribute("aria-label", "Remove driver");
         rm.onclick = () => {
           slots.splice(i, 1);
-          lastKey = "";
-          setTelemetrySlots(slots);
+          commitSlots(slots);
         };
         wrap.append(rm);
       }
       left.body.append(wrap);
     });
     if (slots.length < 4) {
-      const add = el("button", { class: "ghost", text: `Add driver (${slots.length}/4)` });
+      const add = el("button", {
+        class: "telem-add",
+        type: "button",
+        text: `Add driver (${slots.length}/4)`,
+      }) as HTMLButtonElement;
       add.onclick = () => {
         const used = new Set(slots.map((s) => s.driver));
         const next = bundle.drivers.find((d) => !used.has(d.driver_number)) ?? bundle.drivers[0];
         if (!next) return;
-        const laps = bundle.laps.filter((l) => l.driver_number === next.driver_number && l.lap_duration);
-        slots.push({ driver: next.driver_number, lap: laps[0]?.lap_number ?? 5 });
-        lastKey = "";
-        setTelemetrySlots(slots);
+        slots.push({ driver: next.driver_number, lap: defaultLapForDriver(bundle.laps, next.driver_number, pits) });
+        commitSlots(slots);
       };
       left.body.append(add);
     }
-    left.body.append(el("div", { class: "help", text: "Up to 4 drivers, each with a distinct trace color. Traces join /car_data to /location by date, then plot against cumulative distance. First driver is the Δ vs REF lane. Hide channels with the chips; Overlay stacks the ones that stay on. The brush under the chart zooms every trace." }));
+    if (slots.length) {
+      const bulk = el("div", { class: "telem-bulk" });
+      const allFast = el("button", { class: "telem-bulk-btn", type: "button", text: "All to fastest" }) as HTMLButtonElement;
+      allFast.onclick = () => commitSlots(slotsAtFastest(slots, bundle.laps, pits));
+      const lapInput = el("input") as HTMLInputElement;
+      lapInput.type = "number";
+      lapInput.min = "1";
+      lapInput.max = "120";
+      lapInput.value = String(slots[0]?.lap ?? 1);
+      lapInput.setAttribute("aria-label", "Lap number for every driver");
+      const allLap = el("button", { class: "telem-bulk-btn", type: "button", text: "All to lap" }) as HTMLButtonElement;
+      allLap.onclick = () => {
+        const n = Math.round(Number(lapInput.value));
+        commitSlots(slotsAtLap(slots, bundle.laps, n));
+      };
+      bulk.append(allFast, lapInput, allLap);
+      left.body.append(bulk);
+    }
+    left.body.append(el("div", { class: "help", text: "Up to 4 drivers, each with a distinct trace color. New drivers open on their fastest complete lap. Traces join /car_data to /location by date, then plot against cumulative distance. First driver is the Δ vs REF lane. Drag the bar beside this list to widen it." }));
   };
 
   const reload = async () => {
@@ -628,6 +707,11 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
 
   return {
     update: () => {
+      const bundle = state.bundle;
+      if (bundle) {
+        const padded = ensureMinDrivers(state.telemetry, bundle.drivers, bundle.laps, bundle.pits ?? []);
+        if (padded !== state.telemetry) state.telemetry = padded;
+      }
       const key = `${state.sessionKey}:${state.telemetry.map((s) => `${s.driver}-${s.lap}`).join(",")}`;
       if (key !== lastKey && state.bundle) {
         lastKey = key;
