@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   base: process.env.VITE_BASE || "/",
+  optimizeDeps: { include: ["mqtt"] },
   build: {
     target: "es2022",
     sourcemap: true,

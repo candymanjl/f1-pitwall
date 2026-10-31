@@ -1,10 +1,5 @@
-import {
-  API_BASE,
-  HISTORICAL_TTL_MS,
-  RATE_MIN_GAP_MS,
-  RATE_PER_MINUTE,
-  readToken,
-} from "../config";
+import { API_BASE, HISTORICAL_TTL_MS, RATE_MIN_GAP_MS, RATE_PER_MINUTE } from "../config";
+import { authorizedFetch } from "./clientAuth";
 import { classifyOpenF1Failure, OpenF1Error } from "./errors";
 
 type CacheEntry = { expires: number; body: unknown };
@@ -117,14 +112,11 @@ export async function apiGet<T>(
   }
 
   const body = await enqueue(async () => {
-    const headers: Record<string, string> = { accept: "application/json" };
-    const token = readToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
     try {
-      const res = await fetch(url.toString(), { headers });
+      const res = await authorizedFetch(url.toString());
       if (res.status === 429) {
         await wait(1500);
-        const retry = await fetch(url.toString(), { headers });
+        const retry = await authorizedFetch(url.toString());
         if (!retry.ok) throw await httpError(retry, path);
         return retry.json();
       }

@@ -44,6 +44,12 @@ describe("classifyOpenF1Failure", () => {
     const err = classifyOpenF1Failure({ status: 403, body: LIVE_JSON });
     expect(err.kind).toBe("live-lock");
   });
+
+  it("does not treat a credential 401 as a live lock", () => {
+    const err = classifyOpenF1Failure({ status: 401, body: { detail: "Incorrect username or password" } });
+    expect(err.kind).toBe("http");
+    expect(err.message).toMatch(/Incorrect username/i);
+  });
 });
 
 describe("helpers", () => {

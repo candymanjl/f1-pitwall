@@ -188,7 +188,7 @@ svg.mini { width: 100%; height: 160px; display: block; }
   align-items: center; justify-content: center; z-index: 20;
 }
 .modal {
-  width: min(520px, 92vw); max-height: 90vh; overflow: auto;
+  width: min(560px, 92vw); max-height: 90vh; overflow: auto;
   background: #121623; border: 1px solid #2a3144; border-radius: 8px; padding: 18px;
 }
 .modal h2 { margin: 0 0 10px; font-size: 18px; }
@@ -201,6 +201,10 @@ svg.mini { width: 100%; height: 160px; display: block; }
 .modal button.primary { background: var(--red); border-color: var(--red); }
 .row { display: flex; gap: 8px; margin: 10px 0; }
 .row > * { flex: 1; }
+.auth-status { color: #c5d0e6 !important; }
+.auth-error { color: #fca5a5 !important; margin-top: 0; }
+.advanced { margin: 10px 0; border: 1px solid #2a3144; border-radius: 6px; padding: 8px 10px; }
+.advanced summary { cursor: pointer; font-weight: 700; color: var(--muted); }
 
 .overlay {
   position: absolute; inset: 0; display: none; pointer-events: none;

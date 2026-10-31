@@ -57,11 +57,22 @@ export function classifyOpenF1Failure(input: {
   const status = input.status ?? null;
   const path = input.path ? ` on ${input.path}` : "";
 
-  if (status === 401 || LIVE_LOCK_RE.test(text)) {
+  if (LIVE_LOCK_RE.test(text)) {
     return new OpenF1Error(
       "live-lock",
       "OpenF1 is locked while a live F1 session is running.",
       status ?? 401,
+      detail || causeMsg,
+    );
+  }
+  if (status === 401 && detail) {
+    return new OpenF1Error("http", detail, 401, detail);
+  }
+  if (status === 401) {
+    return new OpenF1Error(
+      "live-lock",
+      "OpenF1 is locked while a live F1 session is running.",
+      401,
       detail || causeMsg,
     );
   }

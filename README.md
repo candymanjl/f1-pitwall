@@ -31,15 +31,17 @@ After that, every merge to `main` rebuilds and updates the site automatically.
 3. **Play / Pause**, the speed menu, and the scrubber move a replay clock. Every page shows the field as it was at that moment.
 4. Click a driver row to select them (pit ghost, strategy model, race-trace reference).
 5. **Settings** (top right of the toolbar):
-   - **Historical replay** (default) — free, no key.
-   - **Live polling** — placeholder for a future paid OpenF1 key. Paste a token here if you have one; it stays in *this browser only* and is never written into the repository.
-   - **Pit loss** seconds for Green / VSC / SC, used by the pit circle and the strategy estimates.
+   - **Sign in** with your OpenF1 username and password. The site POSTs to `https://api.openf1.org/token`, caches the `access_token` (1 hour), and refreshes it about 5 minutes before expiry or after a 401.
+   - Credentials stay in **this browser** (`localStorage`). They are never committed. You accepted that risk for this static Pages app.
+   - **Live** mode uses MQTT over WebSockets (`wss://mqtt.openf1.org:8084/mqtt`) when signed in, and falls back to REST polling if the socket fails.
+   - **Advanced** still accepts a pasted bearer token (no auto-refresh).
+   - **Pit loss** seconds for Green / VSC / SC.
 
 ### If you see “OpenF1 is locked…”
 
 While a live F1 session is on, OpenF1 returns **401** for every endpoint (including past races). Browsers often hide that as **Failed to fetch** because the 401 has no CORS headers.
 
-The site shows a yellow banner instead of a raw error. Use **Open Settings** to paste a key, or **Retry**. The app also retries on its own every few minutes until the session ends.
+The site shows a yellow banner instead of a raw error. Use **Open Settings** to sign in (or paste a token), or **Retry**. The app also retries on its own every few minutes until the session ends.
 
 ### What each page shows
 
@@ -61,12 +63,13 @@ The site shows a yellow banner instead of a raw error. Use **Open Settings** to 
 
 ## Data mode (historical vs live)
 
-Historical sessions need **no key**. Live / `latest` data needs a paid OpenF1 token later.
+Historical sessions need **no login** except while a live F1 session is on (then OpenF1 locks the whole API). Live streaming needs an OpenF1 account.
 
-- Token field: in-app **Settings**, stored as `localStorage` key `f1pitwall.openf1Token`.
-- Developers can also copy `.env.example` to `.env` and set `VITE_OPENF1_TOKEN` on their own machine. **Do not commit `.env`.**
+- Sign-in: Settings → username + password. Stored as `f1pitwall.openf1User` / `f1pitwall.openf1Password`; access token as `f1pitwall.openf1AccessToken`.
+- Optional pasted token: `f1pitwall.openf1Token` (backward compatible).
+- **Do not commit** credentials or `.env`.
 
-Live mode currently advances the clock to “now” and keeps the same session bundle. Full live polling / MQTT can be wired to the same data layer when a key is available.
+Live mode advances the clock to “now”, then prefers MQTT (`v1/laps`, `v1/position`, …) merging on `_key`, with REST polling as fallback.
 
 ## For developers (optional)
 
