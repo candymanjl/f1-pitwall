@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseTs } from "../lib/time";
-import { safetyCarBands, snapshotAt, visibleLapTiming } from "./derive";
-import type { Driver, Lap, Position, RaceControl, Session, SessionBundle } from "./types";
+import { countPitsAt, safetyCarBands, snapshotAt, visibleLapTiming } from "./derive";
+import type { Driver, Lap, Pit, Position, RaceControl, Session, SessionBundle } from "./types";
 
 const T0 = "2025-10-26T20:00:00.000Z";
 const T_DEPLOY = "2025-10-26T20:10:00.000Z";
@@ -260,5 +260,27 @@ describe("snapshotAt race order without intervals", () => {
     expect(snap.rows[0].driver.driver_number).toBe(44);
     expect(snap.rows[0].pos).toBe(1);
     expect(snap.rows[1].gap).toBeCloseTo(10);
+  });
+});
+
+describe("pit stop count at current time", () => {
+  const pits: Pit[] = [
+    { date: "2025-10-26T20:10:00.000Z", driver_number: 1, lap_number: 8, lane_duration: 24, pit_duration: 22, stop_duration: 2.4 },
+    { date: "2025-10-26T20:40:00.000Z", driver_number: 1, lap_number: 28, lane_duration: 23, pit_duration: 21, stop_duration: 2.2 },
+    { date: "2025-10-26T20:12:00.000Z", driver_number: 44, lap_number: 9, lane_duration: 25, pit_duration: 23, stop_duration: 2.5 },
+  ];
+
+  it("counts only /pit rows at or before now", () => {
+    expect(countPitsAt(pits.filter((p) => p.driver_number === 1), parseTs("2025-10-26T20:09:59.000Z"))).toBe(0);
+    expect(countPitsAt(pits.filter((p) => p.driver_number === 1), parseTs("2025-10-26T20:10:00.000Z"))).toBe(1);
+    expect(countPitsAt(pits.filter((p) => p.driver_number === 1), parseTs("2025-10-26T20:40:00.000Z"))).toBe(2);
+  });
+
+  it("puts the live count on each snapshot row", () => {
+    const snap = snapshotAt(bundle({ pits }), parseTs("2025-10-26T20:20:00.000Z"));
+    const one = snap.rows.find((r) => r.driver.driver_number === 1);
+    const forty = snap.rows.find((r) => r.driver.driver_number === 44);
+    expect(one?.pits).toBe(1);
+    expect(forty?.pits).toBe(1);
   });
 });

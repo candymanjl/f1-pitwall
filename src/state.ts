@@ -1,4 +1,5 @@
 import { LIVE_LOCK_RETRY_MS, LIVE_POLL_MS, readMode, readPitLoss, SPEEDS, writeMode, writePitLoss } from "./config";
+import { applyUiScale, readUiScale, writeUiScale, type UiScalePref } from "./lib/scale";
 import { peekAuth } from "./data/auth";
 import { snapshotAt } from "./data/derive";
 import { classifyOpenF1Failure, type OpenF1Error } from "./data/errors";
@@ -39,6 +40,7 @@ export type AppState = {
   pitMode: "green" | "vsc" | "sc";
   hiddenDrivers: number[];
   liveSource: LiveSource;
+  uiScale: UiScalePref;
 };
 
 type Listener = () => void;
@@ -74,6 +76,7 @@ export const state: AppState = {
   pitMode: "green",
   hiddenDrivers: [],
   liveSource: "off",
+  uiScale: readUiScale(),
 };
 
 export function subscribe(fn: Listener): () => void {
@@ -171,6 +174,13 @@ export function setPitLoss(loss: AppState["pitLoss"]): void {
   state.pitLoss = loss;
   writePitLoss(loss);
   emit();
+}
+
+export function setUiScale(pref: UiScalePref): void {
+  state.uiScale = pref;
+  writeUiScale(pref);
+  applyUiScale(pref);
+  emit(true);
 }
 
 export function setPanelError(key: keyof AppState["panelErrors"], message: string): void {

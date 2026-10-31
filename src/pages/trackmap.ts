@@ -6,7 +6,8 @@ import { el } from "../lib/dom";
 import { asNumber } from "../lib/time";
 import { panel } from "../ui/panel";
 import { renderTower } from "../ui/tower";
-import { hasDriverSelection, isDriverSelected, selectDriver, state } from "../state";
+import { appendDriverDot } from "../lib/svgcar";
+import { hasDriverSelection, isDriverSelected, state } from "../state";
 
 function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot): void {
   const w = svg.clientWidth || 800;
@@ -81,27 +82,16 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
     const [px, py] = map(x, y);
     const on = isDriverSelected(row.driver.driver_number);
     const dim = hasDriverSelection() && !on;
-    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    c.setAttribute("cx", String(px));
-    c.setAttribute("cy", String(py));
-    c.setAttribute("r", on ? "7" : "4.5");
-    c.setAttribute("fill", teamColor(row.driver.team_colour));
-    c.setAttribute("class", `car-dot${on ? " on" : dim ? " dim" : ""}`);
-    c.setAttribute("data-driver", String(row.driver.driver_number));
-    c.setAttribute("stroke", on ? "#f8fafc" : "#07080d");
-    c.setAttribute("stroke-width", on ? "2" : "1");
-    c.style.cursor = "pointer";
-    c.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      selectDriver(row.driver.driver_number, ev);
+    appendDriverDot(svg, px, py, {
+      n: row.driver.driver_number,
+      color: teamColor(row.driver.team_colour),
+      selected: on,
+      dim,
+      visualR: on ? 7 : 4.5,
+      label: row.driver.name_acronym,
+      labelX: px + 10,
+      labelY: py - 6,
     });
-    svg.append(c);
-    const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    lab.setAttribute("x", String(px + 8));
-    lab.setAttribute("y", String(py - 6));
-    lab.setAttribute("class", "car-label");
-    lab.textContent = row.driver.name_acronym;
-    svg.append(lab);
   }
 }
 

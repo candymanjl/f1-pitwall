@@ -138,6 +138,10 @@ export type SessionBundle = {
   track: [number, number][];
   corners: { n: number; x: number; y: number; dist: number }[];
   sectorFracs: [number, number, number];
+  /** Racing-line fraction of pit-lane entry, 0 = S/F. */
+  pitEntry?: number;
+  /** Racing-line fraction of pit-lane exit, 0 = S/F. */
+  pitExit?: number;
 };
 
 export type FlagMode = "green" | "vsc" | "sc";
@@ -164,6 +168,8 @@ export type TowerRow = {
   segments: number[];
   inPit: boolean;
   retired: boolean;
+  pitOut: boolean;
+  pits: number;
   progress: number;
 };
 

@@ -14,6 +14,16 @@ function sortByDate<T extends { date: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => parseTs(a.date) - parseTs(b.date));
 }
 
+/** Pit stops for a driver whose /pit timestamp is at or before `now`. */
+export function countPitsAt(pits: Pit[], now: number): number {
+  let n = 0;
+  for (const pit of pits) {
+    const t = parseTs(pit.date);
+    if (Number.isFinite(t) && t <= now) n += 1;
+  }
+  return n;
+}
+
 function nums(values: Array<number | null> | null | undefined): number[] {
   return (values ?? []).filter((v): v is number => v != null);
 }
@@ -242,11 +252,9 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
       now,
       (r) => parseTs(r.date),
     );
-    const lastPit = latestBefore(
-      pits.filter((r) => r.driver_number === driver.driver_number),
-      now,
-      (r: Pit) => parseTs(r.date),
-    );
+    const driverPits = pits.filter((r) => r.driver_number === driver.driver_number);
+    const lastPit = latestBefore(driverPits, now, (r: Pit) => parseTs(r.date));
+    const pitCount = countPitsAt(driverPits, now);
 
     const stint = bundle.stints
       .filter((s) => s.driver_number === driver.driver_number)
@@ -305,6 +313,8 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
       segments: live.segments,
       inPit,
       retired,
+      pitOut: !!cur?.is_pit_out_lap,
+      pits: pitCount,
       progress: (() => {
         const start = parseTs(cur?.date_start);
         if (!Number.isFinite(start)) return 0;

@@ -11,6 +11,7 @@ import { mountStrategy } from "../pages/strategy";
 import { mountTelemetry } from "../pages/telemetry";
 import { mountTiming } from "../pages/timing";
 import { mountTrackMap } from "../pages/trackmap";
+import { applyUiScale } from "../lib/scale";
 import {
   changeMeeting,
   changeSession,
@@ -37,6 +38,7 @@ const mounts: Record<string, (parent: HTMLElement) => PageMount> = {
 };
 
 export function boot(root: HTMLElement): void {
+  applyUiScale(state.uiScale);
   const brand = el("div", { class: "brand" }, [el("span", { class: "bar" }), el("span", { text: "F1" })]);
   const title = el("div", { class: "session-title", text: "F1 PITWALL" });
   const clock = el("div", { class: "session-clock", text: "00:00:00" });
@@ -182,7 +184,10 @@ export function boot(root: HTMLElement): void {
     renderPage();
   });
 
-  window.addEventListener("resize", () => pageApi?.update());
+  window.addEventListener("resize", () => {
+    applyUiScale(state.uiScale);
+    pageApi?.update();
+  });
   startClock();
   window.addEventListener("f1pw:open-settings", () => openSettings());
   if (new URLSearchParams(location.search).has("settings")) {

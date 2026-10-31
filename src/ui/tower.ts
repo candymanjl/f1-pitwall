@@ -11,6 +11,7 @@ const COLS: Record<TowerCols, { label: string; cls: string }[]> = {
     { label: "", cls: "c-pos" },
     { label: "Driver", cls: "c-drv" },
     { label: "Tyre", cls: "c-tyre" },
+    { label: "Pits", cls: "c-pits" },
     { label: "Last", cls: "c-lap" },
     { label: "Best", cls: "c-lap" },
     { label: "Int", cls: "c-gap" },
@@ -21,6 +22,7 @@ const COLS: Record<TowerCols, { label: string; cls: string }[]> = {
     { label: "", cls: "c-pos" },
     { label: "Driver", cls: "c-drv" },
     { label: "Tyre", cls: "c-tyre" },
+    { label: "Pits", cls: "c-pits" },
     { label: "Last", cls: "c-lap" },
     { label: "Best", cls: "c-lap" },
     { label: "Int", cls: "c-gap" },
@@ -35,6 +37,7 @@ const COLS: Record<TowerCols, { label: string; cls: string }[]> = {
     { label: "", cls: "c-pos" },
     { label: "Driver", cls: "c-drv" },
     { label: "Tyre", cls: "c-tyre" },
+    { label: "Pits", cls: "c-pits" },
     { label: "Age", cls: "c-n" },
     { label: "Pace", cls: "c-lap" },
     { label: "Deg", cls: "c-deg" },
@@ -105,6 +108,7 @@ export function renderTower(
     if (opts.cols === "basic") {
       cells.push(
         el("td", { class: "c-tyre" }, [tyreCell(row)]),
+        el("td", { class: "c-pits", text: String(row.pits) }),
         el("td", { class: "c-lap", text: formatLap(row.lastLap) }),
         el("td", { class: "c-lap", text: formatLap(row.bestLap) }),
         el("td", { class: "c-gap", text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
@@ -125,6 +129,7 @@ export function renderTower(
       segs.className = "c-mini";
       cells.push(
         el("td", { class: "c-tyre" }, [tyreCell(row)]),
+        el("td", { class: "c-pits", text: String(row.pits) }),
         el("td", { class: "c-lap", text: formatLap(row.lastLap) }),
         el("td", { class: "c-lap", text: formatLap(row.bestLap) }),
         el("td", { class: "c-gap", text: row.pos === 1 ? "—" : formatDelta(row.interval) }),

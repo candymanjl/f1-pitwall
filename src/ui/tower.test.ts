@@ -38,6 +38,8 @@ function row(n: number, code: string, pos: number, extra: Partial<TowerRow> = {}
     segments: [2049, 2049, 0],
     inPit: false,
     retired: false,
+    pitOut: false,
+    pits: 1,
     progress: 0.4,
     ...extra,
   };
@@ -58,6 +60,7 @@ describe("renderTower", () => {
       "c-pos",
       "c-drv",
       "c-tyre",
+      "c-pits",
       "c-lap",
       "c-lap",
       "c-gap",
@@ -69,6 +72,8 @@ describe("renderTower", () => {
       "c-mini",
     ]);
     expect(table.querySelectorAll("th").length).toBe(cols.length);
+    expect([...table.querySelectorAll("th")].map((th) => th.textContent)).toContain("Pits");
+    expect(table.querySelector("td.c-pits")?.textContent).toBe("1");
   });
 
   it("selects a driver on click, clears on a second click, and shift-click adds", () => {

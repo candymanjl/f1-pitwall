@@ -38,6 +38,8 @@ function row(n: number, code: string, pos: number, gap: number | null): TowerRow
     segments: [],
     inPit: false,
     retired: false,
+    pitOut: false,
+    pits: 0,
     progress: 0.2,
   };
 }

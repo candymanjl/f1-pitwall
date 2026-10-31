@@ -25,7 +25,7 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
     if (!bundle || !snap) return;
     const table = el("table", { class: "tower cols-strategy" });
     const group = document.createElement("colgroup");
-    for (const cls of ["c-pos", "c-drv", "c-tyre", "c-n", "c-lap", "c-deg", "c-sets", "c-gap", "c-gap", "c-traf"]) {
+    for (const cls of ["c-pos", "c-drv", "c-tyre", "c-pits", "c-n", "c-lap", "c-deg", "c-sets", "c-gap", "c-gap", "c-traf"]) {
       const c = document.createElement("col");
       c.className = cls;
       group.append(c);
@@ -35,6 +35,7 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
       ["", "c-pos"],
       ["Driver", "c-drv"],
       ["Tyre", "c-tyre"],
+      ["Pits", "c-pits"],
       ["Age", "c-n"],
       ["Pace est.", "c-lap"],
       ["Deg / lap", "c-deg"],
@@ -74,6 +75,7 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
           document.createTextNode(row.driver.name_acronym),
         ]),
         el("td", { class: "c-tyre" }, [tyre]),
+        el("td", { class: "c-pits", text: String(row.pits) }),
         el("td", { class: "c-n", text: row.tyreAge != null ? String(row.tyreAge) : "—" }),
         el("td", { class: "c-lap", text: formatLap(s.pace) }),
         el("td", { class: "c-deg", text: s.deg != null ? `${s.deg >= 0 ? "+" : ""}${s.deg.toFixed(3)}s` : "—" }),
