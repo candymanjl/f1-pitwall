@@ -235,6 +235,63 @@ describe("clean laps and fit", () => {
     expect(fitted.model.baseLap).toBeCloseTo(80, 1);
     expect(fitted.fit.used).toBe(24);
   });
+
+  it("keeps the Soft cliff intercept and rebases other compounds onto it", () => {
+    const laps: FitLapInput[] = [];
+    const softIntercept = 82.4;
+    const preCliff = 0.02;
+    const cliffLap = 14;
+    const cliffDeg = 0.4;
+    const mediumIntercept = 83.1;
+    for (let age = 0; age <= 18; age++) {
+      laps.push(
+        lap({
+          driver: 1,
+          lapNumber: age + 1,
+          stintStart: 1,
+          compound: "SOFT",
+          interval: 3,
+          lapTime: softIntercept + preCliff * age + cliffDeg * Math.max(0, age - cliffLap),
+        }),
+      );
+    }
+    for (let age = 0; age <= 12; age++) {
+      laps.push(
+        lap({
+          driver: 2,
+          lapNumber: 40 + age,
+          stintStart: 40,
+          compound: "MEDIUM",
+          interval: 3,
+          lapTime: mediumIntercept + 0.05 * age,
+        }),
+      );
+    }
+    const fitted = fitTyreModel(laps, { ...defaultTyreModel(), fuelPerLap: 0 }, {
+      mode: "practice",
+      label: "FP2",
+      sessionKey: 9,
+    });
+    const soft = fitted.model.compounds.SOFT;
+    const medium = fitted.model.compounds.MEDIUM;
+    expect(soft.shape).toBe("cliff");
+    expect(soft.cliffLap).toBe(cliffLap);
+    expect(soft.degPerLap).toBeCloseTo(preCliff, 2);
+    expect(soft.cliffDeg).toBeCloseTo(cliffDeg, 2);
+    // A single line through this stint intercepts near 82.11. The saved reference
+    // is the piecewise intercept, and Soft stays the zero offset.
+    expect(fitted.model.baseLap + soft.offset).toBeCloseTo(softIntercept, 2);
+    expect(fitted.model.baseLap).toBeCloseTo(softIntercept, 2);
+    expect(soft.offset).toBeCloseTo(0, 2);
+    expect(fitted.model.baseLap + medium.offset).toBeCloseTo(mediumIntercept, 2);
+    expect(medium.offset - soft.offset).toBeCloseTo(mediumIntercept - softIntercept, 2);
+    expect(predictedLapTime(fitted.model, "SOFT", 0, 0)).toBeCloseTo(softIntercept, 2);
+    expect(predictedLapTime(fitted.model, "MEDIUM", 0, 0)).toBeCloseTo(mediumIntercept, 2);
+    expect(predictedLapTime(fitted.model, "SOFT", 18, 0)).toBeCloseTo(
+      softIntercept + preCliff * 18 + cliffDeg * (18 - cliffLap),
+      2,
+    );
+  });
 });
 
 describe("plan search speed", () => {

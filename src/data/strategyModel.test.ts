@@ -54,7 +54,11 @@ function row(n: number, code: string, compound: string, age: number): TowerRow {
     segments: [],
     inPit: false,
     retired: false,
+    pitOut: false,
+    pits: 0,
     progress: 0.2,
+    gridPos: n,
+    posChange: 0,
   };
 }
 

@@ -586,22 +586,25 @@ export function fitTyreModel(
 
   const soft = byCompound.get("SOFT") ?? [];
   const softDefinesBase = soft.length >= 4;
-  if (softDefinesBase) {
-    const reg = linReg(soft.map((p) => p.age), soft.map((p) => p.y));
-    model.baseLap = clamp(reg.intercept, 55, 140);
-    model.compounds.SOFT.offset = 0;
-  }
+  // Fit Soft against a zero base so `offset` is the chosen curve's intercept.
+  // A cliff can beat the single linear regression and carry a different intercept;
+  // that intercept is the Soft reference, not the discarded line.
+  const softFit = softDefinesBase ? fitCompoundCurve(soft, 0) : null;
+  if (softFit) model.baseLap = clamp(softFit.offset, 55, 140);
 
   const quality: TyreFitMeta["quality"] = {};
   const dots: ActualDot[] = [];
   for (const compound of COMPOUNDS) {
     const pts = byCompound.get(compound) ?? [];
     if (pts.length < 4) continue;
-    const fitted = fitCompoundCurve(pts, model.baseLap);
+    const fitted = compound === "SOFT" && softFit ? softFit : fitCompoundCurve(pts, model.baseLap);
     const observedMax = Math.max(...pts.map((p) => p.age));
+    // Soft was fitted at base 0, so rebase onto the (possibly clamped) reference.
+    // Inside the clamp this is 0. Other compounds are already vs that reference.
+    const offset = compound === "SOFT" && softFit ? softFit.offset - model.baseLap : fitted.offset;
     model.compounds[compound] = sanitizeCompound(
       {
-        offset: compound === "SOFT" && softDefinesBase ? 0 : fitted.offset,
+        offset,
         degPerLap: fitted.deg,
         shape: fitted.shape,
         cliffLap: fitted.cliffLap,
