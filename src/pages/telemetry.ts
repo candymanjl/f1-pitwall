@@ -5,6 +5,7 @@ import {
   fastestCompleteLap,
   slotsAtFastest,
   slotsAtLap,
+  telemetryPickerKey,
 } from "../data/telemetryLaps";
 import { cumulativeDistance, detectCorners, lapWindow, pointAt, project } from "../data/track";
 import type { CarSample, LocationSample } from "../data/types";
@@ -433,6 +434,7 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
   const SIDE_MIN = 280;
   const SIDE_MAX = 560;
   let sideWidth = readSplitWidth(SIDE_KEY, 352, SIDE_MIN, SIDE_MAX);
+  let repaintCharts = () => {};
   const applySide = (px: number) => {
     sideWidth = px;
     page.style.setProperty("--telem-side", `${px}px`);
@@ -440,6 +442,7 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
     split.setAttribute("aria-valuemax", String(SIDE_MAX));
     split.setAttribute("aria-valuenow", String(Math.round(px)));
     writeSplitWidth(SIDE_KEY, px);
+    repaintCharts();
   };
   applySide(sideWidth);
   bindColumnSplitter(split, {
@@ -450,6 +453,7 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
   });
   let series: Series[] = [];
   let lastKey = "";
+  let lastPickerKey = "";
   let cornerKey = "*";
   let drag: { mode: "start" | "end" | "move"; origin: Brush; originFrac: number } | null = null;
 
@@ -555,6 +559,7 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
       }
     }
   };
+  repaintCharts = () => paint();
   syncTools();
   placeBrush();
 
@@ -569,6 +574,9 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
   };
 
   const renderPickers = () => {
+    const draftEl = left.body.querySelector(".telem-bulk input");
+    const lapDraft =
+      document.activeElement === draftEl && draftEl instanceof HTMLInputElement ? draftEl.value : null;
     left.body.replaceChildren();
     const bundle = state.bundle;
     if (!bundle) return;
@@ -594,11 +602,13 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
         ls.append(o);
       }
       ds.onchange = () => {
+        const live = state.bundle;
+        if (!live) return;
         const driver = Number(ds.value);
-        const keep = bundle.laps.some(
+        const keep = live.laps.some(
           (lap) => lap.driver_number === driver && lap.lap_number === slot.lap && lap.lap_duration,
         );
-        const lap = keep ? slot.lap : defaultLapForDriver(bundle.laps, driver, pits);
+        const lap = keep ? slot.lap : defaultLapForDriver(live.laps, driver, live.pits ?? []);
         slots[i] = { driver, lap };
         commitSlots(slots);
       };
@@ -614,7 +624,11 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
       } else {
         fast.title = `Load lap ${fastLap}, the fastest complete lap`;
         fast.onclick = () => {
-          slots[i] = { driver: slot.driver, lap: fastLap };
+          const live = state.bundle;
+          if (!live) return;
+          const lap = fastestCompleteLap(live.laps, slot.driver, live.pits ?? []);
+          if (lap == null) return;
+          slots[i] = { driver: slot.driver, lap };
           commitSlots(slots);
         };
       }
@@ -638,10 +652,15 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
         text: `Add driver (${slots.length}/4)`,
       }) as HTMLButtonElement;
       add.onclick = () => {
+        const live = state.bundle;
+        if (!live) return;
         const used = new Set(slots.map((s) => s.driver));
-        const next = bundle.drivers.find((d) => !used.has(d.driver_number)) ?? bundle.drivers[0];
+        const next = live.drivers.find((d) => !used.has(d.driver_number)) ?? live.drivers[0];
         if (!next) return;
-        slots.push({ driver: next.driver_number, lap: defaultLapForDriver(bundle.laps, next.driver_number, pits) });
+        slots.push({
+          driver: next.driver_number,
+          lap: defaultLapForDriver(live.laps, next.driver_number, live.pits ?? []),
+        });
         commitSlots(slots);
       };
       left.body.append(add);
@@ -649,7 +668,11 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
     if (slots.length) {
       const bulk = el("div", { class: "telem-bulk" });
       const allFast = el("button", { class: "telem-bulk-btn", type: "button", text: "All to fastest" }) as HTMLButtonElement;
-      allFast.onclick = () => commitSlots(slotsAtFastest(slots, bundle.laps, pits));
+      allFast.onclick = () => {
+        const live = state.bundle;
+        if (!live) return;
+        commitSlots(slotsAtFastest(slots, live.laps, live.pits ?? []));
+      };
       const lapInput = el("input") as HTMLInputElement;
       lapInput.type = "number";
       lapInput.min = "1";
@@ -658,9 +681,12 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
       lapInput.setAttribute("aria-label", "Lap number for every driver");
       const allLap = el("button", { class: "telem-bulk-btn", type: "button", text: "All to lap" }) as HTMLButtonElement;
       allLap.onclick = () => {
+        const live = state.bundle;
+        if (!live) return;
         const n = Math.round(Number(lapInput.value));
-        commitSlots(slotsAtLap(slots, bundle.laps, n));
+        commitSlots(slotsAtLap(slots, live.laps, n));
       };
+      if (lapDraft != null) lapInput.value = lapDraft;
       bulk.append(allFast, lapInput, allLap);
       left.body.append(bulk);
     }
@@ -713,10 +739,22 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
         if (padded !== state.telemetry) state.telemetry = padded;
       }
       const key = `${state.sessionKey}:${state.telemetry.map((s) => `${s.driver}-${s.lap}`).join(",")}`;
+      const pickerKey = bundle
+        ? telemetryPickerKey(
+            bundle.laps,
+            bundle.pits ?? [],
+            state.telemetry.map((slot) => slot.driver),
+          )
+        : "";
       if (key !== lastKey && state.bundle) {
         lastKey = key;
+        lastPickerKey = pickerKey;
         renderPickers();
         void reload();
+      } else if (pickerKey !== lastPickerKey && state.bundle) {
+        lastPickerKey = pickerKey;
+        renderPickers();
+        paint();
       } else {
         paint();
       }

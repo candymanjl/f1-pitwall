@@ -143,4 +143,66 @@ describe("telemetry drivers panel", () => {
       root.remove();
     }
   });
+
+  it("follows a new fastest lap and repaints the chart when the column moves", () => {
+    const fetchImpl = globalThis.fetch;
+    globalThis.fetch = () => Promise.reject(new Error("offline"));
+    const root = document.createElement("div");
+    document.body.append(root);
+    state.telemetry = [{ driver: 1, lap: 1 }];
+    const laps = [lap({ driver_number: 1, lap_number: 1, lap_duration: 70, is_pit_out_lap: true })];
+    state.bundle = {
+      drivers: [driver(1, "NOR")],
+      laps,
+      pits: [],
+      corners: [],
+      track: [],
+    } as unknown as SessionBundle;
+
+    try {
+      const api = mountTelemetry(root);
+      api.update();
+      const fastest = root.querySelector(".telem-fast") as HTMLButtonElement;
+      expect(fastest.disabled).toBe(true);
+
+      laps.push(lap({ driver_number: 1, lap_number: 6, lap_duration: 80 }));
+      api.update();
+      const enabled = root.querySelector(".telem-fast") as HTMLButtonElement;
+      expect(enabled.disabled).toBe(false);
+      expect(enabled.title).toContain("6");
+      enabled.click();
+      api.update();
+      expect(state.telemetry[0]).toEqual({ driver: 1, lap: 6 });
+
+      laps.push(lap({ driver_number: 1, lap_number: 3, lap_duration: 79 }));
+      const allFast = [...root.querySelectorAll(".telem-bulk-btn")].find((node) => node.textContent === "All to fastest") as HTMLButtonElement;
+      allFast.click();
+      expect(state.telemetry[0].lap).toBe(3);
+
+      const canvas = root.querySelector("canvas.chart") as HTMLCanvasElement;
+      const bag: Record<string, unknown> = {};
+      const ctx = new Proxy(bag, {
+        get(target, prop) {
+          if (typeof prop !== "string") return undefined;
+          if (prop in target) return target[prop];
+          return () => undefined;
+        },
+      }) as unknown as CanvasRenderingContext2D;
+      canvas.getContext = (() => ctx) as unknown as HTMLCanvasElement["getContext"];
+      let chartW = 500;
+      Object.defineProperty(canvas, "clientWidth", { configurable: true, get: () => chartW });
+      Object.defineProperty(canvas, "clientHeight", { configurable: true, get: () => 240 });
+      const split = root.querySelector(".telem-split") as HTMLElement;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      split.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(canvas.width).toBe(Math.round(500 * dpr));
+      chartW = 640;
+      split.dispatchEvent(new PointerEvent("pointerdown", { clientX: 0, bubbles: true, pointerId: 7 }));
+      split.dispatchEvent(new PointerEvent("pointermove", { clientX: 24, bubbles: true, pointerId: 7 }));
+      expect(canvas.width).toBe(Math.round(640 * dpr));
+    } finally {
+      globalThis.fetch = fetchImpl;
+      root.remove();
+    }
+  });
 });

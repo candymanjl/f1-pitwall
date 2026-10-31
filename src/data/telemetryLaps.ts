@@ -91,6 +91,21 @@ export function slotsAtLap(slots: TelemetrySlot[], laps: Lap[], lapNumber: numbe
   return changed ? next : slots;
 }
 
+/** Changes when a selected driver's timed laps or fastest complete lap changes. */
+export function telemetryPickerKey(laps: Lap[], pits: Pit[], drivers: number[]): string {
+  const parts = [String(pits.length)];
+  for (const driver of drivers) {
+    const nums: number[] = [];
+    for (const lap of laps) {
+      if (lap.driver_number === driver && typeof lap.lap_duration === "number" && lap.lap_duration > 0) {
+        nums.push(lap.lap_number);
+      }
+    }
+    parts.push(`${driver}:${fastestCompleteLap(laps, driver, pits) ?? ""}:${nums.join(".")}`);
+  }
+  return parts.join("|");
+}
+
 export function slotsAtFastest(slots: TelemetrySlot[], laps: Lap[], pits: Pit[]): TelemetrySlot[] {
   let changed = false;
   const next = slots.map((slot) => {

@@ -8,6 +8,7 @@ import {
   pitInLaps,
   slotsAtFastest,
   slotsAtLap,
+  telemetryPickerKey,
 } from "./telemetryLaps";
 
 function lap(partial: Partial<Lap> & Pick<Lap, "driver_number" | "lap_number" | "lap_duration">): Lap {
@@ -95,5 +96,15 @@ describe("complete laps", () => {
       { driver: 44, lap: 4 },
       { driver: 63, lap: 2 },
     ]);
+  });
+
+  it("changes the picker key when a faster complete lap arrives", () => {
+    const laps = [lap({ driver_number: 1, lap_number: 2, lap_duration: 90, is_pit_out_lap: true })];
+    const before = telemetryPickerKey(laps, [], [1]);
+    laps.push(lap({ driver_number: 1, lap_number: 6, lap_duration: 80 }));
+    const after = telemetryPickerKey(laps, [], [1]);
+    expect(after).not.toBe(before);
+    expect(after).toContain(":6:");
+    expect(telemetryPickerKey(laps, [], [1])).toBe(after);
   });
 });
