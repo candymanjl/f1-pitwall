@@ -47,12 +47,12 @@ The site shows a yellow banner instead of a raw error **only while you are signe
 
 | Page | What you get |
 | --- | --- |
-| Track map | Timing tower + circuit outline from `/location`, cars placed by lap progress, sector labels |
-| Timing | Tower with last/best, interval, gap, current lap, mini-sector grid, purple/green/yellow sector times, weather and gap line |
+| Track map | Timing tower + circuit outline from `/location`, cars placed by lap progress, sector labels. Race/sprint towers show positions gained/lost vs the grid |
+| Timing | Tower with last/best, interval, gap, current lap, mini-sector grid, purple/green/yellow sector times, weather and gap line. Next to each name: positions gained (green ▲) / lost (red ▼) vs `/starting_grid`, or a short white line if unchanged — races and sprints only |
 | Telemetry | Up to 4 drivers × a lap each; speed / throttle / brake / gear / rpm / DRS / delta, aligned by distance (`/car_data` joined to `/location`), shared cursor + mini map |
 | Race trace | Gap vs leader, vs average, or vs a chosen driver; pit markers; SC / VSC bands; driver toggles |
 | Pit circle | One revolution = one green-flag lap; cars by gap to leader; interval labels; pit ghost for the selected driver |
-| Strategy | Clean-lap pace and deg (estimate), leftover tyre sets inferred from weekend `/stints` (estimate), held-up flag, 1/2/3-stop comparison, undercut/overcut panel — all labelled as estimates |
+| Strategy | Same grid-delta badge next to names. Clean-lap pace and deg (estimate), leftover tyre sets inferred from weekend `/stints` (estimate), held-up flag, 1/2/3-stop comparison, undercut/overcut panel — all labelled as estimates |
 
 ### Known OpenF1 limits
 

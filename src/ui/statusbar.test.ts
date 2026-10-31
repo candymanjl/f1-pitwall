@@ -41,6 +41,8 @@ function row(n: number, code: string, pos: number, gap: number | null): TowerRow
     pitOut: false,
     pits: 0,
     progress: 0.2,
+    gridPos: null,
+    posChange: null,
   };
 }
 

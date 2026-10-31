@@ -247,6 +247,45 @@ describe("snapshotAt race order without intervals", () => {
     expect(snap.rows[1].interval).toBeNull();
   });
 
+  it("uses /starting_grid for positions gained and lost", () => {
+    const snap = snapshotAt(
+      bundle({
+        laps,
+        positions,
+        startingGrid: [
+          { driver_number: 1, position: 3 },
+          { driver_number: 44, position: 1 },
+        ],
+      }),
+      parseTs("2025-10-26T20:08:00.000Z"),
+    );
+    const a = snap.rows.find((r) => r.driver.driver_number === 1)!;
+    const b = snap.rows.find((r) => r.driver.driver_number === 44)!;
+    expect(a.gridPos).toBe(3);
+    expect(a.posChange).toBe(2);
+    expect(b.gridPos).toBe(1);
+    expect(b.posChange).toBe(-1);
+  });
+
+  it("falls back to the first /position when the grid is missing", () => {
+    const snap = snapshotAt(
+      bundle({
+        laps,
+        positions: [
+          { date: "2025-10-26T20:00:00.000Z", driver_number: 1, position: 2 },
+          { date: "2025-10-26T20:00:00.000Z", driver_number: 44, position: 1 },
+          { date: "2025-10-26T20:05:00.000Z", driver_number: 1, position: 1 },
+          { date: "2025-10-26T20:05:00.000Z", driver_number: 44, position: 2 },
+        ],
+      }),
+      parseTs("2025-10-26T20:08:00.000Z"),
+    );
+    const a = snap.rows.find((r) => r.driver.driver_number === 1)!;
+    expect(a.gridPos).toBe(2);
+    expect(a.pos).toBe(1);
+    expect(a.posChange).toBe(1);
+  });
+
   it("still ranks practice by best lap when intervals are absent", () => {
     const snap = snapshotAt(
       bundle({
@@ -260,6 +299,7 @@ describe("snapshotAt race order without intervals", () => {
     expect(snap.rows[0].driver.driver_number).toBe(44);
     expect(snap.rows[0].pos).toBe(1);
     expect(snap.rows[1].gap).toBeCloseTo(10);
+    expect(snap.rows.every((r) => r.posChange == null)).toBe(true);
   });
 });
 

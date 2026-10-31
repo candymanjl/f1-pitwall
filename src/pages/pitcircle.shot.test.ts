@@ -54,6 +54,8 @@ function row(d: Driver, pos: number, progress: number, extra: Partial<TowerRow> 
     pitOut: false,
     pits: extra.pits ?? 1,
     progress,
+    gridPos: null,
+    posChange: null,
     ...extra,
   };
 }

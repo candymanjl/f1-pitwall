@@ -4,6 +4,7 @@ import { el } from "../lib/dom";
 import { formatDelta, formatLap } from "../lib/time";
 import { panel } from "../ui/panel";
 import { hasDriverSelection, isDriverSelected, selectDriver, state } from "../state";
+import { driverNameCell } from "../ui/tower";
 
 export function mountStrategy(parent: HTMLElement): { update: () => void } {
   const tableP = panel("Rolling pace  ·  all model outputs are estimates");
@@ -66,14 +67,7 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
       tyre.style.color = tyreColor(row.compound);
       tr.append(
         el("td", { class: "pos c-pos", text: String(row.pos) }),
-        el("td", { class: "code c-drv" }, [
-          (() => {
-            const d = el("span", { class: "swatch" });
-            d.style.background = `#${row.driver.team_colour}`;
-            return d;
-          })(),
-          document.createTextNode(row.driver.name_acronym),
-        ]),
+        el("td", { class: "c-drv" }, [driverNameCell(row)]),
         el("td", { class: "c-tyre" }, [tyre]),
         el("td", { class: "c-pits", text: String(row.pits) }),
         el("td", { class: "c-n", text: row.tyreAge != null ? String(row.tyreAge) : "—" }),

@@ -41,6 +41,8 @@ function row(n: number, code: string, pos: number, extra: Partial<TowerRow> = {}
     pitOut: false,
     pits: 1,
     progress: 0.4,
+    gridPos: null,
+    posChange: null,
     ...extra,
   };
 }
