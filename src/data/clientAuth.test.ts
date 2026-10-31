@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { configureAuth, memoryStore, resetAuthForTests, signIn } from "./auth";
-import { authorizedFetch } from "./clientAuth";
+import { authorizedFetch, bearerHeaders } from "./clientAuth";
 
 afterEach(() => {
   resetAuthForTests();
@@ -87,5 +87,30 @@ describe("authorizedFetch 401 retry", () => {
     resetAuthForTests(memoryStore());
     const bare = await authorizedFetch("https://api.openf1.org/v1/meetings");
     expect(bare.status).toBe(401);
+  });
+
+  it("strips Authorization when anonymous or when no token is available", async () => {
+    const leftover = bearerHeaders("", { Authorization: "Bearer leftover", accept: "application/json" });
+    expect(leftover.has("Authorization")).toBe(false);
+
+    const store = memoryStore({
+      "f1pitwall.openf1User": "ada",
+      "f1pitwall.openf1AccessToken": "live-token",
+      "f1pitwall.openf1ExpiresAt": String(Date.now() + 3_600_000),
+    });
+    configureAuth({ store });
+
+    const seen: Array<string | null> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        seen.push(new Headers(init?.headers).get("Authorization"));
+        return new Response(JSON.stringify([{ ok: true }]), { status: 200 });
+      }),
+    );
+
+    await authorizedFetch("https://api.openf1.org/v1/meetings");
+    await authorizedFetch("https://api.openf1.org/v1/meetings", { headers: { Authorization: "Bearer leftover" } }, { anonymous: true });
+    expect(seen).toEqual(["Bearer live-token", null]);
   });
 });

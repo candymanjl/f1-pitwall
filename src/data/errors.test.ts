@@ -52,18 +52,39 @@ describe("classifyOpenF1Failure", () => {
     expect(err.message).toMatch(/Incorrect username/i);
   });
 
-  it("does not lock the UI when the user already has a token", () => {
-    const live = classifyOpenF1Failure({ status: 401, body: LIVE_JSON, authenticated: true });
-    expect(live.kind).toBe("http");
-    expect(isLiveLock(live)).toBe(false);
-    const cors = classifyOpenF1Failure({ cause: new TypeError("Failed to fetch"), authenticated: true });
-    expect(cors.kind).toBe("http");
-    expect(isLiveLock(cors)).toBe(false);
+  it("only blames a missing bearer when signed in but no token was attached", () => {
+    const missing = classifyOpenF1Failure({
+      status: 401,
+      body: LIVE_JSON,
+      authenticated: true,
+      tokenAttached: false,
+    });
+    expect(missing.kind).toBe("http");
+    expect(missing.message).toMatch(/bearer token may not have been sent/i);
+    expect(isLiveLock(missing)).toBe(false);
+  });
+
+  it("keeps a live lock when a bearer was attached and OpenF1 still blocked the request", () => {
+    const live = classifyOpenF1Failure({
+      status: 401,
+      body: LIVE_JSON,
+      authenticated: true,
+      tokenAttached: true,
+    });
+    expect(live.kind).toBe("live-lock");
+    expect(isLiveLock(live)).toBe(true);
+    const cors = classifyOpenF1Failure({
+      cause: new TypeError("Failed to fetch"),
+      authenticated: true,
+      tokenAttached: true,
+    });
+    expect(cors.kind).toBe("live-lock");
     const prior = classifyOpenF1Failure({
       cause: new OpenF1Error("live-lock", "OpenF1 is locked while a live F1 session is running.", 401),
       authenticated: true,
+      tokenAttached: true,
     });
-    expect(prior.kind).toBe("http");
+    expect(prior.kind).toBe("live-lock");
   });
 });
 
@@ -84,9 +105,9 @@ describe("helpers", () => {
     expect(isLiveLock(new OpenF1Error("http", "nope", 503))).toBe(false);
   });
 
-  it("hides the live-lock banner once a token exists", () => {
+  it("shows the live-lock banner whenever REST is locked, even if signed in", () => {
     expect(shouldShowLiveLockBanner("live", false)).toBe(true);
-    expect(shouldShowLiveLockBanner("live", true)).toBe(false);
+    expect(shouldShowLiveLockBanner("live", true)).toBe(true);
     expect(shouldShowLiveLockBanner(null, false)).toBe(false);
   });
 });

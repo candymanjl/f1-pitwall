@@ -212,7 +212,7 @@ function syncBanner(banner: HTMLElement): void {
     banner.append(
       el("strong", { text: "OpenF1 is locked while a live F1 session is running." }),
       el("p", {
-        text: "Until that session ends, every endpoint needs an OpenF1 login. Sign in under Settings (or paste a token under Advanced). A 401 without CORS headers often looks like “Failed to fetch”.",
+        text: "Until that session ends, unauthenticated REST is blocked. Sign-in still works, but the browser often cannot send the bearer token — OpenF1’s OPTIONS preflight on /v1 returns 401 with no CORS headers. Historical sessions retry without auth; if that also fails, wait for the live session to end.",
       }),
       el("div", { class: "lock-actions" }, [settings, retry, count]),
     );

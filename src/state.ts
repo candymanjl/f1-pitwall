@@ -1,5 +1,5 @@
 import { LIVE_LOCK_RETRY_MS, LIVE_POLL_MS, readMode, readPitLoss, SPEEDS, writeMode, writePitLoss } from "./config";
-import { hasUsableAuth, peekAuth } from "./data/auth";
+import { hasUsableAuth, peekAccessToken, peekAuth } from "./data/auth";
 import { applyUiScale, readUiScale, writeUiScale, type UiScalePref } from "./lib/scale";
 import { snapshotAt } from "./data/derive";
 import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
@@ -193,16 +193,17 @@ export function applyFetchError(err: unknown): OpenF1Error {
     cause: err,
     status: err instanceof OpenF1Error ? err.status : undefined,
     authenticated: hasUsableAuth(),
+    tokenAttached: Boolean(peekAccessToken()),
   });
   state.loading = "";
-  if (e.kind === "live-lock" && !hasUsableAuth()) {
+  if (e.kind === "live-lock") {
     state.lock = "live";
     state.error = "";
     if (!state.retryAt || state.retryAt < Date.now()) state.retryAt = Date.now() + LIVE_LOCK_RETRY_MS;
     startLockRetry();
   } else {
     state.lock = null;
-    state.error = e.kind === "live-lock" ? "" : e.message;
+    state.error = e.message;
     stopLockRetry();
   }
   emit(true);

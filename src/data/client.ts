@@ -1,7 +1,7 @@
 import { API_BASE, HISTORICAL_TTL_MS, RATE_MIN_GAP_MS, RATE_PER_MINUTE } from "../config";
-import { hasUsableAuth } from "./auth";
+import { hasUsableAuth, peekAccessToken } from "./auth";
 import { authorizedFetch } from "./clientAuth";
-import { classifyOpenF1Failure, OpenF1Error } from "./errors";
+import { classifyOpenF1Failure, isNetworkFailure, OpenF1Error } from "./errors";
 
 type CacheEntry = { expires: number; body: unknown };
 
@@ -76,7 +76,12 @@ function persistSet(key: string, entry: CacheEntry): void {
   }
 }
 
-async function httpError(res: Response, path: string): Promise<OpenF1Error> {
+async function httpError(
+  res: Response,
+  path: string,
+  tokenAttached: boolean,
+  authenticated: boolean,
+): Promise<OpenF1Error> {
   let body: unknown = null;
   try {
     body = await res.json();
@@ -87,7 +92,64 @@ async function httpError(res: Response, path: string): Promise<OpenF1Error> {
       body = null;
     }
   }
-  return classifyOpenF1Failure({ status: res.status, body, path, authenticated: hasUsableAuth() });
+  return classifyOpenF1Failure({
+    status: res.status,
+    body,
+    path,
+    authenticated,
+    tokenAttached,
+  });
+}
+
+/** Live `latest` feeds must stay authenticated; every other session can fall back to public REST. */
+export function shouldRetryWithoutAuth(url: string): boolean {
+  try {
+    const u = new URL(url, API_BASE);
+    const session = u.searchParams.get("session_key");
+    const meeting = u.searchParams.get("meeting_key");
+    return session !== "latest" && meeting !== "latest";
+  } catch {
+    return true;
+  }
+}
+
+export function isRetryableAuthFailure(err: unknown): boolean {
+  if (err instanceof OpenF1Error) {
+    if (err.kind === "live-lock") return true;
+    if (err.status === 401 || err.status === 403) return true;
+  }
+  return isNetworkFailure(err);
+}
+
+export function resetClientForTests(): void {
+  memory.clear();
+  queue.length = 0;
+  lastSent = 0;
+  sentAt.length = 0;
+  pumping = false;
+}
+
+async function fetchJson(url: string, path: string, anonymous: boolean): Promise<unknown> {
+  const tokenAttached = !anonymous && Boolean(peekAccessToken());
+  const classifyOpts = {
+    path,
+    authenticated: !anonymous && hasUsableAuth(),
+    tokenAttached,
+  };
+  try {
+    const res = await authorizedFetch(url, {}, { anonymous });
+    if (res.status === 429) {
+      await wait(1500);
+      const retry = await authorizedFetch(url, {}, { anonymous });
+      if (!retry.ok) throw await httpError(retry, path, tokenAttached, classifyOpts.authenticated);
+      return retry.json();
+    }
+    if (!res.ok) throw await httpError(res, path, tokenAttached, classifyOpts.authenticated);
+    return res.json();
+  } catch (err) {
+    if (err instanceof OpenF1Error) throw err;
+    throw classifyOpenF1Failure({ cause: err, ...classifyOpts });
+  }
 }
 
 export async function apiGet<T>(
@@ -114,18 +176,12 @@ export async function apiGet<T>(
 
   const body = await enqueue(async () => {
     try {
-      const res = await authorizedFetch(url.toString());
-      if (res.status === 429) {
-        await wait(1500);
-        const retry = await authorizedFetch(url.toString());
-        if (!retry.ok) throw await httpError(retry, path);
-        return retry.json();
-      }
-      if (!res.ok) throw await httpError(res, path);
-      return res.json();
+      return await fetchJson(url.toString(), path, false);
     } catch (err) {
-      if (err instanceof OpenF1Error) throw err;
-      throw classifyOpenF1Failure({ cause: err, path, authenticated: hasUsableAuth() });
+      if (shouldRetryWithoutAuth(url.toString()) && isRetryableAuthFailure(err)) {
+        return await fetchJson(url.toString(), path, true);
+      }
+      throw err;
     }
   });
 
