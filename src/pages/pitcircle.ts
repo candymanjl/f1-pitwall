@@ -3,7 +3,7 @@ import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { panel } from "../ui/panel";
 import { renderTower } from "../ui/tower";
-import { setPitMode, setSelectedDriver, state } from "../state";
+import { hasDriverSelection, isDriverSelected, selectDriver, setPitMode, state } from "../state";
 
 function drawCircle(svg: SVGSVGElement): void {
   svg.replaceChildren();
@@ -35,11 +35,21 @@ function drawCircle(svg: SVGSVGElement): void {
     if (row.retired) return;
     const gap = row.pos === 1 ? 0 : asNumber(row.gap) ?? i * 1.2;
     const [x, y] = posOf(Math.max(0, gap));
+    const on = isDriverSelected(row.driver.driver_number);
+    const dim = hasDriverSelection() && !on;
     const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     c.setAttribute("cx", String(x));
     c.setAttribute("cy", String(y));
-    c.setAttribute("r", "5");
+    c.setAttribute("r", on ? "7.5" : "5");
     c.setAttribute("fill", teamColor(row.driver.team_colour));
+    c.setAttribute("class", `car-dot${on ? " on" : dim ? " dim" : ""}`);
+    c.setAttribute("data-driver", String(row.driver.driver_number));
+    c.setAttribute("stroke", on ? "#f8fafc" : "none");
+    c.style.cursor = "pointer";
+    c.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      selectDriver(row.driver.driver_number, ev);
+    });
     svg.append(c);
     const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
     const [lx, ly] = posOf(Math.max(0, gap));
@@ -138,7 +148,6 @@ export function mountPitCircle(parent: HTMLElement): { update: () => void } {
         renderTower(state.snap.rows, {
           cols: "basic",
           selected: state.selectedDriver,
-          onSelect: setSelectedDriver,
         }),
       );
     }

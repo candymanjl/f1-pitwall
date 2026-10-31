@@ -89,10 +89,10 @@ button { cursor: pointer; }
 }
 .badge.warn { color: #fde68a; border-color: #7a5b12; }
 
-main { flex: 1; min-height: 0; padding: 10px; display: flex; }
+main { flex: 1; min-height: 0; padding: 10px 10px 0; display: flex; }
 .page { flex: 1; min-height: 0; display: grid; gap: 10px; }
 .page.trackmap, .page.pitcircle { grid-template-columns: 420px 1fr; }
-.page.timing { grid-template-rows: 1fr auto; }
+.page.timing { grid-template-rows: 1fr; }
 .page.telemetry { grid-template-columns: 220px 1fr 220px; }
 .page.racetrace { grid-template-columns: 1fr 220px; }
 .page.strategy { grid-template-columns: 1.15fr 1fr; grid-template-rows: auto 1fr; }
@@ -115,15 +115,37 @@ main { flex: 1; min-height: 0; padding: 10px; display: flex; }
 .panel-b:has(svg.circle),
 .panel-b:has(canvas.chart) { overflow: hidden; }
 
-.tower { width: 100%; border-collapse: collapse; font-family: var(--cond); font-size: 15px; }
+.tower {
+  width: 100%; table-layout: fixed; border-collapse: collapse;
+  font-family: var(--cond); font-size: 15px; font-variant-numeric: tabular-nums;
+}
+.tower th, .tower td { min-width: 0; }
 .tower th {
   text-align: left; font-weight: 600; color: var(--muted); font-size: 11px;
   letter-spacing: 0.08em; padding: 4px 6px; position: sticky; top: 0; background: #0e111a;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tower td { padding: 3px 6px; border-top: 1px solid #161b27; white-space: nowrap; }
+.tower td {
+  padding: 3px 6px; border-top: 1px solid #161b27; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.tower tr { cursor: pointer; }
 .tower tr:nth-child(even) td { background: var(--row-alt); }
 .tower tr.sel td { background: var(--select); }
-.tower .pos { width: 28px; color: var(--muted); font-weight: 700; }
+.tower tr.dim td { opacity: 0.42; }
+.tower .pos { color: var(--muted); font-weight: 700; }
+.tower col.c-pos { width: 28px; }
+.tower col.c-drv { width: 58px; }
+.tower col.c-tyre { width: 48px; }
+.tower col.c-lap { width: 64px; }
+.tower col.c-gap { width: 58px; }
+.tower col.c-stat { width: 72px; }
+.tower col.c-n { width: 36px; }
+.tower col.c-sec { width: 50px; }
+.tower col.c-mini { width: auto; }
+.tower col.c-deg { width: 64px; }
+.tower col.c-sets { width: 72px; }
+.tower col.c-traf { width: 128px; }
 .tower .code { font-weight: 800; letter-spacing: 0.06em; display: flex; align-items: center; gap: 6px; }
 .swatch { width: 8px; height: 8px; border-radius: 99px; flex: 0 0 auto; }
 .tyre {
@@ -141,25 +163,35 @@ main { flex: 1; min-height: 0; padding: 10px; display: flex; }
 .segments { display: flex; gap: 1px; height: 10px; }
 .segments i { flex: 1; min-width: 4px; background: #1f2430; }
 
-.strip {
-  display: grid; grid-template-columns: 220px 1fr 180px;
+.statusbar-host { flex: 0 0 auto; }
+.strip, .statusbar {
+  display: grid; grid-template-columns: 200px 1fr minmax(260px, 320px);
   gap: 16px; align-items: center; padding: 8px 12px;
   background: #0c0f17; border: 1px solid var(--line); border-radius: 6px;
-  font-family: var(--cond); font-size: 15px;
+  font-family: var(--cond); font-size: 15px; font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; margin: 8px 10px 10px;
 }
-.gapline { height: 36px; width: 100%; }
+.statusbar { min-height: 84px; }
+.wx-wind { display: flex; align-items: center; gap: 10px; }
+.wx-text { min-width: 110px; }
+svg.wind-map { width: 96px; height: 72px; display: block; flex: 0 0 96px; }
+.gapline { height: 36px; width: 100%; cursor: pointer; }
 .legend { color: var(--muted); font-size: 11px; }
 
 .map-wrap, .chart-wrap { position: relative; width: 100%; height: 100%; flex: 1; min-height: 0; }
 svg.track, svg.circle, canvas.chart { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 svg.mini { width: 100%; height: 160px; display: block; }
 .car-label { font-family: var(--cond); font-size: 11px; font-weight: 700; fill: #e5e7eb; }
+.car-dot { cursor: pointer; }
+.car-dot.dim { opacity: 0.32; }
+.car-dot.on { stroke: #f8fafc; stroke-width: 2; }
 
 .picker { display: flex; flex-direction: column; gap: 10px; padding: 10px; font-size: 13px; }
 .picker h3 { margin: 0; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .chip {
   display: flex; align-items: center; gap: 6px; padding: 4px 0;
 }
+.chip button { background: #151a27; border: 1px solid #2a3144; border-radius: 4px; padding: 2px 8px; }
 .chip select, .picker select {
   background: #121623; border: 1px solid #2a3144; border-radius: 4px;
   padding: 4px 8px; min-width: 88px; color: var(--text);

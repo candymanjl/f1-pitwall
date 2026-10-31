@@ -4,6 +4,7 @@ import { el } from "../lib/dom";
 import { formatClock } from "../lib/time";
 import { applyLoadingOverlay, shouldShowLoadingOverlay } from "./overlays";
 import { openSettings } from "./settings";
+import { mountStatusBar } from "./statusbar";
 import { mountPitCircle } from "../pages/pitcircle";
 import { mountRaceTrace } from "../pages/racetrace";
 import { mountStrategy } from "../pages/strategy";
@@ -70,12 +71,14 @@ export function boot(root: HTMLElement): void {
   const banner = el("div", { class: "lock-banner", role: "status" });
   banner.hidden = true;
   const main = el("main");
+  const statusHost = el("div", { class: "statusbar-host" });
   const overlay = el("div", { class: "overlay", text: "Loading OpenF1…" });
   overlay.hidden = true;
   const toast = el("div", { class: "toast" });
   toast.hidden = true;
 
-  root.append(top, nav, toolbar, banner, main, overlay, toast);
+  root.append(top, nav, toolbar, banner, main, statusHost, overlay, toast);
+  const statusApi = mountStatusBar(statusHost);
 
   let currentPage = "";
   let pageApi: PageMount | null = null;
@@ -136,6 +139,7 @@ export function boot(root: HTMLElement): void {
       pageApi?.update();
     } finally {
       syncChrome();
+      statusApi.update();
     }
   };
 
