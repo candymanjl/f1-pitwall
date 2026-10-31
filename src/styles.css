@@ -95,7 +95,34 @@ button { cursor: pointer; }
 
 main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 .page { flex: 1; min-height: 0; display: grid; gap: 0.625rem; }
-.page.trackmap, .page.pitcircle { grid-template-columns: 26.25rem 1fr; }
+.page.trackmap, .page.pitcircle {
+  grid-template-columns: var(--tower-split, 36rem) 0.45rem minmax(0, 1fr);
+}
+.splitter {
+  position: relative;
+  z-index: 2;
+  width: 0.45rem;
+  align-self: stretch;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+}
+.splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0.75rem 0.12rem;
+  border-radius: 0.25rem;
+  background: #2a3144;
+}
+.splitter:hover::after, .splitter.dragging::after, .splitter:focus-visible::after {
+  background: var(--red);
+}
+.page.trackmap .tower,
+.page.pitcircle .tower {
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+}
 .page.timing { grid-template-rows: 1fr; }
 .page.telemetry { grid-template-columns: 13.75rem 1fr 13.75rem; }
 .page.telemetry .panel-b { display: flex; flex-direction: column; }
@@ -243,13 +270,25 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 .wx-wind { display: flex; align-items: center; gap: 0.625rem; }
 .wx-text { min-width: 6.875rem; }
 svg.wind-map { width: 6rem; height: 4.5rem; display: block; flex: 0 0 6rem; }
+.wind-arrow-shaft { stroke-linecap: round; }
+.wind-arrow-flow {
+  stroke-linecap: round;
+  animation: wind-flow var(--wind-flow-ms, 2s) linear infinite;
+}
+svg.wind-map.wind-still .wind-arrow-flow { animation: none; }
+@keyframes wind-flow {
+  to { stroke-dashoffset: -18; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wind-arrow-flow { animation: none; }
+}
 .gapline { height: 2.25rem; width: 100%; cursor: pointer; }
 .legend { color: var(--muted); font-size: 0.6875rem; }
 
 .map-wrap, .chart-wrap { position: relative; width: 100%; height: 100%; flex: 1; min-height: 0; }
 svg.track, svg.circle, canvas.chart { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 svg.mini { width: 100%; height: 10rem; display: block; }
-.car-label { font-family: var(--cond); font-size: 0.6875rem; font-weight: 700; fill: #e5e7eb; }
+.car-label { font-family: var(--cond); font-size: 0.8125rem; font-weight: 700; fill: #e5e7eb; }
 .car-hit-pad { fill: transparent; pointer-events: auto; }
 .car-dot { cursor: pointer; }
 .car-dot.dim { opacity: 0.32; }
@@ -486,6 +525,7 @@ svg.mini { width: 100%; height: 10rem; display: block; }
   .page.trackmap, .page.pitcircle, .page.telemetry, .page.racetrace, .page.strategy {
     grid-template-columns: 1fr;
   }
+  .page.trackmap .splitter, .page.pitcircle .splitter { display: none; }
   body { overflow: auto; }
   #app { height: auto; min-height: 100%; }
   main { height: auto; }

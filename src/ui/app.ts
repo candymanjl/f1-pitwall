@@ -1,9 +1,10 @@
 import { LIVE_LOCK_RETRY_MS, SPEEDS } from "../config";
 import { hasUsableAuth } from "../data/auth";
 import { shouldShowLiveLockBanner } from "../data/errors";
+import { isRaceOrSprint } from "../data/grid";
 import { PAGES } from "../data/types";
 import { el } from "../lib/dom";
-import { formatClock } from "../lib/time";
+import { formatSessionHeadline } from "../lib/sessionHeadline";
 import { applyLoadingOverlay, shouldShowLoadingOverlay } from "./overlays";
 import { openSettings } from "./settings";
 import { mountStatusBar } from "./statusbar";
@@ -96,8 +97,14 @@ export function boot(root: HTMLElement): void {
     title.textContent = meeting
       ? (meeting.meeting_official_name || `FORMULA 1 ${meeting.meeting_name} ${meeting.year}`).toUpperCase()
       : "F1 PITWALL";
-    const sessName = session?.session_name?.toUpperCase() ?? "";
-    clock.textContent = `${sessName} / ${formatClock(state.t - state.start)}`;
+    const leader = state.snap?.rows[0];
+    clock.textContent = formatSessionHeadline({
+      sessionName: session?.session_name,
+      elapsedMs: state.t - state.start,
+      currentLap: leader?.currentLap ?? state.snap?.leaderLap ?? null,
+      totalLaps: state.snap?.raceLaps ?? null,
+      race: session ? isRaceOrSprint(session) : false,
+    });
     play.textContent = state.playing ? "Pause" : "Play";
     const span = Math.max(1, state.end - state.start);
     scrub.value = String(Math.round(((state.t - state.start) / span) * 1000));

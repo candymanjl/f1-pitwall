@@ -161,6 +161,8 @@ describe("pit circle page", () => {
     expect(svg.querySelectorAll(".car-dot").length).toBe(7);
     expect(svg.querySelectorAll(".gap-leader").length).toBeGreaterThanOrEqual(6);
     expect(root.querySelector("table.tower")).toBeTruthy();
+    expect(root.querySelector(".splitter")).toBeTruthy();
+    expect((root.querySelector(".page.pitcircle") as HTMLElement | null)?.style.getPropertyValue("--tower-split")).toMatch(/rem/);
     expect(svg.querySelector("[data-driver='1']")?.classList.contains("on")).toBe(true);
 
     const green = root.querySelector<HTMLInputElement>("input[data-mode='green']");
