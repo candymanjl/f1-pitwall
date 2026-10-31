@@ -41,7 +41,7 @@ After that, every merge to `main` rebuilds and updates the site automatically.
 
 While a live F1 session is on, OpenF1 returns **401** for every endpoint (including past races). Browsers often hide that as **Failed to fetch** because the 401 has no CORS headers.
 
-The site shows a yellow banner instead of a raw error. Use **Open Settings** to sign in (or paste a token), or **Retry**. The app also retries on its own every few minutes until the session ends.
+The site shows a yellow banner instead of a raw error **only while you are signed out**. Use **Open Settings** to sign in (or paste a token), or **Retry**. After sign-in the banner hides and every REST call (meetings, sessions, laps, `/location`, `/car_data`, …) sends `Authorization: Bearer <token>`. The app also retries on its own every few minutes until the session ends.
 
 ### What each page shows
 

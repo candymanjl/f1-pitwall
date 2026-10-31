@@ -1,4 +1,6 @@
 import { LIVE_LOCK_RETRY_MS, SPEEDS } from "../config";
+import { hasUsableAuth } from "../data/auth";
+import { shouldShowLiveLockBanner } from "../data/errors";
 import { PAGES } from "../data/types";
 import { el } from "../lib/dom";
 import { formatClock } from "../lib/time";
@@ -197,7 +199,7 @@ export function boot(root: HTMLElement): void {
 }
 
 function syncBanner(banner: HTMLElement): void {
-  if (state.lock !== "live") {
+  if (!shouldShowLiveLockBanner(state.lock, hasUsableAuth())) {
     banner.hidden = true;
     return;
   }
