@@ -6,7 +6,8 @@ import { el } from "../lib/dom";
 import { asNumber } from "../lib/time";
 import { panel } from "../ui/panel";
 import { renderTower } from "../ui/tower";
-import { setSelectedDriver, state } from "../state";
+import { appendDriverDot } from "../lib/svgcar";
+import { hasDriverSelection, isDriverSelected, state } from "../state";
 
 function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot): void {
   const w = svg.clientWidth || 800;
@@ -79,20 +80,18 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
     const frac = ((leaderProg - gap / Math.max(1, snap.medianGreenLap)) % 1 + 1) % 1;
     const [x, y] = pointAt(pts, frac);
     const [px, py] = map(x, y);
-    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    c.setAttribute("cx", String(px));
-    c.setAttribute("cy", String(py));
-    c.setAttribute("r", row.driver.driver_number === state.selectedDriver ? "6" : "4.5");
-    c.setAttribute("fill", teamColor(row.driver.team_colour));
-    c.setAttribute("stroke", "#07080d");
-    c.setAttribute("stroke-width", "1");
-    svg.append(c);
-    const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    lab.setAttribute("x", String(px + 8));
-    lab.setAttribute("y", String(py - 6));
-    lab.setAttribute("class", "car-label");
-    lab.textContent = row.driver.name_acronym;
-    svg.append(lab);
+    const on = isDriverSelected(row.driver.driver_number);
+    const dim = hasDriverSelection() && !on;
+    appendDriverDot(svg, px, py, {
+      n: row.driver.driver_number,
+      color: teamColor(row.driver.team_colour),
+      selected: on,
+      dim,
+      visualR: on ? 7 : 4.5,
+      label: row.driver.name_acronym,
+      labelX: px + 10,
+      labelY: py - 6,
+    });
   }
 }
 
@@ -116,7 +115,6 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
         renderTower(snap.rows, {
           cols: "basic",
           selected: state.selectedDriver,
-          onSelect: setSelectedDriver,
         }),
       );
     }

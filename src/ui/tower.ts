@@ -1,9 +1,51 @@
-import { sectorColor, teamColor, tyreColor } from "../lib/colors";
+import { teamColor, tyreColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { formatDelta, formatLap, formatSector } from "../lib/time";
 import type { TowerRow } from "../data/types";
+import { hasDriverSelection, isDriverSelected, selectDriver } from "../state";
 
 export type TowerCols = "basic" | "timing" | "strategy";
+
+const COLS: Record<TowerCols, { label: string; cls: string }[]> = {
+  basic: [
+    { label: "", cls: "c-pos" },
+    { label: "Driver", cls: "c-drv" },
+    { label: "Tyre", cls: "c-tyre" },
+    { label: "Pits", cls: "c-pits" },
+    { label: "Last", cls: "c-lap" },
+    { label: "Best", cls: "c-lap" },
+    { label: "Int", cls: "c-gap" },
+    { label: "Gap", cls: "c-gap" },
+    { label: "Status", cls: "c-stat" },
+  ],
+  timing: [
+    { label: "", cls: "c-pos" },
+    { label: "Driver", cls: "c-drv" },
+    { label: "Tyre", cls: "c-tyre" },
+    { label: "Pits", cls: "c-pits" },
+    { label: "Last", cls: "c-lap" },
+    { label: "Best", cls: "c-lap" },
+    { label: "Int", cls: "c-gap" },
+    { label: "Gap", cls: "c-gap" },
+    { label: "Lap", cls: "c-n" },
+    { label: "S1", cls: "c-sec" },
+    { label: "S2", cls: "c-sec" },
+    { label: "S3", cls: "c-sec" },
+    { label: "Mini", cls: "c-mini" },
+  ],
+  strategy: [
+    { label: "", cls: "c-pos" },
+    { label: "Driver", cls: "c-drv" },
+    { label: "Tyre", cls: "c-tyre" },
+    { label: "Pits", cls: "c-pits" },
+    { label: "Age", cls: "c-n" },
+    { label: "Pace", cls: "c-lap" },
+    { label: "Deg", cls: "c-deg" },
+    { label: "Int", cls: "c-gap" },
+    { label: "Gap", cls: "c-gap" },
+    { label: "Traffic", cls: "c-traf" },
+  ],
+};
 
 function tyreCell(row: TowerRow): HTMLElement {
   const color = tyreColor(row.compound);
@@ -35,36 +77,43 @@ export function renderTower(
   opts: {
     cols: TowerCols;
     selected?: number | null;
-    onSelect?: (n: number) => void;
     showSegments?: boolean;
   },
 ): HTMLTableElement {
-  const table = el("table", { class: "tower" });
+  const spec = COLS[opts.cols];
+  const table = el("table", { class: `tower cols-${opts.cols}` });
+  const group = document.createElement("colgroup");
+  for (const col of spec) {
+    const c = document.createElement("col");
+    c.className = col.cls;
+    group.append(c);
+  }
+  table.append(group);
   const head = el("thead");
-  const labels =
-    opts.cols === "timing"
-      ? ["", "Driver", "Tyre", "Last", "Best", "Int", "Gap", "Lap", "S1", "S2", "S3", "Mini"]
-      : opts.cols === "strategy"
-        ? ["", "Driver", "Tyre", "Age", "Pace", "Deg", "Int", "Gap", "Traffic"]
-        : ["", "Driver", "Tyre", "Last", "Best", "Int", "Gap", "Status"];
-  head.append(el("tr", {}, labels.map((l) => el("th", { text: l }))));
+  head.append(el("tr", {}, spec.map((c) => el("th", { class: c.cls, text: c.label }))));
   table.append(head);
   const body = el("tbody");
   for (const row of rows) {
-    const tr = el("tr", { class: row.driver.driver_number === opts.selected ? "sel" : "" });
-    tr.addEventListener("click", () => opts.onSelect?.(row.driver.driver_number));
+    const n = row.driver.driver_number;
+    const on = isDriverSelected(n) || n === opts.selected;
+    const tr = el("tr", {
+      class: on ? "sel" : hasDriverSelection() ? "dim" : "",
+      "data-driver": String(n),
+    });
+    tr.addEventListener("click", (ev) => selectDriver(n, ev));
     const cells: HTMLElement[] = [
-      el("td", { class: "pos", text: String(row.pos) }),
-      el("td", {}, [nameCell(row)]),
+      el("td", { class: "pos c-pos", text: String(row.pos) }),
+      el("td", { class: "c-drv" }, [nameCell(row)]),
     ];
     if (opts.cols === "basic") {
       cells.push(
-        el("td", {}, [tyreCell(row)]),
-        el("td", { text: formatLap(row.lastLap) }),
-        el("td", { text: formatLap(row.bestLap) }),
-        el("td", { text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
-        el("td", { text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
-        el("td", { class: `status ${row.retired ? "out" : row.inPit ? "pit" : ""}`, text: row.status }),
+        el("td", { class: "c-tyre" }, [tyreCell(row)]),
+        el("td", { class: "c-pits", text: String(row.pits) }),
+        el("td", { class: "c-lap", text: formatLap(row.lastLap) }),
+        el("td", { class: "c-lap", text: formatLap(row.bestLap) }),
+        el("td", { class: "c-gap", text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
+        el("td", { class: "c-gap", text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
+        el("td", { class: `status c-stat ${row.retired ? "out" : row.inPit ? "pit" : ""}`, text: row.status }),
       );
     } else if (opts.cols === "timing") {
       const segs = el("td");
@@ -77,16 +126,18 @@ export function renderTower(
         bar.append(i);
       }
       segs.append(bar);
+      segs.className = "c-mini";
       cells.push(
-        el("td", {}, [tyreCell(row)]),
-        el("td", { text: formatLap(row.lastLap) }),
-        el("td", { text: formatLap(row.bestLap) }),
-        el("td", { text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
-        el("td", { text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
-        el("td", { text: row.currentLap != null ? String(row.currentLap) : "—" }),
-        el("td", { class: secClass(row.s1Kind), text: formatSector(row.s1) }),
-        el("td", { class: secClass(row.s2Kind), text: formatSector(row.s2) }),
-        el("td", { class: secClass(row.s3Kind), text: formatSector(row.s3) }),
+        el("td", { class: "c-tyre" }, [tyreCell(row)]),
+        el("td", { class: "c-pits", text: String(row.pits) }),
+        el("td", { class: "c-lap", text: formatLap(row.lastLap) }),
+        el("td", { class: "c-lap", text: formatLap(row.bestLap) }),
+        el("td", { class: "c-gap", text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
+        el("td", { class: "c-gap", text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
+        el("td", { class: "c-n", text: row.currentLap != null ? String(row.currentLap) : "—" }),
+        el("td", { class: `c-sec ${secClass(row.s1Kind)}`, text: formatSector(row.s1) }),
+        el("td", { class: `c-sec ${secClass(row.s2Kind)}`, text: formatSector(row.s2) }),
+        el("td", { class: `c-sec ${secClass(row.s3Kind)}`, text: formatSector(row.s3) }),
         segs,
       );
     }
@@ -96,5 +147,3 @@ export function renderTower(
   table.append(body);
   return table;
 }
-
-export { sectorColor };

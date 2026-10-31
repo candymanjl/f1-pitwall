@@ -6,12 +6,14 @@ import { el } from "../lib/dom";
 import { formatClock } from "../lib/time";
 import { applyLoadingOverlay, shouldShowLoadingOverlay } from "./overlays";
 import { openSettings } from "./settings";
+import { mountStatusBar } from "./statusbar";
 import { mountPitCircle } from "../pages/pitcircle";
 import { mountRaceTrace } from "../pages/racetrace";
 import { mountStrategy } from "../pages/strategy";
 import { mountTelemetry } from "../pages/telemetry";
 import { mountTiming } from "../pages/timing";
 import { mountTrackMap } from "../pages/trackmap";
+import { applyUiScale } from "../lib/scale";
 import {
   changeMeeting,
   changeSession,
@@ -38,6 +40,7 @@ const mounts: Record<string, (parent: HTMLElement) => PageMount> = {
 };
 
 export function boot(root: HTMLElement): void {
+  applyUiScale(state.uiScale);
   const brand = el("div", { class: "brand" }, [el("span", { class: "bar" }), el("span", { text: "F1" })]);
   const title = el("div", { class: "session-title", text: "F1 PITWALL" });
   const clock = el("div", { class: "session-clock", text: "00:00:00" });
@@ -72,12 +75,14 @@ export function boot(root: HTMLElement): void {
   const banner = el("div", { class: "lock-banner", role: "status" });
   banner.hidden = true;
   const main = el("main");
+  const statusHost = el("div", { class: "statusbar-host" });
   const overlay = el("div", { class: "overlay", text: "Loading OpenF1…" });
   overlay.hidden = true;
   const toast = el("div", { class: "toast" });
   toast.hidden = true;
 
-  root.append(top, nav, toolbar, banner, main, overlay, toast);
+  root.append(top, nav, toolbar, banner, main, statusHost, overlay, toast);
+  const statusApi = mountStatusBar(statusHost);
 
   let currentPage = "";
   let pageApi: PageMount | null = null;
@@ -138,6 +143,7 @@ export function boot(root: HTMLElement): void {
       pageApi?.update();
     } finally {
       syncChrome();
+      statusApi.update();
     }
   };
 
@@ -180,7 +186,10 @@ export function boot(root: HTMLElement): void {
     renderPage();
   });
 
-  window.addEventListener("resize", () => pageApi?.update());
+  window.addEventListener("resize", () => {
+    applyUiScale(state.uiScale);
+    pageApi?.update();
+  });
   startClock();
   window.addEventListener("f1pw:open-settings", () => openSettings());
   if (new URLSearchParams(location.search).has("settings")) {

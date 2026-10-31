@@ -2,11 +2,11 @@ import { parseTs } from "../lib/time";
 import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { panel } from "../ui/panel";
-import { setTraceMode, state } from "../state";
+import { hasDriverSelection, isDriverSelected, selectDriver, setTraceMode, state } from "../state";
 
 type Mode = "leader" | "average" | "driver";
 
-function seriesFor(mode: Mode): { code: string; color: string; pts: { lap: number; y: number; pit: boolean }[] }[] {
+function seriesFor(mode: Mode): { driver: number; code: string; color: string; pts: { lap: number; y: number; pit: boolean }[] }[] {
   const bundle = state.bundle;
   if (!bundle) return [];
   const hidden = new Set(state.hiddenDrivers);
@@ -61,7 +61,7 @@ function seriesFor(mode: Mode): { code: string; color: string; pts: { lap: numbe
         }
         return { lap: l.lap, y, pit: l.pit };
       });
-    out.push({ code: d.name_acronym, color: teamColor(d.team_colour), pts });
+    out.push({ driver: d.driver_number, code: d.name_acronym, color: teamColor(d.team_colour), pts });
   }
   return out;
 }
@@ -105,9 +105,12 @@ function draw(canvas: HTMLCanvasElement, mode: Mode): void {
   ctx.font = "11px Titillium Web";
   ctx.fillText(mode === "average" ? "Δ to average (s)" : mode === "driver" ? "Δ to driver (s)" : "Gap to leader (s)", 8, 14);
 
+  const dim = hasDriverSelection();
   for (const s of data) {
+    const on = isDriverSelected(s.driver);
+    ctx.globalAlpha = dim && !on ? 0.18 : 1;
     ctx.strokeStyle = s.color;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = on ? 2.6 : 1.4;
     ctx.beginPath();
     s.pts.forEach((p, i) => {
       const x = xOf(p.lap);
@@ -119,9 +122,10 @@ function draw(canvas: HTMLCanvasElement, mode: Mode): void {
     for (const p of s.pts.filter((p) => p.pit)) {
       ctx.fillStyle = s.color;
       ctx.beginPath();
-      ctx.arc(xOf(p.lap), yOf(p.y), 3.5, 0, Math.PI * 2);
+      ctx.arc(xOf(p.lap), yOf(p.y), on ? 4.5 : 3.5, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -169,13 +173,19 @@ export function mountRaceTrace(parent: HTMLElement): { update: () => void } {
     const hidden = state.hiddenDrivers;
     for (const d of state.bundle?.drivers ?? []) {
       const on = !hidden.includes(d.driver_number);
-      const b = el("button", { class: on ? "on" : "", text: d.name_acronym });
+      const sel = isDriverSelected(d.driver_number);
+      const b = el("button", { class: `${on ? "on" : ""} ${sel ? "sel" : ""}`.trim(), text: d.name_acronym });
       b.style.borderColor = teamColor(d.team_colour);
-      b.onclick = () => {
-        const i = hidden.indexOf(d.driver_number);
-        if (i >= 0) hidden.splice(i, 1);
-        else hidden.push(d.driver_number);
-        update();
+      if (sel) b.style.outline = "1px solid #fde68a";
+      b.onclick = (ev) => {
+        if (ev.altKey) {
+          const i = hidden.indexOf(d.driver_number);
+          if (i >= 0) hidden.splice(i, 1);
+          else hidden.push(d.driver_number);
+          update();
+          return;
+        }
+        selectDriver(d.driver_number, ev);
       };
       toggles.append(b);
     }
@@ -184,7 +194,7 @@ export function mountRaceTrace(parent: HTMLElement): { update: () => void } {
       modes,
       el("h3", { text: "Drivers" }),
       toggles,
-      el("div", { class: "help", text: "Circles mark pit laps. Yellow bands are safety car / VSC from race control. Values use cumulative lap time versus the chosen reference." }),
+      el("div", { class: "help", text: "Click a driver to select (shift-click for several). Alt-click hides a line. Circles mark pit laps. Yellow bands are SC / VSC." }),
     );
     requestAnimationFrame(() => draw(canvas, state.traceMode));
   };

@@ -1,10 +1,12 @@
 import { LIVE_LOCK_RETRY_MS, LIVE_POLL_MS, readMode, readPitLoss, SPEEDS, writeMode, writePitLoss } from "./config";
 import { hasUsableAuth, peekAuth } from "./data/auth";
+import { applyUiScale, readUiScale, writeUiScale, type UiScalePref } from "./lib/scale";
 import { snapshotAt } from "./data/derive";
 import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
 import { applyLiveMessage } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
+import { nextSelection } from "./lib/select";
 import { parseTs } from "./lib/time";
 import type { DataMode } from "./config";
 import type { Meeting, PageId, Session, SessionBundle, TimingSnapshot } from "./data/types";
@@ -31,12 +33,14 @@ export type AppState = {
   retryAt: number;
   panelErrors: { track: string; telemetry: string };
   selectedDriver: number | null;
+  selectedDrivers: number[];
   telemetry: { driver: number; lap: number }[];
   traceMode: "leader" | "average" | "driver";
   traceDriver: number | null;
   pitMode: "green" | "vsc" | "sc";
   hiddenDrivers: number[];
   liveSource: LiveSource;
+  uiScale: UiScalePref;
 };
 
 type Listener = () => void;
@@ -65,12 +69,14 @@ export const state: AppState = {
   retryAt: 0,
   panelErrors: { track: "", telemetry: "" },
   selectedDriver: null,
+  selectedDrivers: [],
   telemetry: [],
   traceMode: "leader",
   traceDriver: null,
   pitMode: "green",
   hiddenDrivers: [],
   liveSource: "off",
+  uiScale: readUiScale(),
 };
 
 export function subscribe(fn: Listener): () => void {
@@ -122,8 +128,23 @@ export function setSpeed(speed: number): void {
 }
 
 export function setSelectedDriver(n: number | null): void {
+  state.selectedDrivers = n == null ? [] : [n];
   state.selectedDriver = n;
-  emit();
+  emit(true);
+}
+
+export function selectDriver(n: number, ev?: { shiftKey?: boolean }): void {
+  state.selectedDrivers = nextSelection(state.selectedDrivers, n, !!ev?.shiftKey);
+  state.selectedDriver = state.selectedDrivers[state.selectedDrivers.length - 1] ?? null;
+  emit(true);
+}
+
+export function isDriverSelected(n: number): boolean {
+  return state.selectedDrivers.includes(n);
+}
+
+export function hasDriverSelection(): boolean {
+  return state.selectedDrivers.length > 0;
 }
 
 export function setTelemetrySlots(slots: { driver: number; lap: number }[]): void {
@@ -153,6 +174,13 @@ export function setPitLoss(loss: AppState["pitLoss"]): void {
   state.pitLoss = loss;
   writePitLoss(loss);
   emit();
+}
+
+export function setUiScale(pref: UiScalePref): void {
+  state.uiScale = pref;
+  writeUiScale(pref);
+  applyUiScale(pref);
+  emit(true);
 }
 
 export function setPanelError(key: keyof AppState["panelErrors"], message: string): void {
@@ -301,7 +329,8 @@ export async function changeSession(sessionKey: number): Promise<void> {
       ? firstLap + Math.min(18 * 60 * 1000, (state.end - firstLap) * 0.28)
       : state.start + (state.end - state.start) * 0.25;
     state.t = Math.min(state.end, Math.max(state.start, interesting));
-    state.selectedDriver = bundle.drivers[0]?.driver_number ?? null;
+    state.selectedDriver = null;
+    state.selectedDrivers = [];
     const firstFour = bundle.drivers.slice(0, 2).map((d, i) => {
       const laps = bundle.laps
         .filter((l) => l.driver_number === d.driver_number && l.lap_duration && !l.is_pit_out_lap)

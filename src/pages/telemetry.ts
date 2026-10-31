@@ -140,7 +140,7 @@ function drawTraces(canvas: HTMLCanvasElement, series: Series[], cursorDist: num
     ctx.lineTo(w - padR, y0 + laneH - 8);
     ctx.stroke();
     for (const s of series) {
-      ctx.strokeStyle = s.color || TRACE[li % TRACE.length];
+      ctx.strokeStyle = s.color || TRACE[series.indexOf(s) % TRACE.length];
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       let started = false;
@@ -246,6 +246,8 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
     }
     slots.forEach((slot, i) => {
       const wrap = el("div", { class: "chip" });
+      const swatch = el("span", { class: "swatch" });
+      swatch.style.background = TRACE[i % TRACE.length];
       const ds = el("select") as HTMLSelectElement;
       for (const d of bundle.drivers) {
         const o = el("option", { value: String(d.driver_number), text: d.name_acronym }) as HTMLOptionElement;
@@ -266,10 +268,33 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
       };
       ds.onchange = apply;
       ls.onchange = apply;
-      wrap.append(ds, ls);
+      wrap.append(swatch, ds, ls);
+      if (slots.length > 2) {
+        const rm = el("button", { class: "ghost", text: "×" });
+        rm.title = "Remove driver";
+        rm.onclick = () => {
+          slots.splice(i, 1);
+          lastKey = "";
+          setTelemetrySlots(slots);
+        };
+        wrap.append(rm);
+      }
       left.body.append(wrap);
     });
-    left.body.append(el("div", { class: "help", text: "Traces join /car_data to /location by date, then plot against cumulative distance. First driver is the delta reference." }));
+    if (slots.length < 4) {
+      const add = el("button", { class: "ghost", text: `Add driver (${slots.length}/4)` });
+      add.onclick = () => {
+        const used = new Set(slots.map((s) => s.driver));
+        const next = bundle.drivers.find((d) => !used.has(d.driver_number)) ?? bundle.drivers[0];
+        if (!next) return;
+        const laps = bundle.laps.filter((l) => l.driver_number === next.driver_number && l.lap_duration);
+        slots.push({ driver: next.driver_number, lap: laps[0]?.lap_number ?? 5 });
+        lastKey = "";
+        setTelemetrySlots(slots);
+      };
+      left.body.append(add);
+    }
+    left.body.append(el("div", { class: "help", text: "Up to 4 drivers, each with a distinct trace color. Traces join /car_data to /location by date, then plot against cumulative distance. First driver is the Δ vs REF lane." }));
   };
 
   const reload = async () => {
@@ -284,7 +309,7 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
       seen.add(id);
       try {
         const s = await loadSeries(slot.driver, slot.lap);
-        if (s) loaded.push(s);
+        if (s) loaded.push({ ...s, color: TRACE[loaded.length % TRACE.length] });
         else lastErr = `No telemetry samples for driver ${slot.driver} lap ${slot.lap}.`;
       } catch (err) {
         if (isLiveLock(err)) {
@@ -304,7 +329,7 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
     right.body.replaceChildren();
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.classList.add("mini");
-    svg.style.height = "160px";
+    svg.style.height = "10rem";
     svg.style.position = "relative";
     right.body.append(svg, el("div", { class: "readout help" }));
     paint();
