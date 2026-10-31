@@ -5,6 +5,7 @@ import {
   isLiveLock,
   isNetworkFailure,
   OpenF1Error,
+  shouldShowLiveLockBanner,
 } from "./errors";
 
 const LIVE_JSON = {
@@ -50,6 +51,20 @@ describe("classifyOpenF1Failure", () => {
     expect(err.kind).toBe("http");
     expect(err.message).toMatch(/Incorrect username/i);
   });
+
+  it("does not lock the UI when the user already has a token", () => {
+    const live = classifyOpenF1Failure({ status: 401, body: LIVE_JSON, authenticated: true });
+    expect(live.kind).toBe("http");
+    expect(isLiveLock(live)).toBe(false);
+    const cors = classifyOpenF1Failure({ cause: new TypeError("Failed to fetch"), authenticated: true });
+    expect(cors.kind).toBe("http");
+    expect(isLiveLock(cors)).toBe(false);
+    const prior = classifyOpenF1Failure({
+      cause: new OpenF1Error("live-lock", "OpenF1 is locked while a live F1 session is running.", 401),
+      authenticated: true,
+    });
+    expect(prior.kind).toBe("http");
+  });
 });
 
 describe("helpers", () => {
@@ -67,5 +82,11 @@ describe("helpers", () => {
   it("isLiveLock recognises unclassified Failed to fetch", () => {
     expect(isLiveLock(new TypeError("Failed to fetch"))).toBe(true);
     expect(isLiveLock(new OpenF1Error("http", "nope", 503))).toBe(false);
+  });
+
+  it("hides the live-lock banner once a token exists", () => {
+    expect(shouldShowLiveLockBanner("live", false)).toBe(true);
+    expect(shouldShowLiveLockBanner("live", true)).toBe(false);
+    expect(shouldShowLiveLockBanner(null, false)).toBe(false);
   });
 });

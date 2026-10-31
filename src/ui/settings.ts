@@ -1,7 +1,7 @@
 import { DEFAULT_PIT_LOSS, readToken } from "../config";
 import { peekAuth, signIn, signOut, writeManualToken } from "../data/auth";
 import { el } from "../lib/dom";
-import { retryNow, setDataMode, setPitLoss, state, syncLiveFeed } from "../state";
+import { clearLiveLock, retryNow, setDataMode, setPitLoss, state, syncLiveFeed } from "../state";
 import { closeAllModals } from "./overlays";
 
 function labeled(label: string, input: HTMLElement): HTMLElement {
@@ -66,8 +66,9 @@ export function openSettings(): void {
       await signIn(user.value, pass.value);
       pass.value = "";
       refreshAuthChrome();
+      clearLiveLock();
       syncLiveFeed();
-      if (state.lock === "live" || state.mode === "live") void retryNow();
+      void retryNow();
     } catch (err) {
       authErr.hidden = false;
       authErr.textContent = err instanceof Error ? err.message : "Sign-in failed.";
