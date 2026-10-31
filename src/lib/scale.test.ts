@@ -46,7 +46,7 @@ describe("dashboard styles follow UI scale", () => {
     expect(css).toMatch(/font-size:\s*calc\(\s*16px\s*\*\s*var\(--ui-scale/);
     expect(css).toMatch(/\.tower\b[\s\S]*?font-size:\s*0\.9375rem/);
     expect(css).toMatch(/\.nav button\b[\s\S]*?font-size:\s*0\.8125rem/);
-    expect(css).toMatch(/\.page\.trackmap[^{]*\{[^}]*26\.25rem/);
+    expect(css).toMatch(/\.page\.trackmap[^{]*\{[^}]*--tower-split,\s*36rem/);
     expect(css).not.toMatch(/\.tower\b[^}]*font-size:\s*15px/);
     expect(css).not.toMatch(/grid-template-columns:\s*420px/);
   });

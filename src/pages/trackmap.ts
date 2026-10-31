@@ -3,8 +3,10 @@ import { pointAt, project } from "../data/track";
 import type { SessionBundle, TimingSnapshot } from "../data/types";
 import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
+import { MAP_CAR_R, MAP_CAR_R_SELECTED, MAP_LABEL_DX, MAP_LABEL_DY, MAP_LINE_WIDTH, MAP_SECTOR_R } from "../lib/mapMarks";
 import { asNumber } from "../lib/time";
 import { panel } from "../ui/panel";
+import { mountTowerSplitter } from "../ui/splitter";
 import { renderTower } from "../ui/tower";
 import { appendDriverDot } from "../lib/svgcar";
 import { hasDriverSelection, isDriverSelected, state } from "../state";
@@ -25,7 +27,7 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
     svg.append(t);
     return;
   }
-  const { map } = project(pts, w, h, 36);
+  const { map } = project(pts, w, h, 48);
   const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
   path.setAttribute(
     "d",
@@ -36,7 +38,9 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
   );
   path.setAttribute("fill", "none");
   path.setAttribute("stroke", "#e8edf7");
-  path.setAttribute("stroke-width", "2.2");
+  path.setAttribute("stroke-width", String(MAP_LINE_WIDTH));
+  path.setAttribute("stroke-linejoin", "round");
+  path.setAttribute("stroke-linecap", "round");
   svg.append(path);
 
   const [f1, f2] = bundle.sectorFracs;
@@ -51,7 +55,7 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
     const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     c.setAttribute("cx", String(px));
     c.setAttribute("cy", String(py));
-    c.setAttribute("r", "3.5");
+    c.setAttribute("r", String(MAP_SECTOR_R));
     c.setAttribute("fill", "#94a3b8");
     svg.append(c);
     const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -87,10 +91,10 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
       color: teamColor(row.driver.team_colour),
       selected: on,
       dim,
-      visualR: on ? 7 : 4.5,
+      visualR: on ? MAP_CAR_R_SELECTED : MAP_CAR_R,
       label: row.driver.name_acronym,
-      labelX: px + 10,
-      labelY: py - 6,
+      labelX: px + MAP_LABEL_DX,
+      labelY: py + MAP_LABEL_DY,
     });
   }
 }
@@ -106,6 +110,17 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
   const page = el("div", { class: "page trackmap" }, [left.root, right.root]);
   parent.append(page);
 
+  const draw = () => {
+    const bundle = state.bundle;
+    const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t) : null);
+    if (bundle && snap) drawMap(svg, bundle, snap);
+  };
+
+  mountTowerSplitter(page, { onResize: draw });
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => draw()).observe(wrap);
+  }
+
   const update = () => {
     const bundle = state.bundle;
     const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t) : null);
@@ -118,7 +133,7 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
         }),
       );
     }
-    if (bundle && snap) drawMap(svg, bundle, snap);
+    draw();
     const trackErr =
       state.panelErrors.track ||
       (bundle && bundle.track.length < 2 ? "Track outline could not be loaded from OpenF1 /location." : "");
