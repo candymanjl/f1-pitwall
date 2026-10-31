@@ -1,6 +1,7 @@
 import { DEFAULT_MEETING_KEY, DEFAULT_SESSION_KEY, DEFAULT_YEAR } from "../config";
 import { parseTs } from "../lib/time";
 import { apiGet } from "./client";
+import { isLiveLock } from "./errors";
 import { snapshotAt } from "./derive";
 import { buildOutline, detectCorners, lapWindow, pickOutlineLap, sectorFractions } from "./track";
 import type {
@@ -43,7 +44,8 @@ async function loadTrack(sessionKey: number, laps: Lap[], drivers: Driver[]): Pr
       "date<": win.to,
     });
     return buildOutline(samples);
-  } catch {
+  } catch (err) {
+    if (isLiveLock(err)) throw err;
     return [];
   }
 }
@@ -73,7 +75,8 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
   if (/race|sprint/i.test(session.session_name)) {
     try {
       intervals = await apiGet<Interval[]>("intervals", { session_key: sessionKey });
-    } catch {
+    } catch (err) {
+      if (isLiveLock(err)) throw err;
       intervals = [];
     }
   }
@@ -84,8 +87,8 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
     try {
       const extra = await apiGet<Stint[]>("stints", { session_key: s.session_key });
       for (const row of extra) weekendStints.push({ ...row, session_key: s.session_key });
-    } catch {
-      /* skip */
+    } catch (err) {
+      if (isLiveLock(err)) throw err;
     }
   }
 

@@ -5,6 +5,7 @@ import {
   RATE_PER_MINUTE,
   readToken,
 } from "../config";
+import { classifyOpenF1Failure, OpenF1Error } from "./errors";
 
 type CacheEntry = { expires: number; body: unknown };
 
@@ -79,6 +80,20 @@ function persistSet(key: string, entry: CacheEntry): void {
   }
 }
 
+async function httpError(res: Response, path: string): Promise<OpenF1Error> {
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    try {
+      body = await res.text();
+    } catch {
+      body = null;
+    }
+  }
+  return classifyOpenF1Failure({ status: res.status, body, path });
+}
+
 export async function apiGet<T>(
   path: string,
   params: Record<string, string | number | boolean | undefined> = {},
@@ -105,15 +120,20 @@ export async function apiGet<T>(
     const headers: Record<string, string> = { accept: "application/json" };
     const token = readToken();
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(url.toString(), { headers });
-    if (res.status === 429) {
-      await wait(1500);
-      const retry = await fetch(url.toString(), { headers });
-      if (!retry.ok) throw new Error(`OpenF1 ${retry.status} on ${path}`);
-      return retry.json();
+    try {
+      const res = await fetch(url.toString(), { headers });
+      if (res.status === 429) {
+        await wait(1500);
+        const retry = await fetch(url.toString(), { headers });
+        if (!retry.ok) throw await httpError(retry, path);
+        return retry.json();
+      }
+      if (!res.ok) throw await httpError(res, path);
+      return res.json();
+    } catch (err) {
+      if (err instanceof OpenF1Error) throw err;
+      throw classifyOpenF1Failure({ cause: err, path });
     }
-    if (!res.ok) throw new Error(`OpenF1 ${res.status} on ${path}`);
-    return res.json();
   });
 
   const entry = { expires: Date.now() + ttl, body };

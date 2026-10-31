@@ -13,6 +13,7 @@ export function mountTiming(parent: HTMLElement): { update: () => void } {
 
   const update = () => {
     const snap = state.snap;
+    tablePanel.setError(!snap && !state.lock ? state.error || (state.loading ? null : "No session data loaded.") : null);
     tablePanel.body.replaceChildren();
     if (snap) {
       tablePanel.body.append(

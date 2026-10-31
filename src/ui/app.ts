@@ -1,10 +1,10 @@
 import {
   DEFAULT_PIT_LOSS,
+  LIVE_LOCK_RETRY_MS,
   readToken,
   SPEEDS,
   writeToken,
 } from "../config";
-import { loadMeetings, loadSessions } from "../data/loadSession";
 import { PAGES } from "../data/types";
 import { el } from "../lib/dom";
 import { formatClock } from "../lib/time";
@@ -18,6 +18,8 @@ import {
   changeMeeting,
   changeSession,
   changeYear,
+  reloadAll,
+  retryNow,
   setClock,
   setDataMode,
   setPitLoss,
@@ -71,13 +73,15 @@ export function boot(root: HTMLElement): void {
     el("div", { class: "replay" }, [play, speedSel, scrub, elapsed, settingsBtn]),
   ]);
 
+  const banner = el("div", { class: "lock-banner", role: "status" });
+  banner.hidden = true;
   const main = el("main");
   const overlay = el("div", { class: "overlay", text: "Loading OpenF1…" });
   overlay.hidden = true;
   const toast = el("div", { class: "toast" });
   toast.hidden = true;
 
-  root.append(top, nav, toolbar, main, overlay, toast);
+  root.append(top, nav, toolbar, banner, main, overlay, toast);
 
   let currentPage = "";
   let pageApi: PageMount | null = null;
@@ -98,10 +102,11 @@ export function boot(root: HTMLElement): void {
     for (const btn of nav.querySelectorAll("button")) {
       btn.classList.toggle("active", btn.getAttribute("data-page") === state.page);
     }
-    overlay.hidden = !state.loading;
+    overlay.hidden = !state.loading || !!state.lock;
     overlay.textContent = state.loading || "";
-    toast.hidden = !state.error;
+    toast.hidden = !state.error || !!state.lock;
     toast.textContent = state.error;
+    syncBanner(banner);
   };
 
   const syncSelects = () => {
@@ -172,19 +177,41 @@ export function boot(root: HTMLElement): void {
 
   window.addEventListener("resize", () => pageApi?.update());
   startClock();
-  void (async () => {
-    state.loading = "Loading meetings…";
-    syncChrome();
-    try {
-      state.meetings = await loadMeetings(state.year);
-      state.sessions = await loadSessions(state.meetingKey);
-      await changeSession(state.sessionKey);
-    } catch (err) {
-      state.error = err instanceof Error ? err.message : String(err);
-      state.loading = "";
-      syncChrome();
-    }
-  })();
+  window.addEventListener("f1pw:open-settings", () => openSettings());
+  void reloadAll();
+}
+
+function syncBanner(banner: HTMLElement): void {
+  if (state.lock !== "live") {
+    banner.hidden = true;
+    return;
+  }
+  if (!banner.dataset.ready) {
+    const settings = el("button", { class: "link", text: "Open Settings" });
+    settings.onclick = () => openSettings();
+    const retry = el("button", { class: "primary", text: "Retry" });
+    retry.onclick = () => void retryNow();
+    const count = el("span", { class: "countdown legend" });
+    banner.append(
+      el("strong", { text: "OpenF1 is locked while a live F1 session is running." }),
+      el("p", {
+        text: "Until that session ends, the API also blocks historical data unless you add an OpenF1 key. A 401 without CORS headers often looks like “Failed to fetch” in the browser.",
+      }),
+      el("div", { class: "lock-actions" }, [settings, retry, count]),
+    );
+    banner.dataset.ready = "1";
+  }
+  banner.hidden = false;
+  const remain = Math.max(0, state.retryAt - Date.now());
+  const mins = Math.floor(remain / 60000);
+  const secs = Math.floor((remain % 60000) / 1000);
+  const countdown = remain > 0 ? `${mins}:${String(secs).padStart(2, "0")}` : "now";
+  const count = banner.querySelector(".countdown");
+  if (count) {
+    count.textContent = state.loading
+      ? "Retrying OpenF1…"
+      : `Next automatic retry in ${countdown} (every ${Math.round(LIVE_LOCK_RETRY_MS / 60000)} min).`;
+  }
 }
 
 function openSettings(): void {
@@ -207,7 +234,7 @@ function openSettings(): void {
   bg.append(
     el("div", { class: "modal" }, [
       el("h2", { text: "Settings" }),
-      el("p", { text: "Historical OpenF1 data is free. A token is only needed for live/latest data. It is stored in this browser and is never committed to the repo." }),
+      el("p", { text: "Historical OpenF1 data is free except while a live F1 session is on — then every endpoint needs a paid key. Paste a token here; it stays in this browser and is never committed." }),
       el("label", { text: "Data mode" }),
       mode,
       el("label", { text: "OpenF1 token" }),
@@ -222,6 +249,7 @@ function openSettings(): void {
     setDataMode(mode.value === "live" ? "live" : "historical");
     setPitLoss({ green: Number(g.value), vsc: Number(v.value), sc: Number(s.value) });
     bg.remove();
+    if (state.lock === "live" || token.value.trim()) void retryNow();
   };
   reset.onclick = () => {
     g.value = String(DEFAULT_PIT_LOSS.green);

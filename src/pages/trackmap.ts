@@ -121,6 +121,15 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
       );
     }
     if (bundle && snap) drawMap(svg, bundle, snap);
+    const trackErr =
+      state.panelErrors.track ||
+      (bundle && bundle.track.length < 2 ? "Track outline could not be loaded from OpenF1 /location." : "");
+    right.setError(state.lock ? null : trackErr || null);
+    if (!snap && state.error && !state.lock) {
+      left.setError(state.error);
+    } else {
+      left.setError(null);
+    }
   };
   return { update };
 }
