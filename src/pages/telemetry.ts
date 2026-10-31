@@ -329,7 +329,7 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
     right.body.replaceChildren();
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.classList.add("mini");
-    svg.style.height = "160px";
+    svg.style.height = "10rem";
     svg.style.position = "relative";
     right.body.append(svg, el("div", { class: "readout help" }));
     paint();

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { applyUiScale, autoScale, parseUiScale, resolveScale } from "./scale";
 
@@ -35,5 +36,18 @@ describe("applyUiScale", () => {
     expect(scale).toBeCloseTo(2560 / 1920, 5);
     expect(root.style.props["--ui-scale"]).toBe(String(scale));
     expect(root.style.fontSize).toBe(`${16 * scale}px`);
+  });
+});
+
+describe("dashboard styles follow UI scale", () => {
+  const css = readFileSync("src/styles.css", "utf8");
+
+  it("consumes --ui-scale for the rem root and uses rem for chrome that was px", () => {
+    expect(css).toMatch(/font-size:\s*calc\(\s*16px\s*\*\s*var\(--ui-scale/);
+    expect(css).toMatch(/\.tower\b[\s\S]*?font-size:\s*0\.9375rem/);
+    expect(css).toMatch(/\.nav button\b[\s\S]*?font-size:\s*0\.8125rem/);
+    expect(css).toMatch(/\.page\.trackmap[^{]*\{[^}]*26\.25rem/);
+    expect(css).not.toMatch(/\.tower\b[^}]*font-size:\s*15px/);
+    expect(css).not.toMatch(/grid-template-columns:\s*420px/);
   });
 });
