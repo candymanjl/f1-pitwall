@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import { shouldShowLiveLockBanner } from "../data/errors";
 
 describe("live-lock banner vs signed-in token", () => {
-  it("writes before/after HTML: banner only when unsigned", () => {
+  it("writes before/after HTML: banner stays up while REST is locked, signed in or not", () => {
     expect(shouldShowLiveLockBanner("live", false)).toBe(true);
-    expect(shouldShowLiveLockBanner("live", true)).toBe(false);
+    expect(shouldShowLiveLockBanner("live", true)).toBe(true);
     const css = readFileSync(resolve("src/styles.css"), "utf8");
     const chrome = (authed: boolean, lock: "live" | null) => {
       const show = shouldShowLiveLockBanner(lock, authed);
@@ -21,7 +21,7 @@ describe("live-lock banner vs signed-in token", () => {
 ${
   show
     ? `<div class="lock-banner"><strong>OpenF1 is locked while a live F1 session is running.</strong>
-<p>Until that session ends, every endpoint needs an OpenF1 login.</p>
+<p>Until that session ends, unauthenticated REST is blocked. Sign-in still works, but the browser often cannot send the bearer token.</p>
 <div class="lock-actions"><button class="link">Open Settings</button><button class="primary">Retry</button></div></div>`
     : ""
 }

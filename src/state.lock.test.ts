@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("live-lock vs signed-in token", () => {
-  it("does not keep the banner up when Settings already has a token", () => {
+  it("keeps the banner up when a stored token still cannot unlock REST (CORS / live lock)", () => {
     resetAuthForTests(
       memoryStore({
         [AUTH_USER_KEY]: "ada",
@@ -22,10 +22,9 @@ describe("live-lock vs signed-in token", () => {
       }),
     );
     expect(hasUsableAuth()).toBe(true);
-    state.lock = "live";
     applyFetchError(new TypeError("Failed to fetch"));
-    expect(state.lock).toBeNull();
-    expect(shouldShowLiveLockBanner(state.lock, hasUsableAuth())).toBe(false);
+    expect(state.lock).toBe("live");
+    expect(shouldShowLiveLockBanner(state.lock, hasUsableAuth())).toBe(true);
   });
 
   it("still shows the banner for a bare 401 when nobody is signed in", () => {
