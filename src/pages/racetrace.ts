@@ -136,6 +136,9 @@ export function mountRaceTrace(parent: HTMLElement): { update: () => void } {
   parent.append(page);
 
   const update = () => {
+    const issue = !state.snap && !state.lock ? state.error || (state.loading ? null : "No session data loaded.") : null;
+    chart.setError(issue);
+    side.setError(issue);
     const modes = el("div", { class: "drivers" });
     for (const [id, label] of [
       ["leader", "Gap to leader"],

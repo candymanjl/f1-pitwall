@@ -5,7 +5,8 @@ import { TRACE, teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { parseTs } from "../lib/time";
 import { panel } from "../ui/panel";
-import { setTelemetrySlots, state } from "../state";
+import { isLiveLock } from "../data/errors";
+import { applyFetchError, setPanelError, setTelemetrySlots, state } from "../state";
 
 type Series = {
   driver: number;
@@ -273,8 +274,10 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
 
   const reload = async () => {
     mid.setTitle("Loading lap telemetry…");
+    mid.setError(null);
     const loaded: Series[] = [];
     const seen = new Set<string>();
+    let lastErr = "";
     for (const slot of state.telemetry) {
       const id = `${slot.driver}:${slot.lap}`;
       if (seen.has(id)) continue;
@@ -282,13 +285,22 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
       try {
         const s = await loadSeries(slot.driver, slot.lap);
         if (s) loaded.push(s);
-        else mid.setTitle(`No samples for ${slot.driver} lap ${slot.lap}`);
+        else lastErr = `No telemetry samples for driver ${slot.driver} lap ${slot.lap}.`;
       } catch (err) {
-        mid.setTitle(err instanceof Error ? err.message : "Telemetry fetch failed");
+        if (isLiveLock(err)) {
+          applyFetchError(err);
+          mid.setTitle("Telemetry comparison");
+          mid.setError("OpenF1 is locked during the live session. Add a key in Settings or wait for the session to end.");
+          return;
+        }
+        lastErr = err instanceof Error ? err.message : "Telemetry fetch failed.";
       }
     }
     series = loaded;
     mid.setTitle("Telemetry comparison  ·  aligned by distance");
+    mid.setError(loaded.length ? null : lastErr || null);
+    if (lastErr && !loaded.length) setPanelError("telemetry", lastErr);
+    else setPanelError("telemetry", "");
     right.body.replaceChildren();
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.classList.add("mini");

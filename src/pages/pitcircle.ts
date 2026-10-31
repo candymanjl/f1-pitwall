@@ -129,6 +129,9 @@ export function mountPitCircle(parent: HTMLElement): { update: () => void } {
   parent.append(page);
 
   const update = () => {
+    const issue = !state.snap && !state.lock ? state.error || (state.loading ? null : "No session data loaded.") : null;
+    left.setError(issue);
+    right.setError(issue);
     left.body.replaceChildren();
     if (state.snap) {
       left.body.append(

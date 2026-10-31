@@ -1,5 +1,6 @@
-import { LIVE_POLL_MS, readMode, readPitLoss, SPEEDS, writeMode, writePitLoss } from "./config";
+import { LIVE_LOCK_RETRY_MS, LIVE_POLL_MS, readMode, readPitLoss, SPEEDS, writeMode, writePitLoss } from "./config";
 import { snapshotAt } from "./data/derive";
+import { classifyOpenF1Failure, type OpenF1Error } from "./data/errors";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
 import { parseTs } from "./lib/time";
 import type { DataMode } from "./config";
@@ -23,6 +24,9 @@ export type AppState = {
   pitLoss: { green: number; vsc: number; sc: number };
   loading: string;
   error: string;
+  lock: "live" | null;
+  retryAt: number;
+  panelErrors: { track: string; telemetry: string };
   selectedDriver: number | null;
   telemetry: { driver: number; lap: number }[];
   traceMode: "leader" | "average" | "driver";
@@ -53,6 +57,9 @@ export const state: AppState = {
   pitLoss: readPitLoss(),
   loading: "",
   error: "",
+  lock: null,
+  retryAt: 0,
+  panelErrors: { track: "", telemetry: "" },
   selectedDriver: null,
   telemetry: [],
   traceMode: "leader",
@@ -142,26 +149,97 @@ export function setPitLoss(loss: AppState["pitLoss"]): void {
   emit();
 }
 
+export function setPanelError(key: keyof AppState["panelErrors"], message: string): void {
+  state.panelErrors[key] = message;
+  emit();
+}
+
+export function applyFetchError(err: unknown): OpenF1Error {
+  const e = classifyOpenF1Failure({ cause: err });
+  state.loading = "";
+  if (e.kind === "live-lock") {
+    state.lock = "live";
+    state.error = "";
+    if (!state.retryAt || state.retryAt < Date.now()) state.retryAt = Date.now() + LIVE_LOCK_RETRY_MS;
+    startLockRetry();
+  } else {
+    state.lock = null;
+    state.error = e.message;
+    stopLockRetry();
+  }
+  emit(true);
+  return e;
+}
+
+export async function retryNow(): Promise<void> {
+  state.retryAt = 0;
+  await reloadAll();
+}
+
+export async function reloadAll(): Promise<void> {
+  state.loading = state.lock ? "Retrying OpenF1…" : "Loading meetings…";
+  state.error = "";
+  emit(true);
+  try {
+    state.meetings = await loadMeetings(state.year);
+    state.sessions = await loadSessions(state.meetingKey);
+    if (state.sessionKey) await changeSession(state.sessionKey);
+    else {
+      state.loading = "";
+      emit(true);
+    }
+  } catch (err) {
+    applyFetchError(err);
+  }
+}
+
+let lockTimer = 0;
+function startLockRetry(): void {
+  if (lockTimer) return;
+  lockTimer = window.setInterval(() => {
+    if (state.lock !== "live") {
+      stopLockRetry();
+      return;
+    }
+    emit(true);
+    if (Date.now() >= state.retryAt) void retryNow();
+  }, 1000);
+}
+
+function stopLockRetry(): void {
+  if (lockTimer) window.clearInterval(lockTimer);
+  lockTimer = 0;
+  state.retryAt = 0;
+}
+
 export async function changeYear(year: number): Promise<void> {
   state.year = year;
   state.loading = "Loading meetings…";
   emit();
-  state.meetings = await loadMeetings(year);
-  state.meetingKey = state.meetings[0]?.meeting_key ?? 0;
-  await changeMeeting(state.meetingKey);
+  try {
+    state.meetings = await loadMeetings(year);
+    state.meetingKey = state.meetings[0]?.meeting_key ?? 0;
+    await changeMeeting(state.meetingKey);
+  } catch (err) {
+    applyFetchError(err);
+  }
 }
 
 export async function changeMeeting(meetingKey: number): Promise<void> {
   state.meetingKey = meetingKey;
   state.loading = "Loading sessions…";
   emit();
-  state.sessions = await loadSessions(meetingKey);
-  const race = state.sessions.find((s) => s.session_name === "Race") ?? state.sessions[state.sessions.length - 1];
-  state.sessionKey = race?.session_key ?? 0;
-  if (state.sessionKey) await changeSession(state.sessionKey);
-  else {
-    state.loading = "";
-    emit();
+  try {
+    state.sessions = await loadSessions(meetingKey);
+    const race = state.sessions.find((s) => s.session_name === "Race") ?? state.sessions[state.sessions.length - 1];
+    state.sessionKey = race?.session_key ?? 0;
+    if (state.sessionKey) await changeSession(state.sessionKey);
+    else {
+      state.loading = "";
+      emit();
+    }
+  } catch (err) {
+    applyFetchError(err);
   }
 }
 
@@ -196,9 +274,13 @@ export async function changeSession(sessionKey: number): Promise<void> {
     state.traceDriver = bundle.drivers[0]?.driver_number ?? null;
     refreshSnap();
     state.loading = "";
+    state.lock = null;
+    state.error = "";
+    state.panelErrors = { track: bundle.track.length ? "" : "Track outline could not be loaded from OpenF1 /location.", telemetry: "" };
+    stopLockRetry();
   } catch (err) {
-    state.error = err instanceof Error ? err.message : String(err);
-    state.loading = "";
+    applyFetchError(err);
+    return;
   }
   emit();
 }

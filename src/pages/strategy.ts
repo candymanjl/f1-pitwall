@@ -17,6 +17,10 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
   const update = () => {
     const bundle = state.bundle;
     const snap = state.snap;
+    const issue = !snap && !state.lock ? state.error || (state.loading ? null : "No session data loaded.") : null;
+    tableP.setError(issue);
+    planP.setError(issue);
+    cutP.setError(issue);
     tableP.body.replaceChildren();
     if (!bundle || !snap) return;
     const table = el("table", { class: "tower" });

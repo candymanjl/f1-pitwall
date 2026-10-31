@@ -35,6 +35,12 @@ After that, every merge to `main` rebuilds and updates the site automatically.
    - **Live polling** — placeholder for a future paid OpenF1 key. Paste a token here if you have one; it stays in *this browser only* and is never written into the repository.
    - **Pit loss** seconds for Green / VSC / SC, used by the pit circle and the strategy estimates.
 
+### If you see “OpenF1 is locked…”
+
+While a live F1 session is on, OpenF1 returns **401** for every endpoint (including past races). Browsers often hide that as **Failed to fetch** because the 401 has no CORS headers.
+
+The site shows a yellow banner instead of a raw error. Use **Open Settings** to paste a key, or **Retry**. The app also retries on its own every few minutes until the session ends.
+
 ### What each page shows
 
 | Page | What you get |

@@ -10,6 +10,8 @@ export const RATE_MIN_GAP_MS = 380;
 export const RATE_PER_MINUTE = 28;
 export const HISTORICAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const LIVE_POLL_MS = 4000;
+/** How often to retry OpenF1 after a live-session lock (or CORS 401). */
+export const LIVE_LOCK_RETRY_MS = 3 * 60 * 1000;
 
 export const SPEEDS = [1, 2, 4, 8, 16] as const;
 
