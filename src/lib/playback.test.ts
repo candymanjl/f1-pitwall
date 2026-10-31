@@ -12,18 +12,19 @@ const END = START + 60_000;
 const MID = START + 20_000;
 
 describe("live edge", () => {
-  it("caps the live edge at session end", () => {
+  it("is the playable end (newest sample), not wall-clock now", () => {
     expect(liveEdgeMs(END, END + 10_000)).toBe(END);
-    expect(liveEdgeMs(END, MID)).toBe(MID);
+    expect(liveEdgeMs(END, MID)).toBe(END);
   });
 
-  it("treats a cursor near the newest sample as the live edge", () => {
-    expect(isAtLiveEdge(END, END, END + 5_000)).toBe(true);
-    expect(isAtLiveEdge(MID, END, END)).toBe(false);
-    expect(followLiveFromScrub(END, END, END, "live")).toBe(true);
-    expect(followLiveFromScrub(MID, END, END, "live")).toBe(false);
-    expect(followLiveFromScrub(END, END, END, "historical")).toBe(false);
-    expect(followLiveOnPlay(END - 200, END, END, "live")).toBe(true);
+  it("re-arms follow only when the slider is at the last sliver", () => {
+    expect(isAtLiveEdge(END, END)).toBe(true);
+    expect(isAtLiveEdge(MID, END)).toBe(false);
+    expect(followLiveFromScrub(END, START, END, "live")).toBe(true);
+    expect(followLiveFromScrub(MID, START, END, "live")).toBe(false);
+    expect(followLiveFromScrub(START, START, END, "live")).toBe(false);
+    expect(followLiveFromScrub(END, START, END, "historical")).toBe(false);
+    expect(followLiveOnPlay(END - 200, END, "live")).toBe(true);
   });
 });
 
@@ -45,7 +46,8 @@ describe("stepPlayback", () => {
     expect(next.followLive).toBe(false);
   });
 
-  it("does not jump to the session end when Play starts mid-session", () => {
+  it("does not jump to Date.now() when Play starts mid-session in live mode", () => {
+    const wallClock = END + 30_000;
     const next = stepPlayback({
       t: MID,
       start: START,
@@ -55,14 +57,14 @@ describe("stepPlayback", () => {
       dt: 16,
       mode: "live",
       followLive: false,
-      now: END,
+      now: wallClock,
     });
     expect(next.t).toBe(MID + 16);
     expect(next.t).toBeLessThan(END - 1000);
     expect(next.followLive).toBe(false);
   });
 
-  it("holds the cursor on Pause even in live mode", () => {
+  it("holds the cursor on Pause even if followLive was armed", () => {
     const next = stepPlayback({
       t: MID,
       start: START,
@@ -72,14 +74,31 @@ describe("stepPlayback", () => {
       dt: 500,
       mode: "live",
       followLive: true,
-      now: END,
+      now: END + 5_000,
     });
     expect(next.t).toBe(MID);
     expect(next.playing).toBe(false);
     expect(next.followLive).toBe(false);
   });
 
-  it("follows the live edge only when armed and playing", () => {
+  it("does not move the cursor while the user is dragging the slider", () => {
+    const next = stepPlayback({
+      t: MID,
+      start: START,
+      end: END,
+      playing: true,
+      speed: 16,
+      dt: 500,
+      mode: "live",
+      followLive: true,
+      now: END + 5_000,
+      scrubbing: true,
+    });
+    expect(next.t).toBe(MID);
+    expect(next.followLive).toBe(false);
+  });
+
+  it("follows the playable end only when armed and playing", () => {
     const follow = stepPlayback({
       t: MID,
       start: START,
@@ -89,14 +108,14 @@ describe("stepPlayback", () => {
       dt: 16,
       mode: "live",
       followLive: true,
-      now: END - 100,
+      now: END + 8_000,
     });
-    expect(follow.t).toBe(END - 100);
+    expect(follow.t).toBe(END);
     expect(follow.followLive).toBe(true);
     expect(follow.playing).toBe(true);
   });
 
-  it("latches onto the live edge once playback catches it", () => {
+  it("latches onto the live edge once playback catches the newest sample", () => {
     const next = stepPlayback({
       t: END - 50,
       start: START,
@@ -106,9 +125,9 @@ describe("stepPlayback", () => {
       dt: 20,
       mode: "live",
       followLive: false,
-      now: END - 40,
+      now: END + 8_000,
     });
-    expect(next.t).toBe(END - 40);
+    expect(next.t).toBe(END);
     expect(next.followLive).toBe(true);
     expect(next.playing).toBe(true);
   });

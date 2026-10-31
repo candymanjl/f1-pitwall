@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clockwiseDelta,
   fracToAngle,
+  gapFrac,
   ghostFrac,
   midFracClockwise,
   neighborsAt,
@@ -22,6 +23,16 @@ describe("pit circle geometry", () => {
     const q1 = pointOnCircle(0, 0, 1, 0.25);
     expect(q1.x).toBeCloseTo(1, 6);
     expect(q1.y).toBeCloseTo(0, 6);
+  });
+
+  it("spreads cars by gap when every lap-progress is saturated", () => {
+    const leader = 0.999;
+    const a = gapFrac(leader, 0, 80);
+    const b = gapFrac(leader, 8, 80);
+    const c = gapFrac(leader, 16, 80);
+    expect(a).toBeCloseTo(wrap01(leader), 5);
+    expect(b).not.toBeCloseTo(a, 2);
+    expect(c).not.toBeCloseTo(b, 2);
   });
 
   it("maps pit-out laps from pit exit toward S/F", () => {

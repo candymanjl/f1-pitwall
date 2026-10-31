@@ -86,6 +86,7 @@ button { cursor: pointer; }
   background: #151a27; border: 1px solid #2a3144; border-radius: 0.25rem; padding: 0.3125rem 0.625rem; font-weight: 700;
 }
 .replay button.primary { background: var(--red); border-color: var(--red); }
+.replay button.live-btn.on { background: var(--red); border-color: var(--red); color: #fff; }
 .replay input[type="range"] { width: 13.75rem; accent-color: var(--red); }
 .badge {
   font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase;

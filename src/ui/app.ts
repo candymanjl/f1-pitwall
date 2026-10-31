@@ -20,10 +20,13 @@ import {
   changeMeeting,
   changeSession,
   changeYear,
+  ingestLive,
+  pinToLive,
   reloadAll,
   retryNow,
   setClock,
   setPlaying,
+  setScrubbing,
   setSpeed,
   startClock,
   state,
@@ -59,6 +62,7 @@ export function boot(root: HTMLElement): void {
   const meetSel = el("select", { id: "meeting" }) as HTMLSelectElement;
   const sessSel = el("select", { id: "session" }) as HTMLSelectElement;
   const play = el("button", { class: "primary", text: "Play" });
+  const liveBtn = el("button", { class: "ghost live-btn", text: "LIVE" });
   const speedSel = el("select") as HTMLSelectElement;
   for (const s of SPEEDS) speedSel.append(el("option", { value: String(s), text: `${s}×` }));
   speedSel.value = String(state.speed);
@@ -72,7 +76,7 @@ export function boot(root: HTMLElement): void {
     meetSel,
     el("label", { text: "Session" }),
     sessSel,
-    el("div", { class: "replay" }, [play, speedSel, scrub, elapsed, settingsBtn]),
+    el("div", { class: "replay" }, [play, liveBtn, speedSel, scrub, elapsed, settingsBtn]),
   ]);
 
   const banner = el("div", { class: "lock-banner", role: "status" });
@@ -106,8 +110,13 @@ export function boot(root: HTMLElement): void {
       race: session ? isRaceOrSprint(session) : false,
     });
     play.textContent = state.playing ? "Pause" : "Play";
+    liveBtn.hidden = state.mode !== "live";
+    liveBtn.classList.toggle("on", state.followLive);
+    liveBtn.setAttribute("aria-pressed", state.followLive ? "true" : "false");
     const span = Math.max(1, state.end - state.start);
-    scrub.value = String(Math.round(((state.t - state.start) / span) * 1000));
+    if (!state.scrubbing) {
+      scrub.value = String(Math.round(((state.t - state.start) / span) * 1000));
+    }
     elapsed.textContent =
       state.mode === "live"
         ? state.liveSource === "mqtt"
@@ -160,10 +169,21 @@ export function boot(root: HTMLElement): void {
   meetSel.onchange = () => void changeMeeting(Number(meetSel.value));
   sessSel.onchange = () => void changeSession(Number(sessSel.value));
   play.onclick = () => setPlaying(!state.playing);
+  liveBtn.onclick = () => pinToLive();
   speedSel.onchange = () => setSpeed(Number(speedSel.value));
+  const beginScrub = () => setScrubbing(true);
+  const endScrub = () => {
+    if (!state.scrubbing) return;
+    const span = Math.max(1, state.end - state.start);
+    setClock(state.start + (Number(scrub.value) / 1000) * span, "scrub");
+    setScrubbing(false);
+  };
+  scrub.addEventListener("pointerdown", beginScrub);
+  window.addEventListener("pointerup", endScrub);
+  window.addEventListener("pointercancel", endScrub);
   scrub.oninput = () => {
     const span = Math.max(1, state.end - state.start);
-    setClock(state.start + (Number(scrub.value) / 1000) * span);
+    setClock(state.start + (Number(scrub.value) / 1000) * span, "scrub");
   };
   settingsBtn.onclick = () => openSettings();
 
@@ -204,7 +224,16 @@ export function boot(root: HTMLElement): void {
   if (new URLSearchParams(location.search).has("settings")) {
     queueMicrotask(() => openSettings());
   }
-  void reloadAll();
+  (window as unknown as { __f1pw: unknown }).__f1pw = {
+    state,
+    setClock,
+    setPlaying,
+    setScrubbing,
+    pinToLive,
+    ingestLive,
+  };
+  const e2e = new URLSearchParams(location.search).has("e2e") || location.hash.includes("e2e");
+  if (!e2e) void reloadAll();
 }
 
 function syncBanner(banner: HTMLElement): void {

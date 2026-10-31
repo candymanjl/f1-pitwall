@@ -6,3 +6,6 @@ dist
 .env.*.local
 *.log
 .vite
+test-results
+playwright-report
+blob-report
