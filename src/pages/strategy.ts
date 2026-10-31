@@ -4,7 +4,8 @@ import { tyreColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { formatDelta, formatLap } from "../lib/time";
 import { panel } from "../ui/panel";
-import { setSelectedDriver, state } from "../state";
+import { hasDriverSelection, isDriverSelected, selectDriver, state } from "../state";
+import { driverNameCell } from "../ui/tower";
 
 export function mountStrategy(parent: HTMLElement): { update: () => void } {
   const tableP = panel("Rolling pace  ·  all model outputs are estimates");
@@ -24,10 +25,30 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
     cutP.setError(issue);
     tableP.body.replaceChildren();
     if (!bundle || !snap) return;
-    const table = el("table", { class: "tower" });
+    const table = el("table", { class: "tower cols-strategy" });
+    const group = document.createElement("colgroup");
+    for (const cls of ["c-pos", "c-drv", "c-tyre", "c-pits", "c-n", "c-lap", "c-deg", "c-sets", "c-gap", "c-gap", "c-traf"]) {
+      const c = document.createElement("col");
+      c.className = cls;
+      group.append(c);
+    }
+    table.append(group);
+    const labels = [
+      ["", "c-pos"],
+      ["Driver", "c-drv"],
+      ["Tyre", "c-tyre"],
+      ["Pits", "c-pits"],
+      ["Age", "c-n"],
+      ["Pace est.", "c-lap"],
+      ["Deg / lap", "c-deg"],
+      ["Sets left est.", "c-sets"],
+      ["Int", "c-gap"],
+      ["Gap", "c-gap"],
+      ["Traffic", "c-traf"],
+    ] as const;
     table.append(
       el("thead", {}, [
-        el("tr", {}, ["", "Driver", "Tyre", "Age", "Pace est.", "Deg / lap", "Sets left est.", "Int", "Gap", "Traffic"].map((t) => el("th", { text: t }))),
+        el("tr", {}, labels.map(([t, cls]) => el("th", { class: cls, text: t }))),
       ]),
     );
     const body = el("tbody");
@@ -37,28 +58,26 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
         .filter(([c]) => ["SOFT", "MEDIUM", "HARD"].includes(c))
         .map(([c, n]) => `${c[0]}${n}`)
         .join(" ");
-      const tr = el("tr", { class: row.driver.driver_number === state.selectedDriver ? "sel" : "" });
-      tr.onclick = () => setSelectedDriver(row.driver.driver_number);
+      const on = isDriverSelected(row.driver.driver_number);
+      const tr = el("tr", {
+        class: on ? "sel" : hasDriverSelection() ? "dim" : "",
+        "data-driver": String(row.driver.driver_number),
+      });
+      tr.onclick = (ev) => selectDriver(row.driver.driver_number, ev);
       const tyre = el("span", { class: "tyre", text: (row.compound ?? "?").slice(0, 1) });
       tyre.style.color = tyreColor(row.compound);
       tr.append(
-        el("td", { class: "pos", text: String(row.pos) }),
-        el("td", { class: "code" }, [
-          (() => {
-            const d = el("span", { class: "swatch" });
-            d.style.background = `#${row.driver.team_colour}`;
-            return d;
-          })(),
-          document.createTextNode(row.driver.name_acronym),
-        ]),
-        el("td", {}, [tyre]),
-        el("td", { text: row.tyreAge != null ? String(row.tyreAge) : "—" }),
-        el("td", { text: formatLap(s.pace) }),
-        el("td", { text: s.deg != null ? `${s.deg >= 0 ? "+" : ""}${s.deg.toFixed(3)}s` : "—" }),
-        el("td", { text: sets || "—" }),
-        el("td", { text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
-        el("td", { text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
-        el("td", { class: s.heldUp ? "warn" : "", text: s.heldUp ? `HELD UP +${s.holdDelta?.toFixed(3) ?? ""}` : "clear" }),
+        el("td", { class: "pos c-pos", text: String(row.pos) }),
+        el("td", { class: "c-drv" }, [driverNameCell(row)]),
+        el("td", { class: "c-tyre" }, [tyre]),
+        el("td", { class: "c-pits", text: String(row.pits) }),
+        el("td", { class: "c-n", text: row.tyreAge != null ? String(row.tyreAge) : "—" }),
+        el("td", { class: "c-lap", text: formatLap(s.pace) }),
+        el("td", { class: "c-deg", text: s.deg != null ? `${s.deg >= 0 ? "+" : ""}${s.deg.toFixed(3)}s` : "—" }),
+        el("td", { class: "c-sets", text: sets || "—" }),
+        el("td", { class: "c-gap", text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
+        el("td", { class: "c-gap", text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
+        el("td", { class: `c-traf ${s.heldUp ? "warn" : ""}`, text: s.heldUp ? `HELD UP +${s.holdDelta?.toFixed(3) ?? ""}` : "clear" }),
       );
       body.append(tr);
     }

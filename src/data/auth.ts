@@ -94,7 +94,10 @@ export function configureAuth(partial: Partial<AuthDeps>): void {
   deps = { ...deps, ...partial };
 }
 
+let refreshInFlight: Promise<string> | null = null;
+
 export function resetAuthForTests(store: AuthStore = memoryStore()): AuthStore {
+  refreshInFlight = null;
   deps = {
     fetch: (...args) => globalThis.fetch(...args),
     now: () => Date.now(),
@@ -125,13 +128,48 @@ export function peekAuth(): AuthSnapshot {
   return { username, signedIn, expiresAt, source, lastError: "" };
 }
 
+/** Cached OAuth token or pasted bearer — available synchronously for every REST call. */
+export function peekAccessToken(): string {
+  const oauth = (deps.store.get(AUTH_ACCESS_KEY) || "").replace(/^Bearer\s+/i, "").trim();
+  if (oauth) return oauth;
+  return readManualToken().replace(/^Bearer\s+/i, "").trim();
+}
+
+export function hasUsableAuth(): boolean {
+  const a = peekAuth();
+  return a.signedIn || a.source === "manual" || Boolean(peekAccessToken());
+}
+
+export function parseExpiresInMs(raw: unknown): number {
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return raw > 1e6 ? raw : raw * 1000;
+  }
+  if (typeof raw === "string") {
+    const n = Number(raw.trim());
+    if (Number.isFinite(n) && n > 0) return n * 1000;
+  }
+  return 3600 * 1000;
+}
+
+export function parseTokenResponse(body: unknown): TokenResponse | null {
+  if (!body || typeof body !== "object") return null;
+  const o = body as Record<string, unknown>;
+  const raw = o.access_token ?? o.accessToken ?? o.token;
+  const access = typeof raw === "string" ? raw.replace(/^Bearer\s+/i, "").trim() : "";
+  if (!access) return null;
+  return {
+    access_token: access,
+    expires_in: (o.expires_in ?? o.expiresIn ?? "3600") as string | number,
+    token_type: typeof o.token_type === "string" ? o.token_type : "bearer",
+  };
+}
+
 function persistToken(username: string, password: string, token: TokenResponse): number {
-  const seconds = Number(token.expires_in);
-  const ttlMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 3600 * 1000;
+  const ttlMs = parseExpiresInMs(token.expires_in);
   const expiresAt = deps.now() + ttlMs;
   deps.store.set(AUTH_USER_KEY, username);
-  deps.store.set(AUTH_PASS_KEY, password);
-  deps.store.set(AUTH_ACCESS_KEY, token.access_token);
+  if (password) deps.store.set(AUTH_PASS_KEY, password);
+  deps.store.set(AUTH_ACCESS_KEY, token.access_token.replace(/^Bearer\s+/i, "").trim());
   deps.store.set(AUTH_EXPIRY_KEY, String(expiresAt));
   return expiresAt;
 }
@@ -160,7 +198,7 @@ export async function requestToken(username: string, password: string): Promise<
       const detail = extractDetail(body) || `OpenF1 /token returned ${res.status}.`;
       throw new OpenF1Error("http", detail, res.status, detail);
     }
-    const parsed = body as TokenResponse;
+    const parsed = parseTokenResponse(body);
     if (!parsed?.access_token) {
       throw new OpenF1Error("unknown", "OpenF1 /token did not return an access_token.", res.status, raw);
     }
@@ -200,19 +238,34 @@ function tokenStillFresh(expiresAt: number): boolean {
   return expiresAt - TOKEN_REFRESH_SKEW_MS > deps.now();
 }
 
-export async function getAccessToken(opts: { force?: boolean } = {}): Promise<string> {
+async function refreshAccessToken(): Promise<string> {
+  if (refreshInFlight) return refreshInFlight;
   const username = deps.store.get(AUTH_USER_KEY)?.trim() || "";
   const password = deps.store.get(AUTH_PASS_KEY) || "";
-  const cached = deps.store.get(AUTH_ACCESS_KEY)?.trim() || "";
-  const expiresAt = Number(deps.store.get(AUTH_EXPIRY_KEY) || 0);
-
-  if (username && password) {
-    if (!opts.force && cached && tokenStillFresh(expiresAt)) return cached;
+  if (!username || !password) return peekAccessToken();
+  refreshInFlight = (async () => {
     const token = await requestToken(username, password);
     persistToken(username, password, token);
     return token.access_token;
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+export async function getAccessToken(opts: { force?: boolean } = {}): Promise<string> {
+  const cached = peekAccessToken();
+  const expiresAt = Number(deps.store.get(AUTH_EXPIRY_KEY) || 0);
+  if (!opts.force && cached && (tokenStillFresh(expiresAt) || !hasPasswordLogin())) return cached;
+  if (hasPasswordLogin() && (opts.force || !cached || !tokenStillFresh(expiresAt))) {
+    try {
+      return await refreshAccessToken();
+    } catch (err) {
+      if (cached) return cached;
+      throw err;
+    }
   }
-  return readManualToken();
+  return cached || readManualToken();
 }
 
 /** True when a forced refresh produced a new token (used for a single 401 retry). */

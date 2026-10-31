@@ -64,6 +64,15 @@ export type Position = {
   position: number;
 };
 
+export type StartingGrid = {
+  driver_number: number;
+  position?: number;
+  grid_position?: number;
+  session_key?: number;
+  meeting_key?: number;
+  lap_duration?: number | null;
+};
+
 export type Stint = {
   driver_number: number;
   stint_number: number;
@@ -130,6 +139,7 @@ export type SessionBundle = {
   laps: Lap[];
   intervals: Interval[];
   positions: Position[];
+  startingGrid?: StartingGrid[];
   stints: Stint[];
   weekendStints: Stint[];
   pits: Pit[];
@@ -138,6 +148,10 @@ export type SessionBundle = {
   track: [number, number][];
   corners: { n: number; x: number; y: number; dist: number }[];
   sectorFracs: [number, number, number];
+  /** Racing-line fraction of pit-lane entry, 0 = S/F. */
+  pitEntry?: number;
+  /** Racing-line fraction of pit-lane exit, 0 = S/F. */
+  pitExit?: number;
 };
 
 export type FlagMode = "green" | "vsc" | "sc";
@@ -164,7 +178,13 @@ export type TowerRow = {
   segments: number[];
   inPit: boolean;
   retired: boolean;
+  pitOut: boolean;
+  pits: number;
   progress: number;
+  /** Starting grid slot when the session is a race/sprint. */
+  gridPos: number | null;
+  /** Grid minus current; + gained, − lost, 0 unchanged. Null when not a race/sprint. */
+  posChange: number | null;
 };
 
 export type TimingSnapshot = {

@@ -1,7 +1,8 @@
 import { DEFAULT_PIT_LOSS, readToken } from "../config";
 import { peekAuth, signIn, signOut, writeManualToken } from "../data/auth";
 import { el } from "../lib/dom";
-import { retryNow, setDataMode, setPitLoss, state, syncLiveFeed } from "../state";
+import { UI_SCALE_OPTIONS, type UiScalePref } from "../lib/scale";
+import { clearLiveLock, retryNow, setDataMode, setPitLoss, setUiScale, state, syncLiveFeed } from "../state";
 import { closeAllModals } from "./overlays";
 
 function labeled(label: string, input: HTMLElement): HTMLElement {
@@ -37,6 +38,12 @@ export function openSettings(): void {
   mode.append(el("option", { value: "historical", text: "Historical replay (REST)" }));
   mode.append(el("option", { value: "live", text: "Live (MQTT over WebSocket, REST fallback)" }));
   mode.value = state.mode;
+  const scale = el("select") as HTMLSelectElement;
+  for (const opt of UI_SCALE_OPTIONS) {
+    const label = opt === "auto" ? "Auto (fit viewport)" : `${opt}%`;
+    scale.append(el("option", { value: String(opt), text: label }));
+  }
+  scale.value = String(state.uiScale);
   const g = el("input", { type: "number", step: "0.1" }) as HTMLInputElement;
   const v = el("input", { type: "number", step: "0.1" }) as HTMLInputElement;
   const s = el("input", { type: "number", step: "0.1" }) as HTMLInputElement;
@@ -66,8 +73,9 @@ export function openSettings(): void {
       await signIn(user.value, pass.value);
       pass.value = "";
       refreshAuthChrome();
+      clearLiveLock();
       syncLiveFeed();
-      if (state.lock === "live" || state.mode === "live") void retryNow();
+      void retryNow();
     } catch (err) {
       authErr.hidden = false;
       authErr.textContent = err instanceof Error ? err.message : "Sign-in failed.";
@@ -98,6 +106,11 @@ export function openSettings(): void {
       authErr,
       el("label", { text: "Data mode" }),
       mode,
+      el("label", { text: "UI scale" }),
+      scale,
+      el("p", {
+        text: "Auto grows the pitwall to fill 1440p / 4K without browser zoom. Manual 100–200% locks the rem root size. Driver hit targets stay at least 14 CSS px.",
+      }),
       el("details", { class: "advanced" }, [
         el("summary", { text: "Advanced — paste a bearer token" }),
         el("p", {
@@ -115,6 +128,8 @@ export function openSettings(): void {
     writeManualToken(token.value);
     setDataMode(mode.value === "live" ? "live" : "historical");
     setPitLoss({ green: Number(g.value), vsc: Number(v.value), sc: Number(s.value) });
+    const pref = scale.value === "auto" ? "auto" : (Number(scale.value) as UiScalePref);
+    setUiScale(pref);
     closeAllModals();
     if (state.lock === "live" || peekAuth().signedIn || token.value.trim()) void retryNow();
   };

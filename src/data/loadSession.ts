@@ -3,6 +3,8 @@ import { parseTs } from "../lib/time";
 import { apiGet } from "./client";
 import { isLiveLock } from "./errors";
 import { snapshotAt } from "./derive";
+import { isRaceOrSprint } from "./grid";
+import { detectPitLane, DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT, pickPitForTrace } from "./pitlane";
 import { buildOutline, detectCorners, lapWindow, pickOutlineLap, sectorFractions } from "./track";
 import type {
   Driver,
@@ -15,6 +17,7 @@ import type {
   RaceControl,
   Session,
   SessionBundle,
+  StartingGrid,
   Stint,
   Weather,
 } from "./types";
@@ -72,12 +75,21 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
   if (!meeting) throw new Error("Meeting not found");
 
   let intervals: Interval[] = [];
+  let startingGrid: StartingGrid[] = [];
   if (/race|sprint/i.test(session.session_name)) {
     try {
       intervals = await apiGet<Interval[]>("intervals", { session_key: sessionKey });
     } catch (err) {
       if (isLiveLock(err)) throw err;
       intervals = [];
+    }
+  }
+  if (isRaceOrSprint(session)) {
+    try {
+      startingGrid = await apiGet<StartingGrid[]>("starting_grid", { session_key: sessionKey });
+    } catch (err) {
+      if (isLiveLock(err)) throw err;
+      startingGrid = [];
     }
   }
 
@@ -95,6 +107,7 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
   const track = await loadTrack(sessionKey, laps, drivers);
   const corners = detectCorners(track);
   const sectorFracs = sectorFractions(laps);
+  const pitMarks = await loadPitMarks(sessionKey, track, pits);
 
   return {
     meeting,
@@ -104,6 +117,7 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
     laps,
     intervals,
     positions,
+    startingGrid,
     stints,
     weekendStints,
     pits,
@@ -112,7 +126,34 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
     track,
     corners,
     sectorFracs,
+    pitEntry: pitMarks.entry,
+    pitExit: pitMarks.exit,
   };
+}
+
+async function loadPitMarks(
+  sessionKey: number,
+  track: [number, number][],
+  pits: Pit[],
+): Promise<{ entry: number; exit: number }> {
+  const fallback = { entry: DEFAULT_PIT_ENTRY, exit: DEFAULT_PIT_EXIT };
+  const pit = pickPitForTrace(pits);
+  if (!pit || track.length < 2) return fallback;
+  const t = parseTs(pit.date);
+  if (!Number.isFinite(t)) return fallback;
+  const dur = (pit.lane_duration ?? 25) * 1000;
+  try {
+    const samples = await apiGet<LocationSample[]>("location", {
+      session_key: sessionKey,
+      driver_number: pit.driver_number,
+      "date>": new Date(t - 20000).toISOString(),
+      "date<": new Date(t + dur + 20000).toISOString(),
+    });
+    return detectPitLane(track, samples) ?? fallback;
+  } catch (err) {
+    if (isLiveLock(err)) throw err;
+    return fallback;
+  }
 }
 
 export async function loadDefaultKeys(): Promise<{ year: number; meetingKey: number; sessionKey: number }> {

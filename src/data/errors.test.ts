@@ -5,6 +5,7 @@ import {
   isLiveLock,
   isNetworkFailure,
   OpenF1Error,
+  shouldShowLiveLockBanner,
 } from "./errors";
 
 const LIVE_JSON = {
@@ -50,6 +51,41 @@ describe("classifyOpenF1Failure", () => {
     expect(err.kind).toBe("http");
     expect(err.message).toMatch(/Incorrect username/i);
   });
+
+  it("only blames a missing bearer when signed in but no token was attached", () => {
+    const missing = classifyOpenF1Failure({
+      status: 401,
+      body: LIVE_JSON,
+      authenticated: true,
+      tokenAttached: false,
+    });
+    expect(missing.kind).toBe("http");
+    expect(missing.message).toMatch(/bearer token may not have been sent/i);
+    expect(isLiveLock(missing)).toBe(false);
+  });
+
+  it("keeps a live lock when a bearer was attached and OpenF1 still blocked the request", () => {
+    const live = classifyOpenF1Failure({
+      status: 401,
+      body: LIVE_JSON,
+      authenticated: true,
+      tokenAttached: true,
+    });
+    expect(live.kind).toBe("live-lock");
+    expect(isLiveLock(live)).toBe(true);
+    const cors = classifyOpenF1Failure({
+      cause: new TypeError("Failed to fetch"),
+      authenticated: true,
+      tokenAttached: true,
+    });
+    expect(cors.kind).toBe("live-lock");
+    const prior = classifyOpenF1Failure({
+      cause: new OpenF1Error("live-lock", "OpenF1 is locked while a live F1 session is running.", 401),
+      authenticated: true,
+      tokenAttached: true,
+    });
+    expect(prior.kind).toBe("live-lock");
+  });
 });
 
 describe("helpers", () => {
@@ -67,5 +103,11 @@ describe("helpers", () => {
   it("isLiveLock recognises unclassified Failed to fetch", () => {
     expect(isLiveLock(new TypeError("Failed to fetch"))).toBe(true);
     expect(isLiveLock(new OpenF1Error("http", "nope", 503))).toBe(false);
+  });
+
+  it("shows the live-lock banner whenever REST is locked, even if signed in", () => {
+    expect(shouldShowLiveLockBanner("live", false)).toBe(true);
+    expect(shouldShowLiveLockBanner("live", true)).toBe(true);
+    expect(shouldShowLiveLockBanner(null, false)).toBe(false);
   });
 });

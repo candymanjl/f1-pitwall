@@ -155,6 +155,34 @@ export function project(
   };
 }
 
+/**
+ * Wind arrow in the same projected frame as the track outline.
+ * `windFromDeg` is meteorological (0 = from north, 90 = from east).
+ * The arrow points the way the wind is blowing (opposite of FROM).
+ * OpenF1 location x/y are treated as east/north.
+ */
+export function windArrowScreen(
+  pts: [number, number][],
+  windFromDeg: number,
+  width: number,
+  height: number,
+): { from: [number, number]; to: [number, number] } | null {
+  if (pts.length < 2 || !Number.isFinite(windFromDeg)) return null;
+  const { map } = project(pts, width, height, 8);
+  const rad = (windFromDeg * Math.PI) / 180;
+  const toX = -Math.sin(rad);
+  const toY = -Math.cos(rad);
+  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  let span = 1;
+  for (const p of pts) span = Math.max(span, Math.hypot(p[0] - cx, p[1] - cy));
+  const len = span * 0.42;
+  return {
+    from: map(cx - toX * len * 0.5, cy - toY * len * 0.5),
+    to: map(cx + toX * len * 0.5, cy + toY * len * 0.5),
+  };
+}
+
 export function cumulativeDistance(samples: LocationSample[]): { t: number; dist: number; x: number; y: number }[] {
   const out: { t: number; dist: number; x: number; y: number }[] = [];
   let dist = 0;

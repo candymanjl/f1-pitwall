@@ -45,17 +45,47 @@ export function isLiveLock(err: unknown): boolean {
   return classifyOpenF1Failure({ cause: err }).kind === "live-lock";
 }
 
+/**
+ * Show the lock banner whenever REST is actually locked.
+ * A stored token does not lift OpenF1's live lock in the browser: Authorization
+ * triggers an OPTIONS preflight, and /v1 OPTIONS returns 401 with no CORS headers,
+ * so the bearer never leaves the client.
+ */
+export function shouldShowLiveLockBanner(lock: "live" | null | undefined, _authed?: boolean): boolean {
+  return lock === "live";
+}
+
 export function classifyOpenF1Failure(input: {
   status?: number | null;
   body?: unknown;
   cause?: unknown;
   path?: string;
+  authenticated?: boolean;
+  /** True when Authorization: Bearer was set on the request that failed. */
+  tokenAttached?: boolean;
 }): OpenF1Error {
   const detail = extractDetail(input.body);
   const causeMsg = input.cause instanceof Error ? input.cause.message : input.cause ? String(input.cause) : "";
   const text = `${detail} ${causeMsg}`;
   const status = input.status ?? null;
   const path = input.path ? ` on ${input.path}` : "";
+  const prior = input.cause instanceof OpenF1Error ? input.cause : null;
+  const looksLocked =
+    LIVE_LOCK_RE.test(text) ||
+    (status === 401 && !detail) ||
+    isNetworkFailure(input.cause) ||
+    prior?.kind === "live-lock";
+
+  // Only blame a missing header when we truly did not attach one. A stored
+  // token + CORS/401 is the live lock (OPTIONS /v1 dies before GET+Bearer).
+  if (input.authenticated && looksLocked && !input.tokenAttached) {
+    return new OpenF1Error(
+      "http",
+      "Signed in, but OpenF1 still rejected the request. The bearer token may not have been sent — retry.",
+      status ?? prior?.status ?? 401,
+      detail || causeMsg || prior?.detail || "",
+    );
+  }
 
   if (LIVE_LOCK_RE.test(text)) {
     return new OpenF1Error(

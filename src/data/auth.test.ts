@@ -103,6 +103,37 @@ describe("token cache / refresh", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("parses expires_in when OpenF1 sends it as a string", async () => {
+    const now = 1_700_000_000_000;
+    const store = memoryStore();
+    configureAuth({
+      fetch: (async () => jsonRes(200, { access_token: "tok-str", expires_in: "3600", token_type: "bearer" })) as unknown as typeof fetch,
+      now: () => now,
+      store,
+    });
+    await signIn("ada", "pw");
+    expect(store.get("f1pitwall.openf1AccessToken")).toBe("tok-str");
+    expect(Number(store.get("f1pitwall.openf1ExpiresAt"))).toBe(now + 3600 * 1000);
+  });
+
+  it("uses the cached OAuth token even if the password is missing", async () => {
+    const now = 1_700_000_000_000;
+    const store = memoryStore({
+      "f1pitwall.openf1User": "ada",
+      "f1pitwall.openf1AccessToken": "cached-oauth",
+      "f1pitwall.openf1ExpiresAt": String(now + 3600 * 1000),
+    });
+    configureAuth({
+      fetch: (async () => {
+        throw new Error("should not hit /token");
+      }) as unknown as typeof fetch,
+      now: () => now,
+      store,
+    });
+    expect(peekAuth().signedIn).toBe(true);
+    expect(await getAccessToken()).toBe("cached-oauth");
+  });
+
   it("falls back to a manually pasted token when not signed in", async () => {
     const store = memoryStore({ [TOKEN_STORAGE_KEY]: "pasted-token" });
     configureAuth({
