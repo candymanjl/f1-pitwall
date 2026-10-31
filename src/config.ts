@@ -1,6 +1,10 @@
 /** App config. Tokens stay in the browser (localStorage) or a local .env — never committed. */
 
 export const API_BASE = "https://api.openf1.org/v1";
+export const TOKEN_URL = "https://api.openf1.org/token";
+export const MQTT_URL = "wss://mqtt.openf1.org:8084/mqtt";
+/** Refresh the OAuth token this long before expiry (OpenF1 tokens last 3600s). */
+export const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
 
 export const DEFAULT_YEAR = 2025;
 export const DEFAULT_MEETING_KEY = 1272; // Mexico City GP
@@ -16,6 +20,10 @@ export const LIVE_LOCK_RETRY_MS = 3 * 60 * 1000;
 export const SPEEDS = [1, 2, 4, 8, 16] as const;
 
 export const TOKEN_STORAGE_KEY = "f1pitwall.openf1Token";
+export const AUTH_USER_KEY = "f1pitwall.openf1User";
+export const AUTH_PASS_KEY = "f1pitwall.openf1Password";
+export const AUTH_ACCESS_KEY = "f1pitwall.openf1AccessToken";
+export const AUTH_EXPIRY_KEY = "f1pitwall.openf1ExpiresAt";
 export const MODE_STORAGE_KEY = "f1pitwall.dataMode";
 export const PIT_LOSS_STORAGE_KEY = "f1pitwall.pitLoss";
 

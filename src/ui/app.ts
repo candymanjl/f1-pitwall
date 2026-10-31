@@ -1,14 +1,9 @@
-import {
-  DEFAULT_PIT_LOSS,
-  LIVE_LOCK_RETRY_MS,
-  readToken,
-  SPEEDS,
-  writeToken,
-} from "../config";
+import { LIVE_LOCK_RETRY_MS, SPEEDS } from "../config";
 import { PAGES } from "../data/types";
 import { el } from "../lib/dom";
 import { formatClock } from "../lib/time";
-import { applyLoadingOverlay, closeAllModals, shouldShowLoadingOverlay } from "./overlays";
+import { applyLoadingOverlay, shouldShowLoadingOverlay } from "./overlays";
+import { openSettings } from "./settings";
 import { mountPitCircle } from "../pages/pitcircle";
 import { mountRaceTrace } from "../pages/racetrace";
 import { mountStrategy } from "../pages/strategy";
@@ -22,8 +17,6 @@ import {
   reloadAll,
   retryNow,
   setClock,
-  setDataMode,
-  setPitLoss,
   setPlaying,
   setSpeed,
   startClock,
@@ -99,7 +92,14 @@ export function boot(root: HTMLElement): void {
     play.textContent = state.playing ? "Pause" : "Play";
     const span = Math.max(1, state.end - state.start);
     scrub.value = String(Math.round(((state.t - state.start) / span) * 1000));
-    elapsed.textContent = state.mode === "live" ? "live polling" : `replay ${state.speed}×`;
+    elapsed.textContent =
+      state.mode === "live"
+        ? state.liveSource === "mqtt"
+          ? "live mqtt"
+          : state.liveSource === "poll"
+            ? "live polling"
+            : "live"
+        : `replay ${state.speed}×`;
     for (const btn of nav.querySelectorAll("button")) {
       btn.classList.toggle("active", btn.getAttribute("data-page") === state.page);
     }
@@ -181,6 +181,9 @@ export function boot(root: HTMLElement): void {
   window.addEventListener("resize", () => pageApi?.update());
   startClock();
   window.addEventListener("f1pw:open-settings", () => openSettings());
+  if (new URLSearchParams(location.search).has("settings")) {
+    queueMicrotask(() => openSettings());
+  }
   void reloadAll();
 }
 
@@ -198,7 +201,7 @@ function syncBanner(banner: HTMLElement): void {
     banner.append(
       el("strong", { text: "OpenF1 is locked while a live F1 session is running." }),
       el("p", {
-        text: "Until that session ends, the API also blocks historical data unless you add an OpenF1 key. A 401 without CORS headers often looks like “Failed to fetch” in the browser.",
+        text: "Until that session ends, every endpoint needs an OpenF1 login. Sign in under Settings (or paste a token under Advanced). A 401 without CORS headers often looks like “Failed to fetch”.",
       }),
       el("div", { class: "lock-actions" }, [settings, retry, count]),
     );
@@ -217,56 +220,3 @@ function syncBanner(banner: HTMLElement): void {
   }
 }
 
-function openSettings(): void {
-  closeAllModals();
-  const bg = el("div", { class: "modal-bg" });
-  const token = el("input", { type: "password", placeholder: "OpenF1 bearer token (optional)" }) as HTMLInputElement;
-  token.value = readToken();
-  const mode = el("select") as HTMLSelectElement;
-  mode.append(el("option", { value: "historical", text: "Historical replay (free, no key)" }));
-  mode.append(el("option", { value: "live", text: "Live polling (needs paid key later)" }));
-  mode.value = state.mode;
-  const g = el("input", { type: "number", step: "0.1" }) as HTMLInputElement;
-  const v = el("input", { type: "number", step: "0.1" }) as HTMLInputElement;
-  const s = el("input", { type: "number", step: "0.1" }) as HTMLInputElement;
-  g.value = String(state.pitLoss.green);
-  v.value = String(state.pitLoss.vsc);
-  s.value = String(state.pitLoss.sc);
-  const save = el("button", { class: "primary", text: "Save" });
-  const cancel = el("button", { class: "ghost", text: "Cancel" });
-  const reset = el("button", { class: "ghost", text: "Reset pit loss" });
-  bg.append(
-    el("div", { class: "modal" }, [
-      el("h2", { text: "Settings" }),
-      el("p", { text: "Historical OpenF1 data is free except while a live F1 session is on — then every endpoint needs a paid key. Paste a token here; it stays in this browser and is never committed." }),
-      el("label", { text: "Data mode" }),
-      mode,
-      el("label", { text: "OpenF1 token" }),
-      token,
-      el("p", { text: "Pit loss used by the pit circle ghost and strategy model (seconds, estimates)." }),
-      el("div", { class: "row" }, [labeled("Green", g), labeled("VSC", v), labeled("SC", s)]),
-      el("div", { class: "row" }, [save, reset, cancel]),
-    ]),
-  );
-  save.onclick = () => {
-    writeToken(token.value);
-    setDataMode(mode.value === "live" ? "live" : "historical");
-    setPitLoss({ green: Number(g.value), vsc: Number(v.value), sc: Number(s.value) });
-    closeAllModals();
-    if (state.lock === "live" || token.value.trim()) void retryNow();
-  };
-  reset.onclick = () => {
-    g.value = String(DEFAULT_PIT_LOSS.green);
-    v.value = String(DEFAULT_PIT_LOSS.vsc);
-    s.value = String(DEFAULT_PIT_LOSS.sc);
-  };
-  cancel.onclick = () => closeAllModals();
-  bg.addEventListener("click", (ev) => {
-    if (ev.target === bg) closeAllModals();
-  });
-  document.body.append(bg);
-}
-
-function labeled(label: string, input: HTMLElement): HTMLElement {
-  return el("div", {}, [el("label", { text: label }), input]);
-}

@@ -1,6 +1,9 @@
 import { LIVE_LOCK_RETRY_MS, LIVE_POLL_MS, readMode, readPitLoss, SPEEDS, writeMode, writePitLoss } from "./config";
+import { peekAuth } from "./data/auth";
 import { snapshotAt } from "./data/derive";
 import { classifyOpenF1Failure, type OpenF1Error } from "./data/errors";
+import { applyLiveMessage } from "./data/liveMerge";
+import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
 import { parseTs } from "./lib/time";
 import type { DataMode } from "./config";
@@ -33,6 +36,7 @@ export type AppState = {
   traceDriver: number | null;
   pitMode: "green" | "vsc" | "sc";
   hiddenDrivers: number[];
+  liveSource: LiveSource;
 };
 
 type Listener = () => void;
@@ -66,6 +70,7 @@ export const state: AppState = {
   traceDriver: null,
   pitMode: "green",
   hiddenDrivers: [],
+  liveSource: "off",
 };
 
 export function subscribe(fn: Listener): () => void {
@@ -140,6 +145,7 @@ export function setPitMode(mode: AppState["pitMode"]): void {
 export function setDataMode(mode: DataMode): void {
   state.mode = mode;
   writeMode(mode);
+  syncLiveFeed();
   emit();
 }
 
@@ -287,6 +293,7 @@ export async function changeSession(sessionKey: number): Promise<void> {
     state.error = "";
     state.panelErrors = { track: bundle.track.length ? "" : "Track outline could not be loaded from OpenF1 /location.", telemetry: "" };
     stopLockRetry();
+    syncLiveFeed();
   } catch (err) {
     applyFetchError(err);
     return;
@@ -324,4 +331,30 @@ export function startClock(): void {
     refreshSnap();
     emit();
   }, LIVE_POLL_MS);
+}
+
+let liveHandle: LiveHandle | null = null;
+
+export function syncLiveFeed(): void {
+  liveHandle?.stop();
+  liveHandle = null;
+  state.liveSource = "off";
+  const auth = peekAuth();
+  if (state.mode !== "live" || !state.bundle || !state.sessionKey) return;
+  if (!auth.signedIn && auth.source !== "manual") return;
+  liveHandle = startLiveFeed({
+    username: auth.username || "openf1",
+    sessionKey: state.sessionKey,
+    onMessage: (topic, payload, mode) => {
+      if (!state.bundle) return;
+      state.bundle = applyLiveMessage(state.bundle, topic, payload, state.sessionKey, mode);
+      if (state.mode === "live") state.t = Date.now();
+      refreshSnap();
+      emit();
+    },
+    onStatus: (source) => {
+      state.liveSource = source;
+      emit();
+    },
+  });
 }
