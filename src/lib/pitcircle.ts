@@ -40,6 +40,11 @@ export type CircleCar = {
   pace: number | null;
 };
 
+/** Place a car from leader progress + gap (seconds), matching the track map. */
+export function gapFrac(leaderProgress: number, gapSec: number, lapSec: number): number {
+  return wrap01(leaderProgress - gapSec / Math.max(1, lapSec));
+}
+
 /** Map elapsed-lap progress onto the racing line. Pit-out laps start at pit exit. */
 export function racingFrac(progress: number, pitOut: boolean, pitExit: number): number {
   const p = Math.min(1, Math.max(0, progress));

@@ -4,6 +4,7 @@ import { el } from "../lib/dom";
 import { MAP_CAR_R, MAP_CAR_R_SELECTED, MAP_LINE_WIDTH } from "../lib/mapMarks";
 import {
   GAP_WEDGE_FILLS,
+  gapFrac,
   ghostFrac,
   neighborsAt,
   onTrackGaps,
@@ -14,7 +15,7 @@ import {
   type CircleCar,
 } from "../lib/pitcircle";
 import { appendDriverDot } from "../lib/svgcar";
-import { formatDelta } from "../lib/time";
+import { asNumber, formatDelta } from "../lib/time";
 import { panel } from "../ui/panel";
 import { mountTowerSplitter } from "../ui/splitter";
 import { renderTower } from "../ui/tower";
@@ -81,16 +82,24 @@ function carsOnCircle(): CircleCar[] {
   const snap = state.snap;
   if (!snap) return [];
   const pitExit = state.bundle?.pitExit ?? DEFAULT_PIT_EXIT;
-  return snap.rows.map((row) => ({
-    driver: row.driver.driver_number,
-    code: row.driver.name_acronym,
-    frac: row.inPit
+  const leaderProg = snap.rows[0]?.progress ?? 0;
+  const lap = Math.max(1, snap.medianGreenLap);
+  return snap.rows.map((row) => {
+    const gap = row.pos === 1 ? 0 : asNumber(row.gap);
+    const frac = row.inPit
       ? wrap01(state.bundle?.pitEntry ?? DEFAULT_PIT_ENTRY)
-      : racingFrac(row.progress, row.pitOut, pitExit),
-    inPit: row.inPit,
-    retired: row.retired,
-    pace: typeof row.lastLap === "number" && row.lastLap > 0 ? row.lastLap : snap.medianGreenLap,
-  }));
+      : gap != null
+        ? gapFrac(leaderProg, gap, lap)
+        : racingFrac(row.progress, row.pitOut, pitExit);
+    return {
+      driver: row.driver.driver_number,
+      code: row.driver.name_acronym,
+      frac,
+      inPit: row.inPit,
+      retired: row.retired,
+      pace: typeof row.lastLap === "number" && row.lastLap > 0 ? row.lastLap : snap.medianGreenLap,
+    };
+  });
 }
 
 function drawCircle(svg: SVGSVGElement): void {

@@ -1,14 +1,15 @@
 import type { DataMode } from "../config";
+import { followLiveFromSlider } from "./sessionClock";
 
-/** How close to the newest sample counts as “at the live edge”. */
+/** How close to the playable end (newest sample) counts as “at the live edge”. */
 export const LIVE_EDGE_SLOP_MS = 1500;
 
-export function liveEdgeMs(end: number, now: number): number {
-  return Math.min(end, now);
+export function liveEdgeMs(end: number, _now?: number): number {
+  return end;
 }
 
-export function isAtLiveEdge(t: number, end: number, now: number, slop = LIVE_EDGE_SLOP_MS): boolean {
-  return t >= liveEdgeMs(end, now) - slop;
+export function isAtLiveEdge(t: number, end: number, _now?: number, slop = LIVE_EDGE_SLOP_MS): boolean {
+  return t >= end - slop;
 }
 
 export function clampClock(t: number, start: number, end: number): number {
@@ -25,6 +26,7 @@ export type PlaybackStep = {
   mode: DataMode;
   followLive: boolean;
   now: number;
+  scrubbing?: boolean;
 };
 
 export type PlaybackResult = {
@@ -35,14 +37,16 @@ export type PlaybackResult = {
 
 /**
  * Advance (or hold) the replay cursor.
- * Live-following only when `followLive` and playing — Play from mid-session
- * walks forward at `speed` instead of jumping to Date.now().
+ * Live-following only when `followLive` and playing and the user is not dragging.
+ * Play from mid-session walks forward at `speed` — it never jumps to Date.now().
  */
 export function stepPlayback(s: PlaybackStep): PlaybackResult {
-  const edge = liveEdgeMs(s.end, s.now);
+  if (s.scrubbing) {
+    return { t: clampClock(s.t, s.start, s.end), playing: s.playing, followLive: false };
+  }
 
   if (s.mode === "live" && s.followLive && s.playing) {
-    return { t: clampClock(edge, s.start, s.end), playing: true, followLive: true };
+    return { t: clampClock(s.end, s.start, s.end), playing: true, followLive: true };
   }
 
   if (!s.playing) {
@@ -50,8 +54,8 @@ export function stepPlayback(s: PlaybackStep): PlaybackResult {
   }
 
   const next = s.t + s.dt * s.speed;
-  if (s.mode === "live" && next >= edge) {
-    return { t: clampClock(edge, s.start, s.end), playing: true, followLive: true };
+  if (s.mode === "live" && next >= s.end) {
+    return { t: s.end, playing: true, followLive: true };
   }
   if (next >= s.end) {
     return { t: s.end, playing: false, followLive: false };
@@ -59,12 +63,14 @@ export function stepPlayback(s: PlaybackStep): PlaybackResult {
   return { t: next, playing: true, followLive: false };
 }
 
-/** Scrubbing onto the newest sample arms live-follow; scrubbing away disarms it. */
-export function followLiveFromScrub(t: number, end: number, now: number, mode: DataMode): boolean {
-  return mode === "live" && isAtLiveEdge(t, end, now);
+/** Any scrub exits live-follow unless the thumb is parked on the last sliver. */
+export function followLiveFromScrub(t: number, start: number, end: number, mode: DataMode): boolean {
+  const span = Math.max(1, end - start);
+  return followLiveFromSlider((t - start) / span, mode);
 }
 
-/** Play at the live edge follows; Play from anywhere else starts a replay. */
-export function followLiveOnPlay(t: number, end: number, now: number, mode: DataMode): boolean {
-  return mode === "live" && isAtLiveEdge(t, end, now);
+export function followLiveOnPlay(t: number, end: number, mode: DataMode): boolean {
+  return mode === "live" && isAtLiveEdge(t, end);
 }
+
+export { followLiveFromSlider };

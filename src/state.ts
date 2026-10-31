@@ -6,7 +6,8 @@ import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
 import { applyLiveMessage } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
-import { followLiveFromScrub, followLiveOnPlay, liveEdgeMs, stepPlayback } from "./lib/playback";
+import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
+import { playableEndMs } from "./lib/sessionClock";
 import { nextSelection } from "./lib/select";
 import { parseTs } from "./lib/time";
 import type { DataMode } from "./config";
@@ -25,8 +26,10 @@ export type AppState = {
   start: number;
   end: number;
   playing: boolean;
-  /** True only when the cursor is parked on the live edge and Play is following it. */
+  /** True only after LIVE or a scrub to the very end — never because Date.now() moved. */
   followLive: boolean;
+  /** True while the user is dragging the playback slider. */
+  scrubbing: boolean;
   speed: number;
   mode: DataMode;
   pitLoss: { green: number; vsc: number; sc: number };
@@ -64,6 +67,7 @@ export const state: AppState = {
   end: 1,
   playing: false,
   followLive: false,
+  scrubbing: false,
   speed: 4,
   mode: readMode(),
   pitLoss: readPitLoss(),
@@ -115,17 +119,44 @@ export function setPage(page: PageId): void {
   emit(true);
 }
 
-export function setClock(t: number): void {
+function syncPlayableRange(): void {
+  if (!state.bundle) return;
+  const start = parseTs(state.bundle.session.date_start);
+  if (Number.isFinite(start)) state.start = start;
+  state.end = playableEndMs(state.start, state.bundle);
+  if (state.end <= state.start) state.end = state.start + 1;
+}
+
+export function setClock(t: number, source: "scrub" | "code" = "code"): void {
+  syncPlayableRange();
   state.t = Math.min(state.end, Math.max(state.start, t));
-  state.followLive = followLiveFromScrub(state.t, state.end, Date.now(), state.mode);
+  if (source === "scrub") {
+    state.followLive = followLiveFromScrub(state.t, state.start, state.end, state.mode);
+  }
   refreshSnap();
-  emit();
+  emit(true);
+}
+
+export function setScrubbing(on: boolean): void {
+  state.scrubbing = on;
+  if (on) state.followLive = false;
+  if (!on) emit(true);
+}
+
+export function pinToLive(): void {
+  if (state.mode !== "live") return;
+  syncPlayableRange();
+  state.followLive = true;
+  state.t = state.end;
+  refreshSnap();
+  emit(true);
 }
 
 export function setPlaying(playing: boolean): void {
   state.playing = playing;
-  state.followLive = playing && followLiveOnPlay(state.t, state.end, Date.now(), state.mode);
-  emit();
+  if (!playing) state.followLive = false;
+  else state.followLive = followLiveOnPlay(state.t, state.end, state.mode);
+  emit(true);
 }
 
 export function setSpeed(speed: number): void {
@@ -327,8 +358,7 @@ export async function changeSession(sessionKey: number): Promise<void> {
     const bundle = await loadBundle(sessionKey);
     state.bundle = bundle;
     state.start = parseTs(bundle.session.date_start);
-    state.end = parseTs(bundle.session.date_end);
-    if (!Number.isFinite(state.end) || state.end <= state.start) state.end = state.start + 90 * 60 * 1000;
+    syncPlayableRange();
     const firstLap = bundle.laps
       .map((l) => parseTs(l.date_start))
       .filter((t) => Number.isFinite(t))
@@ -336,7 +366,11 @@ export async function changeSession(sessionKey: number): Promise<void> {
     const interesting = Number.isFinite(firstLap)
       ? firstLap + Math.min(18 * 60 * 1000, (state.end - firstLap) * 0.28)
       : state.start + (state.end - state.start) * 0.25;
-    state.t = Math.min(state.end, Math.max(state.start, interesting));
+    state.t =
+      state.mode === "live"
+        ? state.end
+        : Math.min(state.end, Math.max(state.start, interesting));
+    state.followLive = false;
     state.selectedDriver = null;
     state.selectedDrivers = [];
     const firstFour = bundle.drivers.slice(0, 2).map((d, i) => {
@@ -367,7 +401,8 @@ let liveTimer = 0;
 function tick(now: number): void {
   const dt = now - lastTick;
   lastTick = now;
-  if (state.playing && state.bundle) {
+  if (state.playing && state.bundle && !state.scrubbing) {
+    syncPlayableRange();
     const next = stepPlayback({
       t: state.t,
       start: state.start,
@@ -378,6 +413,7 @@ function tick(now: number): void {
       mode: state.mode,
       followLive: state.followLive,
       now: Date.now(),
+      scrubbing: state.scrubbing,
     });
     state.t = next.t;
     state.playing = next.playing;
@@ -393,11 +429,33 @@ export function startClock(): void {
   requestAnimationFrame(tick);
   if (liveTimer) window.clearInterval(liveTimer);
   liveTimer = window.setInterval(() => {
-    if (state.mode !== "live" || !state.bundle || !state.followLive || !state.playing) return;
-    state.t = liveEdgeMs(state.end, Date.now());
+    applyLiveClock("poll");
+  }, LIVE_POLL_MS);
+}
+
+/** Pull the cursor to the newest sample only when the user is actually live-following. */
+export function applyLiveClock(_source: "poll" | "mqtt" | "ingest" = "ingest"): void {
+  if (state.mode !== "live" || !state.bundle) return;
+  const held = state.t;
+  syncPlayableRange();
+  if (state.scrubbing || !state.followLive || !state.playing) {
+    state.t = Math.min(state.end, Math.max(state.start, held));
+    return;
+  }
+  state.t = state.end;
+  refreshSnap();
+  emit();
+}
+
+/** Merge an MQTT/poll payload and keep a scrubbed cursor put. */
+export function ingestLive(topic: string, payload: unknown, mode: "merge" | "replace" = "merge"): void {
+  if (!state.bundle) return;
+  state.bundle = applyLiveMessage(state.bundle, topic, payload, state.sessionKey, mode);
+  applyLiveClock("mqtt");
+  if (!(state.followLive && state.playing) || state.scrubbing) {
     refreshSnap();
     emit();
-  }, LIVE_POLL_MS);
+  }
 }
 
 let liveHandle: LiveHandle | null = null;
@@ -413,13 +471,7 @@ export function syncLiveFeed(): void {
     username: auth.username || "openf1",
     sessionKey: state.sessionKey,
     onMessage: (topic, payload, mode) => {
-      if (!state.bundle) return;
-      state.bundle = applyLiveMessage(state.bundle, topic, payload, state.sessionKey, mode);
-      if (state.mode === "live" && state.followLive && state.playing) {
-        state.t = liveEdgeMs(state.end, Date.now());
-      }
-      refreshSnap();
-      emit();
+      ingestLive(topic, payload, mode);
     },
     onStatus: (source) => {
       state.liveSource = source;
