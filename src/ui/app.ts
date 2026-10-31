@@ -8,6 +8,7 @@ import {
 import { PAGES } from "../data/types";
 import { el } from "../lib/dom";
 import { formatClock } from "../lib/time";
+import { applyLoadingOverlay, closeAllModals, shouldShowLoadingOverlay } from "./overlays";
 import { mountPitCircle } from "../pages/pitcircle";
 import { mountRaceTrace } from "../pages/racetrace";
 import { mountStrategy } from "../pages/strategy";
@@ -102,8 +103,7 @@ export function boot(root: HTMLElement): void {
     for (const btn of nav.querySelectorAll("button")) {
       btn.classList.toggle("active", btn.getAttribute("data-page") === state.page);
     }
-    overlay.hidden = !state.loading || !!state.lock;
-    overlay.textContent = state.loading || "";
+    applyLoadingOverlay(overlay, shouldShowLoadingOverlay(state.loading, state.lock), state.loading);
     toast.hidden = !state.error || !!state.lock;
     toast.textContent = state.error;
     syncBanner(banner);
@@ -127,13 +127,16 @@ export function boot(root: HTMLElement): void {
   };
 
   const renderPage = () => {
-    if (currentPage !== state.page) {
-      main.replaceChildren();
-      currentPage = state.page;
-      pageApi = mounts[state.page](main);
+    try {
+      if (currentPage !== state.page) {
+        main.replaceChildren();
+        currentPage = state.page;
+        pageApi = mounts[state.page](main);
+      }
+      pageApi?.update();
+    } finally {
+      syncChrome();
     }
-    pageApi?.update();
-    syncChrome();
   };
 
   yearSel.onchange = () => void changeYear(Number(yearSel.value));
@@ -215,6 +218,7 @@ function syncBanner(banner: HTMLElement): void {
 }
 
 function openSettings(): void {
+  closeAllModals();
   const bg = el("div", { class: "modal-bg" });
   const token = el("input", { type: "password", placeholder: "OpenF1 bearer token (optional)" }) as HTMLInputElement;
   token.value = readToken();
@@ -248,7 +252,7 @@ function openSettings(): void {
     writeToken(token.value);
     setDataMode(mode.value === "live" ? "live" : "historical");
     setPitLoss({ green: Number(g.value), vsc: Number(v.value), sc: Number(s.value) });
-    bg.remove();
+    closeAllModals();
     if (state.lock === "live" || token.value.trim()) void retryNow();
   };
   reset.onclick = () => {
@@ -256,7 +260,10 @@ function openSettings(): void {
     v.value = String(DEFAULT_PIT_LOSS.vsc);
     s.value = String(DEFAULT_PIT_LOSS.sc);
   };
-  cancel.onclick = () => bg.remove();
+  cancel.onclick = () => closeAllModals();
+  bg.addEventListener("click", (ev) => {
+    if (ev.target === bg) closeAllModals();
+  });
   document.body.append(bg);
 }
 
