@@ -172,25 +172,34 @@ export function applyFetchError(err: unknown): OpenF1Error {
 }
 
 export async function retryNow(): Promise<void> {
-  state.retryAt = 0;
+  if (state.lock === "live") state.retryAt = Date.now() + LIVE_LOCK_RETRY_MS;
+  else state.retryAt = 0;
   await reloadAll();
 }
 
+let reloadInFlight: Promise<void> | null = null;
+
 export async function reloadAll(): Promise<void> {
-  state.loading = state.lock ? "Retrying OpenF1…" : "Loading meetings…";
-  state.error = "";
-  emit(true);
-  try {
-    state.meetings = await loadMeetings(state.year);
-    state.sessions = await loadSessions(state.meetingKey);
-    if (state.sessionKey) await changeSession(state.sessionKey);
-    else {
-      state.loading = "";
-      emit(true);
+  if (reloadInFlight) return reloadInFlight;
+  reloadInFlight = (async () => {
+    state.loading = state.lock ? "Retrying OpenF1…" : "Loading meetings…";
+    state.error = "";
+    emit(true);
+    try {
+      state.meetings = await loadMeetings(state.year);
+      state.sessions = await loadSessions(state.meetingKey);
+      if (state.sessionKey) await changeSession(state.sessionKey);
+      else {
+        state.loading = "";
+        emit(true);
+      }
+    } catch (err) {
+      applyFetchError(err);
     }
-  } catch (err) {
-    applyFetchError(err);
-  }
+  })().finally(() => {
+    reloadInFlight = null;
+  });
+  return reloadInFlight;
 }
 
 let lockTimer = 0;
@@ -202,7 +211,7 @@ function startLockRetry(): void {
       return;
     }
     emit(true);
-    if (Date.now() >= state.retryAt) void retryNow();
+    if (!reloadInFlight && Date.now() >= state.retryAt) void retryNow();
   }, 1000);
 }
 
