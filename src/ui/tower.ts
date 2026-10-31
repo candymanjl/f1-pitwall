@@ -59,10 +59,35 @@ function tyreCell(row: TowerRow): HTMLElement {
   return wrap;
 }
 
-function nameCell(row: TowerRow): HTMLElement {
+export function posChangeBadge(row: TowerRow): HTMLElement | null {
+  if (row.posChange == null) return null;
+  const wrap = el("span", { class: "pos-delta" });
+  if (row.posChange === 0) {
+    wrap.classList.add("flat");
+    wrap.setAttribute("aria-label", "positions unchanged");
+    wrap.title = "Unchanged vs grid";
+    return wrap;
+  }
+  if (row.posChange > 0) {
+    wrap.classList.add("up");
+    wrap.setAttribute("aria-label", `gained ${row.posChange}`);
+    wrap.title = `+${row.posChange} vs grid`;
+    wrap.append(el("span", { class: "arrow", text: "▲" }), el("span", { class: "n", text: String(row.posChange) }));
+    return wrap;
+  }
+  wrap.classList.add("down");
+  const lost = Math.abs(row.posChange);
+  wrap.setAttribute("aria-label", `lost ${lost}`);
+  wrap.title = `−${lost} vs grid`;
+  wrap.append(el("span", { class: "arrow", text: "▼" }), el("span", { class: "n", text: String(lost) }));
+  return wrap;
+}
+
+export function driverNameCell(row: TowerRow): HTMLElement {
   const dot = el("span", { class: "swatch" });
   dot.style.background = teamColor(row.driver.team_colour);
-  return el("span", { class: "code" }, [dot, document.createTextNode(row.driver.name_acronym)]);
+  const kids: Array<Node | string | null> = [dot, row.driver.name_acronym, posChangeBadge(row)];
+  return el("span", { class: "code" }, kids);
 }
 
 function secClass(kind: TowerRow["s1Kind"]): string {
@@ -103,7 +128,7 @@ export function renderTower(
     tr.addEventListener("click", (ev) => selectDriver(n, ev));
     const cells: HTMLElement[] = [
       el("td", { class: "pos c-pos", text: String(row.pos) }),
-      el("td", { class: "c-drv" }, [nameCell(row)]),
+      el("td", { class: "c-drv" }, [driverNameCell(row)]),
     ];
     if (opts.cols === "basic") {
       cells.push(

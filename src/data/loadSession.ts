@@ -3,6 +3,7 @@ import { parseTs } from "../lib/time";
 import { apiGet } from "./client";
 import { isLiveLock } from "./errors";
 import { snapshotAt } from "./derive";
+import { isRaceOrSprint } from "./grid";
 import { detectPitLane, DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT, pickPitForTrace } from "./pitlane";
 import { buildOutline, detectCorners, lapWindow, pickOutlineLap, sectorFractions } from "./track";
 import type {
@@ -16,6 +17,7 @@ import type {
   RaceControl,
   Session,
   SessionBundle,
+  StartingGrid,
   Stint,
   Weather,
 } from "./types";
@@ -73,12 +75,21 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
   if (!meeting) throw new Error("Meeting not found");
 
   let intervals: Interval[] = [];
+  let startingGrid: StartingGrid[] = [];
   if (/race|sprint/i.test(session.session_name)) {
     try {
       intervals = await apiGet<Interval[]>("intervals", { session_key: sessionKey });
     } catch (err) {
       if (isLiveLock(err)) throw err;
       intervals = [];
+    }
+  }
+  if (isRaceOrSprint(session)) {
+    try {
+      startingGrid = await apiGet<StartingGrid[]>("starting_grid", { session_key: sessionKey });
+    } catch (err) {
+      if (isLiveLock(err)) throw err;
+      startingGrid = [];
     }
   }
 
@@ -106,6 +117,7 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
     laps,
     intervals,
     positions,
+    startingGrid,
     stints,
     weekendStints,
     pits,

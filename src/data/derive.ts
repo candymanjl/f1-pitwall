@@ -1,4 +1,5 @@
 import { asNumber, latestBefore, median, parseTs } from "../lib/time";
+import { gridByDriver, isRaceOrSprint, positionChange } from "./grid";
 import type {
   FlagMode,
   Lap,
@@ -315,6 +316,8 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
       retired,
       pitOut: !!cur?.is_pit_out_lap,
       pits: pitCount,
+      gridPos: null,
+      posChange: null,
       progress: (() => {
         const start = parseTs(cur?.date_start);
         if (!Number.isFinite(start)) return 0;
@@ -381,6 +384,15 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
         bestSectors.s2 = { time: lap.duration_sector_2!, code: d.name_acronym };
       if (!bestSectors.s3 && lap.duration_sector_3 === overallBest.s3)
         bestSectors.s3 = { time: lap.duration_sector_3!, code: d.name_acronym };
+    }
+  }
+
+  if (isRaceOrSprint(bundle.session)) {
+    const grid = gridByDriver(bundle);
+    for (const row of drafts) {
+      const slot = grid.get(row.driver.driver_number) ?? null;
+      row.gridPos = slot;
+      row.posChange = positionChange(slot, row.pos);
     }
   }
 

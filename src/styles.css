@@ -139,7 +139,7 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 .tower tr.dim td { opacity: 0.42; }
 .tower .pos { color: var(--muted); font-weight: 700; }
 .tower col.c-pos { width: 1.75rem; }
-.tower col.c-drv { width: 3.625rem; }
+.tower col.c-drv { width: 5.5rem; }
 .tower col.c-tyre { width: 3rem; }
 .tower col.c-lap { width: 4rem; }
 .tower col.c-gap { width: 3.625rem; }
@@ -152,6 +152,34 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 .tower col.c-sets { width: 4.5rem; }
 .tower col.c-traf { width: 8rem; }
 .tower .code { font-weight: 800; letter-spacing: 0.06em; display: flex; align-items: center; gap: 0.375rem; }
+.pos-delta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  width: 1.75rem;
+  min-width: 1.75rem;
+  height: 1rem;
+  flex: 0 0 1.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.pos-delta.flat::before {
+  content: "";
+  display: block;
+  width: 0.625rem;
+  height: 0.125rem;
+  margin-left: 0.25rem;
+  background: #f8fafc;
+  border-radius: 1px;
+}
+.pos-delta.up { color: var(--green); }
+.pos-delta.down { color: #f87171; }
+.pos-delta .arrow { width: 0.625rem; text-align: center; }
+.pos-delta .n { min-width: 1.1em; text-align: left; }
 .swatch { width: 0.5rem; height: 0.5rem; border-radius: 6.1875rem; flex: 0 0 auto; }
 .tyre {
   width: 1rem; height: 1rem; border-radius: 6.1875rem; border: 0.125rem solid currentColor;
