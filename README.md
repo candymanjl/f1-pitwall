@@ -48,7 +48,7 @@ The site shows a yellow banner instead of a raw error **only while you are signe
 | Page | What you get |
 | --- | --- |
 | Track map | Timing tower + circuit outline from `/location`, cars placed by lap progress, sector labels. Race/sprint towers show positions gained/lost vs the grid |
-| Timing | Tower with last/best, interval, gap, current lap, mini-sector grid, purple/green/yellow sector times, weather and gap line. Next to each name: positions gained (green ▲) / lost (red ▼) vs `/starting_grid`, or a short white line if unchanged — races and sprints only |
+| Timing | Tower with last/best, interval, gap, current lap, and full S1/S2/S3 times (purple overall, green personal, yellow otherwise). A sector time stays up until the next one finishes. Mini-sectors are compact blocks grouped into S1, S2, and S3 for the current lap, and they clear when that lap starts. Weather and the gap line sit in the status bar. Next to each name: positions gained (green ▲) / lost (red ▼) vs `/starting_grid`, or a short white line if unchanged — races and sprints only |
 | Telemetry | Up to 4 drivers × a lap each; speed / throttle / brake / gear / rpm / DRS / delta, aligned by distance (`/car_data` joined to `/location`). Chips hide channels and the rest expand to fill the chart. Overlay draws the selected channels in one panel (normalized, a line style per channel, a color per driver) and is saved in this browser. The bottom brush zooms every trace; double-click resets; corner buttons and the mini map follow the selection |
 | Race trace | Gap vs leader, vs average, or vs a chosen driver; pit markers; SC / VSC bands; driver toggles |
 | Pit circle | One revolution = one green-flag lap; cars by gap to leader; interval labels; pit ghost for the selected driver |
