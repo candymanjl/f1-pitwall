@@ -1,0 +1,59 @@
+/* Strategy page only. Splitters use .strat-split so the shared tower handle is untouched.
+   main > .page beats the shared .page.strategy rule, which is imported later. */
+
+@media (min-width: 1101px) {
+  main > .page.strategy {
+    grid-template-columns: minmax(0, var(--strat-main, 1.35fr)) 0.55rem minmax(16rem, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    height: 100%;
+    overflow: hidden;
+  }
+}
+
+.page.strategy .strat-main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 0.55rem minmax(6.5rem, var(--strat-cuts, 0.42fr));
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.page.strategy .panel {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.page.strategy .panel-b {
+  overflow: auto;
+  min-height: 0;
+}
+
+.page.strategy .tower tbody td {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.strat-split {
+  background: #1a2030;
+  border-radius: 0.2rem;
+  touch-action: none;
+  user-select: none;
+}
+.strat-split.x { cursor: ew-resize; }
+.strat-split.y { cursor: ns-resize; }
+.strat-split:hover,
+.strat-split.dragging { background: var(--yellow, #eab308); }
+
+@media (max-width: 1100px) {
+  main > .page.strategy {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(22rem, 70vh) 0.55rem minmax(14rem, auto);
+    height: auto;
+    overflow: visible;
+  }
+  .page.strategy .strat-main {
+    min-height: 22rem;
+  }
+}
