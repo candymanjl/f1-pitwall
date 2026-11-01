@@ -77,9 +77,23 @@ button { cursor: pointer; }
   padding: 0.5rem 1rem; border-bottom: 1px solid var(--line);
   background: #0a0c13;
 }
+.session-pickers {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+}
 .toolbar label { font-size: 0.6875rem; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
 .toolbar select, .toolbar input[type="number"] {
   background: #121623; border: 1px solid #2a3144; border-radius: 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.8125rem;
+}
+.toolbar #meeting { max-width: 14rem; }
+.toolbar button.load-session {
+  background: #151a27; border: 1px solid #2a3144; border-radius: 0.25rem;
+  padding: 0.3125rem 0.75rem; font-weight: 700; min-width: 7.25rem;
+}
+.toolbar button.load-session.pending { background: var(--red); border-color: var(--red); }
+.toolbar button.load-session:disabled { opacity: 0.72; cursor: wait; }
+@media (max-width: 1100px) {
+  .toolbar #meeting { max-width: 9.5rem; }
+  .toolbar #session { max-width: 8.5rem; }
 }
 .replay { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-left: auto; flex: 1 1 0; min-width: 0; }
 .replay button, .toolbar .ghost {

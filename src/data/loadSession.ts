@@ -13,6 +13,7 @@ import type {
   Lap,
   LocationSample,
   Meeting,
+  PageId,
   Pit,
   Position,
   RaceControl,
@@ -31,6 +32,18 @@ export async function loadMeetings(year: number): Promise<Meeting[]> {
 export async function loadSessions(meetingKey: number): Promise<Session[]> {
   const rows = await apiGet<Session[]>("sessions", { meeting_key: meetingKey });
   return rows.sort((a, b) => parseTs(a.date_start) - parseTs(b.date_start));
+}
+
+export function cachedSession(sessions: Session[] | undefined, sessionKey: number): Session | undefined {
+  return sessions?.find((s) => s.session_key === sessionKey);
+}
+
+export function cachedMeeting(meetings: Meeting[] | undefined, meetingKey: number): Meeting | undefined {
+  return meetings?.find((m) => m.meeting_key === meetingKey);
+}
+
+export function mapPagesFirst(page?: PageId): boolean {
+  return page !== "tyres" && page !== "strategy";
 }
 
 async function loadTrack(sessionKey: number, laps: Lap[], drivers: Driver[]): Promise<[number, number][]> {
@@ -54,15 +67,78 @@ async function loadTrack(sessionKey: number, laps: Lap[], drivers: Driver[]): Pr
   }
 }
 
-export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
-  const sessions = await apiGet<Session[]>("sessions", { session_key: sessionKey });
-  const session = sessions[0];
+export type LoadProgress = "timing" | "map" | "weekend";
+
+export type LoadBundleOpts = {
+  meeting?: Meeting | null;
+  weekendSessions?: Session[] | null;
+  page?: PageId;
+  onProgress?: (phase: LoadProgress, bundle: SessionBundle) => void;
+};
+
+function emptyBundle(meeting: Meeting, session: Session, weekendSessions: Session[]): SessionBundle {
+  return {
+    meeting,
+    session,
+    weekendSessions: weekendSessions.slice().sort((a, b) => parseTs(a.date_start) - parseTs(b.date_start)),
+    drivers: [],
+    laps: [],
+    intervals: [],
+    positions: [],
+    startingGrid: [],
+    stints: [],
+    weekendStints: [],
+    pits: [],
+    weather: [],
+    raceControl: [],
+    track: [],
+    corners: [],
+    sectorFracs: [0.3, 0.6, 1],
+    pitEntry: DEFAULT_PIT_ENTRY,
+    pitExit: DEFAULT_PIT_EXIT,
+    locations: [],
+  };
+}
+
+async function loadWeekendStints(weekendSessions: Session[], sessionKey: number, current: Stint[]): Promise<Stint[]> {
+  const extras = await Promise.all(
+    weekendSessions
+      .filter((s) => s.session_key !== sessionKey)
+      .map(async (s) => {
+        try {
+          const extra = await apiGet<Stint[]>("stints", { session_key: s.session_key });
+          return extra.map((row) => ({ ...row, session_key: s.session_key }));
+        } catch (err) {
+          if (isLiveLock(err)) throw err;
+          return [] as Stint[];
+        }
+      }),
+  );
+  return [...current, ...extras.flat()];
+}
+
+export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}): Promise<SessionBundle> {
+  const cached = cachedSession(opts.weekendSessions ?? undefined, sessionKey);
+  const session = cached ?? (await apiGet<Session[]>("sessions", { session_key: sessionKey }))[0];
   if (!session) throw new Error("Session not found");
 
-  const [meetings, weekendSessions, drivers, laps, stints, pits, weather, raceControl, positions] =
+  const knownMeeting = cachedMeeting(opts.meeting ? [opts.meeting] : undefined, session.meeting_key);
+  const weekendKnown =
+    opts.weekendSessions &&
+    opts.weekendSessions.length > 0 &&
+    opts.weekendSessions.every((s) => s.meeting_key === session.meeting_key)
+      ? opts.weekendSessions
+      : null;
+
+  const raceLike = /race|sprint/i.test(session.session_name);
+  const [meetingRow, weekendSessions, drivers, laps, stints, pits, weather, raceControl, positions, intervals, startingGrid] =
     await Promise.all([
-      apiGet<Meeting[]>("meetings", { meeting_key: session.meeting_key }),
-      apiGet<Session[]>("sessions", { meeting_key: session.meeting_key }),
+      knownMeeting
+        ? Promise.resolve(knownMeeting)
+        : apiGet<Meeting[]>("meetings", { meeting_key: session.meeting_key }).then((rows) => rows[0]),
+      weekendKnown
+        ? Promise.resolve(weekendKnown)
+        : apiGet<Session[]>("sessions", { meeting_key: session.meeting_key }),
       apiGet<Driver[]>("drivers", { session_key: sessionKey }),
       apiGet<Lap[]>("laps", { session_key: sessionKey }),
       apiGet<Stint[]>("stints", { session_key: sessionKey }),
@@ -70,74 +146,81 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
       apiGet<Weather[]>("weather", { session_key: sessionKey }),
       apiGet<RaceControl[]>("race_control", { session_key: sessionKey }),
       apiGet<Position[]>("position", { session_key: sessionKey }),
+      raceLike
+        ? apiGet<Interval[]>("intervals", { session_key: sessionKey }).catch((err) => {
+            if (isLiveLock(err)) throw err;
+            return [] as Interval[];
+          })
+        : Promise.resolve([] as Interval[]),
+      isRaceOrSprint(session)
+        ? apiGet<StartingGrid[]>("starting_grid", { session_key: sessionKey }).catch((err) => {
+            if (isLiveLock(err)) throw err;
+            return [] as StartingGrid[];
+          })
+        : Promise.resolve([] as StartingGrid[]),
     ]);
 
-  const meeting = meetings[0];
+  const meeting = meetingRow;
   if (!meeting) throw new Error("Meeting not found");
 
-  let intervals: Interval[] = [];
-  let startingGrid: StartingGrid[] = [];
-  if (/race|sprint/i.test(session.session_name)) {
-    try {
-      intervals = await apiGet<Interval[]>("intervals", { session_key: sessionKey });
-    } catch (err) {
-      if (isLiveLock(err)) throw err;
-      intervals = [];
-    }
-  }
-  if (isRaceOrSprint(session)) {
-    try {
-      startingGrid = await apiGet<StartingGrid[]>("starting_grid", { session_key: sessionKey });
-    } catch (err) {
-      if (isLiveLock(err)) throw err;
-      startingGrid = [];
-    }
-  }
-
-  const weekendStints: Stint[] = [...stints];
-  for (const s of weekendSessions) {
-    if (s.session_key === sessionKey) continue;
-    try {
-      const extra = await apiGet<Stint[]>("stints", { session_key: s.session_key });
-      for (const row of extra) weekendStints.push({ ...row, session_key: s.session_key });
-    } catch (err) {
-      if (isLiveLock(err)) throw err;
-    }
-  }
-
-  const track = await loadTrack(sessionKey, laps, drivers);
-  const corners = detectCorners(track);
+  const sortedWeekend = weekendSessions.slice().sort((a, b) => parseTs(a.date_start) - parseTs(b.date_start));
+  const sortedDrivers = drivers.slice().sort((a, b) => a.driver_number - b.driver_number);
   const sectorFracs = sectorFractions(laps);
-  const pitMarks = await loadPitMarks(sessionKey, track, pits);
-  let locations: LocationSample[] = [];
-  try {
-    locations = await loadDriverLocations(sessionKey, drivers, session.date_start, session.date_end);
-  } catch (err) {
-    if (isLiveLock(err)) throw err;
-    locations = [];
-  }
 
-  return {
-    meeting,
-    session,
-    weekendSessions: weekendSessions.sort((a, b) => parseTs(a.date_start) - parseTs(b.date_start)),
-    drivers: drivers.sort((a, b) => a.driver_number - b.driver_number),
+  let bundle: SessionBundle = {
+    ...emptyBundle(meeting, session, sortedWeekend),
+    drivers: sortedDrivers,
     laps,
     intervals,
     positions,
     startingGrid,
     stints,
-    weekendStints,
+    weekendStints: stints.slice(),
     pits,
     weather,
     raceControl,
-    track,
-    corners,
     sectorFracs,
-    pitEntry: pitMarks.entry,
-    pitExit: pitMarks.exit,
-    locations,
   };
+  opts.onProgress?.("timing", bundle);
+
+  const locP = loadDriverLocations(sessionKey, sortedDrivers, session.date_start, session.date_end).catch((err) => {
+    if (isLiveLock(err)) throw err;
+    return [] as LocationSample[];
+  });
+  const trackP = (async () => {
+    const track = await loadTrack(sessionKey, laps, sortedDrivers);
+    const pitMarks = await loadPitMarks(sessionKey, track, pits);
+    return { track, corners: detectCorners(track), pitMarks };
+  })();
+  const stintP = loadWeekendStints(sortedWeekend, sessionKey, stints);
+
+  const applyMap = async () => {
+    const [locations, trackBits] = await Promise.all([locP, trackP]);
+    bundle = {
+      ...bundle,
+      locations,
+      track: trackBits.track,
+      corners: trackBits.corners,
+      pitEntry: trackBits.pitMarks.entry,
+      pitExit: trackBits.pitMarks.exit,
+    };
+    opts.onProgress?.("map", bundle);
+  };
+  const applyWeekend = async () => {
+    const weekendStints = await stintP;
+    bundle = { ...bundle, weekendStints };
+    opts.onProgress?.("weekend", bundle);
+  };
+
+  if (mapPagesFirst(opts.page)) {
+    await applyMap();
+    await applyWeekend();
+  } else {
+    await applyWeekend();
+    await applyMap();
+  }
+
+  return bundle;
 }
 
 async function loadPitMarks(

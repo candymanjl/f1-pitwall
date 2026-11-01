@@ -1,4 +1,13 @@
-import { HISTORICAL_TTL_MS, RATE_MIN_GAP_MS, RATE_PER_MINUTE, restBase } from "../config";
+import {
+  HISTORICAL_TTL_MS,
+  RATE_MIN_GAP_MS,
+  RATE_PER_MINUTE,
+  RELAY_CONCURRENCY,
+  RELAY_RATE_MIN_GAP_MS,
+  RELAY_RATE_PER_MINUTE,
+  readRelayUrl,
+  restBase,
+} from "../config";
 import { hasUsableAuth, peekAccessToken } from "./auth";
 import { authorizedFetch } from "./clientAuth";
 import { classifyOpenF1Failure, isNetworkFailure, OpenF1Error } from "./errors";
@@ -6,10 +15,19 @@ import { classifyOpenF1Failure, isNetworkFailure, OpenF1Error } from "./errors";
 type CacheEntry = { expires: number; body: unknown };
 
 const memory = new Map<string, CacheEntry>();
-const queue: Array<() => void> = [];
+const queue: Array<() => Promise<unknown>> = [];
 let lastSent = 0;
 const sentAt: number[] = [];
 let pumping = false;
+let inFlight = 0;
+const slotWaiters: Array<() => void> = [];
+
+export function activeRateLimits(): { minGapMs: number; perMinute: number; concurrency: number } {
+  if (readRelayUrl()) {
+    return { minGapMs: RELAY_RATE_MIN_GAP_MS, perMinute: RELAY_RATE_PER_MINUTE, concurrency: RELAY_CONCURRENCY };
+  }
+  return { minGapMs: RATE_MIN_GAP_MS, perMinute: RATE_PER_MINUTE, concurrency: 1 };
+}
 
 function cacheKey(path: string, params: Record<string, string | number | boolean | undefined>): string {
   const q = Object.entries(params)
@@ -28,25 +46,38 @@ async function pump(): Promise<void> {
   if (pumping) return;
   pumping = true;
   while (queue.length) {
+    const { minGapMs, perMinute, concurrency } = activeRateLimits();
     const now = Date.now();
     while (sentAt.length && now - sentAt[0] > 60_000) sentAt.shift();
-    const gap = RATE_MIN_GAP_MS - (now - lastSent);
-    const minuteWait = sentAt.length >= RATE_PER_MINUTE ? 60_000 - (now - sentAt[0]) : 0;
+    if (inFlight >= concurrency) {
+      await new Promise<void>((resolve) => {
+        slotWaiters.push(resolve);
+      });
+      continue;
+    }
+    const gap = minGapMs - (Date.now() - lastSent);
+    const minuteWait = sentAt.length >= perMinute ? 60_000 - (Date.now() - sentAt[0]) : 0;
     const delay = Math.max(gap, minuteWait, 0);
     if (delay > 0) await wait(delay);
+    const job = queue.shift();
+    if (!job) break;
     lastSent = Date.now();
     sentAt.push(lastSent);
-    const job = queue.shift();
-    job?.();
+    inFlight += 1;
+    void Promise.resolve()
+      .then(job)
+      .finally(() => {
+        inFlight = Math.max(0, inFlight - 1);
+        const next = slotWaiters.shift();
+        next?.();
+      });
   }
   pumping = false;
 }
 
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {
-    queue.push(() => {
-      fn().then(resolve, reject);
-    });
+    queue.push(() => fn().then(resolve, reject));
     void pump();
   });
 }
@@ -127,6 +158,8 @@ export function resetClientForTests(): void {
   lastSent = 0;
   sentAt.length = 0;
   pumping = false;
+  inFlight = 0;
+  slotWaiters.length = 0;
 }
 
 async function fetchJson(url: string, path: string, anonymous: boolean): Promise<unknown> {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AUTH_ACCESS_KEY, AUTH_EXPIRY_KEY, AUTH_USER_KEY, writeRelayUrl } from "../config";
 import { configureAuth, memoryStore, resetAuthForTests } from "./auth";
-import { apiGet, isRetryableAuthFailure, resetClientForTests, shouldRetryWithoutAuth } from "./client";
+import { activeRateLimits, apiGet, isRetryableAuthFailure, resetClientForTests, shouldRetryWithoutAuth } from "./client";
 import { OpenF1Error } from "./errors";
 
 function jsonRes(status: number, body: unknown): Response {
@@ -144,6 +144,41 @@ describe("apiGet bearer + historical 401 fallback", () => {
     await expect(apiGet("location", { session_key: 9877 })).rejects.toMatchObject({
       kind: "live-lock",
     });
+  });
+});
+
+describe("relay rate limits", () => {
+  it("pipelines more requests when a relay URL is saved", async () => {
+    const memory = new Map<string, string>([["f1pitwall.openf1Relay", "https://f1-pitwall-relay-11686.azurewebsites.net"]]);
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (k: string) => memory.get(k) ?? null,
+        setItem: (k: string, v: string) => void memory.set(k, v),
+        removeItem: (k: string) => void memory.delete(k),
+      },
+      configurable: true,
+    });
+    expect(activeRateLimits().concurrency).toBeGreaterThan(1);
+    expect(activeRateLimits().minGapMs).toBeLessThan(100);
+
+    let inflight = 0;
+    let maxInflight = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        inflight += 1;
+        maxInflight = Math.max(maxInflight, inflight);
+        await new Promise((r) => setTimeout(r, 80));
+        inflight -= 1;
+        return jsonRes(200, []);
+      }),
+    );
+    await Promise.all([
+      apiGet("laps", { session_key: 1 }),
+      apiGet("position", { session_key: 1 }),
+      apiGet("weather", { session_key: 1 }),
+    ]);
+    expect(maxInflight).toBeGreaterThan(1);
   });
 });
 
