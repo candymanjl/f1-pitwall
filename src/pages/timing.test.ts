@@ -120,6 +120,15 @@ describe("timing page", () => {
     expect(groups[0].querySelector(".seg-yellow, .seg-overall, .seg-personal, .seg-pit")).toBeNull();
     expect(groups[2].querySelectorAll(".seg").length).toBe(6);
     expect(root.querySelector(".mini-head")?.textContent).toBe("S1S2S3");
+    const heads = [...root.querySelectorAll("thead th")];
+    const miniAt = heads.findIndex((th) => th.classList.contains("c-mini"));
+    const secAt = heads.findIndex((th) => th.classList.contains("c-sec"));
+    expect(miniAt).toBeGreaterThanOrEqual(0);
+    expect(miniAt).toBeLessThan(secAt);
+    const rowCells = [...root.querySelectorAll("tbody tr")].at(-1)!.children;
+    const miniCell = [...rowCells].findIndex((cell) => (cell as HTMLElement).classList.contains("c-mini"));
+    const secCell = [...rowCells].findIndex((cell) => (cell as HTMLElement).classList.contains("c-sec"));
+    expect(miniCell).toBeLessThan(secCell);
 
     const later = parseTs("2025-10-26T20:02:40.000Z");
     state.snap = snapshotAt(state.bundle, later);

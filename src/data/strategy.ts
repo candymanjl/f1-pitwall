@@ -5,6 +5,7 @@ import {
   anchorForPace,
   asCompound,
   buildStopPlans,
+  compoundLetter,
   compoundRuleStatus,
   formatPitWindows,
   readTyreStore,
@@ -192,6 +193,113 @@ function paceGain(
   return gain;
 }
 
+const DRY: CompoundId[] = ["SOFT", "MEDIUM", "HARD"];
+
+function stintSeconds(
+  model: TyreModel,
+  anchor: number,
+  compound: CompoundId,
+  age0: number,
+  laps: number,
+  raceLap0: number,
+): number {
+  let total = 0;
+  for (let i = 0; i < laps; i++) total += strategyLapTime(model, anchor, compound, age0 + i, raceLap0 + i);
+  return total;
+}
+
+/**
+ * When the legal search has nothing (no sets left, or only the compound already fitted),
+ * still offer a pit-now stop and one later alternative. A compound with no sets left is
+ * marked as assumed so the row is never blank.
+ */
+function fallbackPitPlans(input: {
+  model: TyreModel;
+  remaining: number;
+  raceLap: number;
+  current: CompoundId;
+  age: number;
+  pitLoss: number;
+  sets: Record<string, number>;
+  anchor: number;
+}): { plans: StopPlan[]; windows: string } {
+  const remaining = Math.max(2, Math.floor(input.remaining));
+  const others = DRY.filter((compound) => compound !== input.current);
+  const available = others.filter((compound) => (input.sets[compound] ?? 0) > 0);
+  const pool = available.length ? available : others;
+
+  const shapes: Array<{ lengths: [number, number]; label: "pit now" | "best alternative" }> = [
+    { lengths: [1, remaining - 1], label: "pit now" },
+  ];
+  const later = Math.min(remaining - 1, Math.max(2, Math.round(remaining * 0.4)));
+  if (later !== 1) shapes.push({ lengths: [later, remaining - later], label: "best alternative" });
+
+  type Draft = {
+    lengths: [number, number];
+    next: CompoundId;
+    total: number;
+    first: number;
+    second: number;
+    assumed: boolean;
+    label: "pit now" | "best alternative";
+  };
+
+  const costOf = (lengths: [number, number], next: CompoundId): Pick<Draft, "total" | "first" | "second" | "assumed"> => {
+    const first = stintSeconds(input.model, input.anchor, input.current, input.age, lengths[0], input.raceLap);
+    const second = stintSeconds(
+      input.model,
+      input.anchor,
+      next,
+      0,
+      lengths[1],
+      input.raceLap + lengths[0],
+    );
+    return {
+      first,
+      second,
+      total: first + second + input.pitLoss,
+      assumed: (input.sets[next] ?? 0) <= 0,
+    };
+  };
+
+  const pick = (lengths: [number, number], label: Draft["label"]): Draft | null => {
+    let best: Draft | null = null;
+    for (const next of pool) {
+      const cost = costOf(lengths, next);
+      if (!best || cost.total < best.total) best = { lengths, next, label, ...cost };
+    }
+    return best;
+  };
+
+  const now = pick(shapes[0].lengths, "pit now");
+  if (!now) return { plans: [], windows: formatPitWindows([]) };
+
+  let alt = shapes[1] ? pick(shapes[1].lengths, "best alternative") : null;
+  if (!alt) {
+    const other = pool.find((compound) => compound !== now.next) ?? DRY.find((compound) => compound !== input.current && compound !== now.next);
+    if (other) {
+      alt = { lengths: now.lengths, next: other, label: "best alternative", ...costOf(now.lengths, other) };
+    }
+  }
+  const drafts = alt ? [now, alt] : [now];
+  const bestTotal = Math.min(...drafts.map((draft) => draft.total));
+  const plans: StopPlan[] = drafts.map((draft) => ({
+    stops: 1,
+    total: draft.total,
+    pitLoss: input.pitLoss,
+    finish: draft.total - bestTotal < 0.05 ? "best" : `+${(draft.total - bestTotal).toFixed(1)} vs best`,
+    note: draft.assumed ? `${draft.label} · assumed set` : draft.label,
+    stints: [
+      { compound: input.current, laps: draft.lengths[0], time: draft.first },
+      { compound: draft.next, laps: draft.lengths[1], time: draft.second },
+    ],
+  }));
+  const windows = drafts
+    .map((draft) => `${compoundLetter(input.current)}→${compoundLetter(draft.next)} L${input.raceLap + draft.lengths[0]}`)
+    .join(" · ");
+  return { plans, windows };
+}
+
 export function strategyBrief(
   bundle: SessionBundle,
   snap: TimingSnapshot,
@@ -200,20 +308,6 @@ export function strategyBrief(
 ): StrategyBrief {
   const store = readTyreStore();
   const row = snap.rows.find((r) => r.driver.driver_number === driverNumber) ?? null;
-  const key = [
-    bundle.session.session_key,
-    driverNumber,
-    row?.currentLap ?? 0,
-    row?.compound ?? "",
-    row?.tyreAge ?? 0,
-    pitLoss,
-    snap.leaderLap,
-    snap.weather?.rainfall ?? 0,
-    snap.medianGreenLap,
-    JSON.stringify(store.model),
-  ].join("|");
-  if (briefCache?.key === key) return briefCache.value;
-
   const model = store.model;
   const current = asCompound(row?.compound) ?? "MEDIUM";
   const age = Math.max(0, row?.tyreAge ?? 0);
@@ -225,6 +319,21 @@ export function strategyBrief(
     ? anchorForPace(model, current, age, raceLap, pace)
     : model.baseLap;
   const sets = row ? estimateSetsLeft(bundle, row.driver.driver_number) : { ...TYRE_ALLOCATION };
+  const key = [
+    bundle.session.session_key,
+    driverNumber,
+    row?.currentLap ?? 0,
+    row?.compound ?? "",
+    row?.tyreAge ?? 0,
+    pitLoss,
+    snap.leaderLap,
+    snap.weather?.rainfall ?? 0,
+    snap.medianGreenLap,
+    JSON.stringify(store.model),
+    JSON.stringify(sets),
+  ].join("|");
+  if (briefCache?.key === key) return briefCache.value;
+
   const rule = compoundRuleStatus({
     rainfall: snap.weather?.rainfall,
     messages: bundle.raceControl
@@ -251,12 +360,27 @@ export function strategyBrief(
     note: plan.stops === 1 ? "1 stop" : `${plan.stops} stop`,
     stints: plan.stints.map((stint) => ({ compound: stint.compound, laps: stint.laps, time: stint.time })),
   }));
+  let windows = formatPitWindows(searched.windows);
+  if (!plans.length) {
+    const fallback = fallbackPitPlans({
+      model,
+      remaining,
+      raceLap,
+      current,
+      age,
+      pitLoss,
+      sets,
+      anchor,
+    });
+    plans.push(...fallback.plans);
+    windows = fallback.windows;
+  }
 
   const idx = row ? snap.rows.findIndex((r) => r.driver.driver_number === driverNumber) : -1;
   const cuts = row ? cutsFor(bundle, snap, row, idx, model, pitLoss, rule.ruleActive) : EMPTY_CUTS;
   const value: StrategyBrief = {
     plans,
-    windows: formatPitWindows(searched.windows),
+    windows,
     rule: rule.reason,
     cuts,
   };

@@ -3,7 +3,8 @@
 .page.timing .tower col.c-lap { width: 5.15rem; }
 .page.timing .tower col.c-gap { width: 4.5rem; }
 .page.timing .tower col.c-sec { width: 5rem; }
-.page.timing .tower col.c-mini { width: 18rem; }
+/* auto takes the leftover width so the blocks, not a blank margin, fill the row. */
+.page.timing .tower col.c-mini { width: auto; }
 
 .page.timing .tower td.c-sec,
 .page.timing .tower th.c-sec {
@@ -35,19 +36,19 @@
 .timing-legend .other { --sw: var(--yellow); }
 .timing-legend .pit { --sw: #d6d9e0; }
 
+.page.timing .tower td.c-mini,
+.page.timing .tower th.c-mini {
+  overflow: hidden;
+}
 .page.timing .mini-head,
 .page.timing .mini-sectors {
-  --seg: 0.5rem;
-  --seg-gap: 2px;
+  --seg-gap: 3px;
   display: grid;
-  grid-template-columns:
-    calc(var(--mini-s1, 8) * var(--seg) + (var(--mini-s1, 8) - 1) * var(--seg-gap))
-    calc(var(--mini-s2, 8) * var(--seg) + (var(--mini-s2, 8) - 1) * var(--seg-gap))
-    calc(var(--mini-s3, 6) * var(--seg) + (var(--mini-s3, 6) - 1) * var(--seg-gap));
-  column-gap: 0.7rem;
+  grid-template-columns: var(--mini-track, 8fr 8fr 6fr);
+  column-gap: 0.65rem;
   align-items: center;
-  width: max-content;
-  max-width: 100%;
+  width: 100%;
+  min-width: 0;
 }
 .page.timing .mini-head span {
   color: var(--muted);
@@ -55,18 +56,16 @@
   letter-spacing: 0.08em;
 }
 .page.timing .mini-group {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: var(--seg);
+  display: flex;
   gap: var(--seg-gap);
-  justify-content: start;
+  min-width: 0;
   height: 0.85rem;
 }
 .page.timing .mini-group .seg {
-  width: var(--seg);
+  flex: 1 1 0;
+  min-width: 0;
   height: 0.85rem;
   display: block;
-  flex: none;
 }
 .page.timing .seg-overall { background: var(--purple); }
 .page.timing .seg-personal { background: var(--green); }
@@ -80,5 +79,4 @@
   .page.timing .tower col.c-lap { width: 4.85rem; }
   .page.timing .tower col.c-gap { width: 4.15rem; }
   .page.timing .tower col.c-sec { width: 4.65rem; }
-  .page.timing .tower col.c-mini { width: 16.5rem; }
 }

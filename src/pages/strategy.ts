@@ -1,20 +1,23 @@
 import { driverStrategy, strategyBrief } from "../data/strategy";
 import { compoundLetter } from "../data/tyres";
+import { bindDriverSelect } from "../lib/bindSelect";
 import { tyreColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { formatDelta, formatLap } from "../lib/time";
 import { panel } from "../ui/panel";
-import { hasDriverSelection, isDriverSelected, selectDriver, state } from "../state";
+import { hasDriverSelection, isDriverSelected, state } from "../state";
 import { driverNameCell } from "../ui/tower";
+import "./strategy.css";
+import { mountStrategyLayout } from "./strategySplit";
 
 export function mountStrategy(parent: HTMLElement): { update: () => void } {
   const tableP = panel("Rolling pace  ·  all model outputs are estimates");
   const planP = panel("1 / 2 / 3 stop comparison");
   const cutP = panel("Undercut / overcut  ·  estimate");
-  planP.root.style.gridColumn = "2";
-  planP.root.style.gridRow = "1 / span 2";
-  const page = el("div", { class: "page strategy" }, [tableP.root, planP.root, cutP.root]);
+  const page = el("div", { class: "page strategy" });
+  mountStrategyLayout(page, tableP.root, cutP.root, planP.root);
   parent.append(page);
+  bindDriverSelect(tableP.body);
 
   const update = () => {
     const bundle = state.bundle;
@@ -63,7 +66,6 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
         class: on ? "sel" : hasDriverSelection() ? "dim" : "",
         "data-driver": String(row.driver.driver_number),
       });
-      tr.onclick = (ev) => selectDriver(row.driver.driver_number, ev);
       const tyre = el("span", { class: "tyre", text: (row.compound ?? "?").slice(0, 1) });
       tyre.style.color = tyreColor(row.compound);
       tr.append(
@@ -99,6 +101,9 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
       const box = el("div", { class: `plan ${plan.finish === "best" ? "best" : ""}` });
       const mix = plan.stints.map((st) => `${compoundLetter(st.compound)}${st.laps}`).join(" ");
       box.append(el("div", { text: `${plan.stops} stop  ·  ${mix}  ·  ${plan.finish}` }));
+      if (/pit now|alternative|assumed/i.test(plan.note)) {
+        box.append(el("div", { class: "legend plan-note", text: plan.note }));
+      }
       const bar = el("div", { class: "bar" });
       let x = 0;
       for (const st of plan.stints) {
@@ -117,7 +122,7 @@ export function mountStrategy(parent: HTMLElement): { update: () => void } {
     }
     wrap.append(el("div", { class: "legend", text: `Pit windows  ·  ${brief.windows}` }));
     wrap.append(el("div", { class: "legend", text: brief.rule }));
-    wrap.append(el("div", { class: "help", text: "Stint times come from the Tyres page: offset vs a new Soft, linear fade or cliff, lifespan, and fuel. Dry plans that use only one dry compound are left out. Edit the model on Tyres." }));
+    wrap.append(el("div", { class: "help", text: "Stint times come from the Tyres page: offset vs a new Soft, linear fade or cliff, lifespan, and fuel. Dry plans that use only one dry compound are left out of the search. If that search is empty, a pit-now plan and a best alternative are still shown, and a set you do not have left is marked assumed. Edit the model on Tyres." }));
     planP.body.replaceChildren(wrap);
 
     const cuts = brief.cuts;

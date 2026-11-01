@@ -161,4 +161,39 @@ describe("strategy uses the tyre model", () => {
     const brief = strategyBrief(bundle, snap, 1, 22);
     expect(brief.rule).toMatch(/lifted/i);
   });
+
+  it("still offers a pit-now plan and an alternative when every dry set is used", () => {
+    memoryStorage();
+    writeTyreStore({ model: defaultTyreModel(), fit: null });
+    const { bundle, snap } = fixture(0);
+    const stints = [];
+    let n = 1;
+    for (const [compound, count] of [
+      ["SOFT", 8],
+      ["MEDIUM", 3],
+      ["HARD", 2],
+    ] as const) {
+      for (let i = 0; i < count; i++) {
+        stints.push({
+          driver_number: 1,
+          stint_number: n++,
+          lap_start: 1,
+          lap_end: 2,
+          compound,
+          tyre_age_at_start: 0,
+        });
+      }
+    }
+    bundle.weekendStints = stints;
+    const brief = strategyBrief(bundle, snap, 1, 22);
+    expect(brief.plans.length).toBeGreaterThanOrEqual(2);
+    expect(brief.plans.some((plan) => /pit now/i.test(plan.note))).toBe(true);
+    expect(brief.plans.some((plan) => /alternative/i.test(plan.note))).toBe(true);
+    expect(brief.plans.some((plan) => /assumed set/i.test(plan.note))).toBe(true);
+    for (const plan of brief.plans) {
+      expect(new Set(plan.stints.map((stint) => stint.compound)).size).toBeGreaterThanOrEqual(2);
+    }
+    expect(brief.windows).not.toMatch(/No pit window/i);
+    expect(brief.windows.length).toBeGreaterThan(0);
+  });
 });

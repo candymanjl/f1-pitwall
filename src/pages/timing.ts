@@ -30,6 +30,18 @@ function paintSector(cell: HTMLElement, read: SectorReadout): void {
   cell.title = read.time == null ? "" : formatSector(read.time);
 }
 
+/** Mini-sectors sit ahead of the S1/S2/S3 clocks. The shared tower keeps Mini last. */
+function placeMiniBeforeSectors(table: HTMLTableElement): void {
+  const miniCol = table.querySelector("col.c-mini");
+  const firstSecCol = table.querySelector("col.c-sec");
+  if (miniCol && firstSecCol) firstSecCol.before(miniCol);
+  for (const row of table.querySelectorAll("tr")) {
+    const mini = row.querySelector(".c-mini");
+    const firstSec = row.querySelector(".c-sec");
+    if (mini && firstSec) firstSec.before(mini);
+  }
+}
+
 function miniGroup(label: string, codes: Array<number | null>): HTMLElement {
   const group = el("div", { class: "mini-group" });
   group.dataset.sector = label;
@@ -66,9 +78,10 @@ export function mountTiming(parent: HTMLElement): { update: () => void } {
     });
     const bundle = state.bundle;
     const slots = sessionMiniSlots(bundle?.laps ?? []);
-    page.style.setProperty("--mini-s1", String(Math.max(1, slots.s1)));
-    page.style.setProperty("--mini-s2", String(Math.max(1, slots.s2)));
-    page.style.setProperty("--mini-s3", String(Math.max(1, slots.s3)));
+    page.style.setProperty(
+      "--mini-track",
+      `${Math.max(1, slots.s1)}fr ${Math.max(1, slots.s2)}fr ${Math.max(1, slots.s3)}fr`,
+    );
 
     const head = table.querySelector("th.c-mini");
     if (head) {
@@ -98,6 +111,7 @@ export function mountTiming(parent: HTMLElement): { update: () => void } {
         }
       }
     }
+    placeMiniBeforeSectors(table);
     tablePanel.body.append(table);
   };
   return { update };
