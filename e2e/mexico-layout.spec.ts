@@ -9,6 +9,7 @@ type Hooks = {
     selectedDriver: number | null;
     selectedDrivers: number[];
     traceMode: string;
+    traceDriver: number | null;
     pitLoss: { green: number };
     pitMode: string;
     snap: { rows: { driver: { driver_number: number }; progress: number }[] } | null;
@@ -230,10 +231,38 @@ for (const size of SIZES) {
       await page.locator(`button[data-trace-mode='${mode}']`).dispatchEvent("pointerdown");
       expect((await hooks(page)).state.traceMode).toBe(mode);
     }
-    await page.locator("button[data-driver='4']").dispatchEvent("pointerdown");
+    await page.locator(".trace-drivers button[data-driver='4']").dispatchEvent("pointerdown");
     expect((await hooks(page)).state.selectedDriver).toBe(4);
-    await page.locator("button[data-driver='1']").dispatchEvent("pointerdown");
+    await page.locator(".trace-drivers button[data-driver='1']").dispatchEvent("pointerdown");
     expect((await hooks(page)).state.selectedDriver).toBe(1);
+    await page.locator("button[data-trace-mode='driver']").dispatchEvent("pointerdown");
+    expect((await hooks(page)).state.traceMode).toBe("driver");
+    const picker = page.locator(".trace-ref");
+    await expect(picker).toBeVisible();
+    await page.locator(".trace-ref-btn").dispatchEvent("pointerdown");
+    const list = page.locator(".trace-ref-list");
+    await expect(list).toBeVisible();
+    const theme = await list.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const parse = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+      const [br, bg, bb] = parse(cs.backgroundColor);
+      const [tr, tg, tb] = parse(cs.color);
+      const bgLum = 0.2126 * br + 0.7152 * bg + 0.0722 * bb;
+      const fgLum = 0.2126 * tr + 0.7152 * tg + 0.0722 * tb;
+      return { bgLum, fgLum, optCount: el.querySelectorAll(".trace-ref-opt").length, swatches: el.querySelectorAll(".swatch").length };
+    });
+    expect(theme.bgLum).toBeLessThan(80);
+    expect(theme.fgLum).toBeGreaterThan(160);
+    expect(theme.optCount).toBeGreaterThanOrEqual(4);
+    expect(theme.swatches).toBeGreaterThanOrEqual(4);
+    await page.screenshot({
+      path: `/opt/cursor/artifacts/screenshots/mexico_racetrace_dropdown_${size.name}.png`,
+      fullPage: true,
+    });
+    await page.locator(".trace-ref-opt[data-driver='4']").dispatchEvent("pointerdown");
+    expect((await hooks(page)).state.traceDriver).toBe(4);
+    await expect(page.locator(".trace-ref-list")).toBeHidden();
+    await expect(page.locator(".trace-ref-btn .trace-ref-code")).toHaveText("NOR");
     await page.screenshot({
       path: `/opt/cursor/artifacts/screenshots/mexico_racetrace_${size.name}.png`,
       fullPage: true,
@@ -253,8 +282,41 @@ for (const size of SIZES) {
       api.setClock(api.state.t, "code");
     });
     await expect.poll(async () => (await hooks(page)).state.selectedDriver).toBe(1);
-    await expect(page.locator(".pit-rejoin-hint")).toContainText("VER rejoin");
-    await expect(page.locator(".pit-rejoin-hint")).toContainText(/between|ahead of/);
+    const hint = page.locator(".pit-rejoin-hint");
+    await expect(hint).toContainText("VER rejoin");
+    const hintLook = await hint.evaluate((el) => ({
+      size: Number.parseFloat(getComputedStyle(el).fontSize),
+      codes: [...el.querySelectorAll(".pit-rejoin-code")].map((n) => ({
+        text: n.textContent,
+        color: getComputedStyle(n).color,
+      })),
+      ahead: el.querySelector(".pit-rejoin-gap[data-side='ahead']")?.textContent ?? "",
+      behind: el.querySelector(".pit-rejoin-gap[data-side='behind']")?.textContent ?? "",
+    }));
+    expect(hintLook.size).toBeGreaterThanOrEqual(18);
+    expect(hintLook.codes.some((c) => c.text === "VER" && /54,\s*113,\s*198/.test(c.color))).toBe(true);
+    expect(hintLook.ahead || hintLook.behind).toBeTruthy();
+    if (hintLook.ahead) expect(hintLook.ahead).toMatch(/[−-]\d+\.\d{3}/);
+    if (hintLook.behind) expect(hintLook.behind).toMatch(/\+\d+\.\d{3}/);
+    const pitZoom = page.locator(".page.pitcircle button.map-zoom");
+    await expect(pitZoom).toBeVisible();
+    const pitSvg = page.locator("svg.circle");
+    await expect(pitSvg).toHaveAttribute("data-zoom", "full");
+    await pitZoom.dispatchEvent("pointerdown");
+    await expect(pitZoom).toHaveAttribute("aria-pressed", "true");
+    await expect(pitSvg).toHaveAttribute("data-zoom", "follow");
+    await expect(pitSvg).toHaveAttribute("data-follow", "1");
+    await expect(pitSvg).toHaveAttribute("data-follow-kind", "rejoin");
+    await page.screenshot({
+      path: `/opt/cursor/artifacts/screenshots/mexico_pitcircle_zoom_${size.name}.png`,
+      fullPage: true,
+    });
+    await pitZoom.dispatchEvent("pointerdown");
+    await expect(pitSvg).toHaveAttribute("data-zoom", "full");
+    await page.screenshot({
+      path: `/opt/cursor/artifacts/screenshots/mexico_pitcircle_rejoin_${size.name}.png`,
+      fullPage: true,
+    });
     await page.evaluate(() => {
       const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
       api.state.pitLoss.green = 90;

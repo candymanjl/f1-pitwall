@@ -157,13 +157,43 @@ export function mountRaceTrace(parent: HTMLElement): { update: () => void } {
     modes.append(b);
     modeBtns.set(id, b);
   }
-  const refSel = el("select", { class: "trace-ref", "aria-label": "Reference driver" }) as HTMLSelectElement;
-  refSel.hidden = true;
-  refSel.addEventListener("change", () => setTraceMode("driver", Number(refSel.value)));
-  modes.append(refSel);
+  const refWrap = el("div", { class: "trace-ref" });
+  refWrap.hidden = true;
+  const refBtn = el("button", {
+    type: "button",
+    class: "trace-ref-btn",
+    "aria-haspopup": "listbox",
+    "aria-expanded": "false",
+    "aria-label": "Reference driver",
+  }) as HTMLButtonElement;
+  const refList = el("div", { class: "trace-ref-list", role: "listbox", "aria-label": "Reference driver" });
+  refList.hidden = true;
+  refWrap.append(refBtn, refList);
+
+  let refOpen = false;
+  const setRefOpen = (open: boolean) => {
+    refOpen = open && !refWrap.hidden;
+    refList.hidden = !refOpen;
+    refBtn.setAttribute("aria-expanded", refOpen ? "true" : "false");
+    refWrap.classList.toggle("open", refOpen);
+  };
+  refBtn.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setRefOpen(!refOpen);
+  });
+  document.addEventListener("pointerdown", (ev) => {
+    if (!refOpen) return;
+    if (refWrap.contains(ev.target as Node)) return;
+    setRefOpen(false);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && refOpen) setRefOpen(false);
+  });
 
   const toggles = el("div", { class: "drivers trace-drivers" });
   let driverKey = "";
+  let refKey = "";
 
   const syncDrivers = () => {
     const list = state.bundle?.drivers ?? [];
@@ -208,19 +238,51 @@ export function mountRaceTrace(parent: HTMLElement): { update: () => void } {
       b.classList.toggle("sel", sel);
       b.style.outline = sel ? "1px solid #fde68a" : "";
     }
-    if (state.bundle) {
-      const current = [...refSel.options].map((o) => o.value).join(",");
-      const next = state.bundle.drivers.map((d) => String(d.driver_number)).join(",");
-      if (current !== next) {
-        refSel.replaceChildren();
-        for (const d of state.bundle.drivers) {
-          const o = el("option", { value: String(d.driver_number), text: d.name_acronym }) as HTMLOptionElement;
-          refSel.append(o);
-        }
+    const drivers = state.bundle?.drivers ?? [];
+    const nextRef = drivers.map((d) => d.driver_number).join(",");
+    const refId = state.traceDriver ?? drivers[0]?.driver_number ?? null;
+    if (nextRef !== refKey) {
+      refKey = nextRef;
+      refList.replaceChildren();
+      for (const d of drivers) {
+        const sw = el("span", { class: "swatch" });
+        sw.style.background = teamColor(d.team_colour);
+        const code = el("span", { class: "trace-ref-code", text: d.name_acronym });
+        code.style.color = teamColor(d.team_colour);
+        const opt = el("button", {
+          type: "button",
+          class: "trace-ref-opt",
+          role: "option",
+          "data-driver": String(d.driver_number),
+        }) as HTMLButtonElement;
+        opt.append(sw, code);
+        opt.addEventListener("pointerdown", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          setTraceMode("driver", d.driver_number);
+          setRefOpen(false);
+        });
+        refList.append(opt);
       }
-      if (state.traceDriver != null) refSel.value = String(state.traceDriver);
     }
-    refSel.hidden = state.traceMode !== "driver";
+    const chosen = drivers.find((d) => d.driver_number === refId);
+    refBtn.replaceChildren();
+    if (chosen) {
+      const sw = el("span", { class: "swatch" });
+      sw.style.background = teamColor(chosen.team_colour);
+      const code = el("span", { class: "trace-ref-code", text: chosen.name_acronym });
+      code.style.color = teamColor(chosen.team_colour);
+      refBtn.append(sw, code, el("span", { class: "trace-ref-caret", text: "▾" }));
+    } else {
+      refBtn.append(el("span", { class: "trace-ref-code", text: "—" }));
+    }
+    for (const opt of refList.querySelectorAll<HTMLButtonElement>(".trace-ref-opt")) {
+      const on = Number(opt.getAttribute("data-driver")) === refId;
+      opt.classList.toggle("sel", on);
+      opt.setAttribute("aria-selected", on ? "true" : "false");
+    }
+    refWrap.hidden = state.traceMode !== "driver";
+    if (refWrap.hidden) setRefOpen(false);
   };
 
   const syncModes = () => {
@@ -230,6 +292,7 @@ export function mountRaceTrace(parent: HTMLElement): { update: () => void } {
   side.body.append(
     el("h3", { text: "Y axis" }),
     modes,
+    refWrap,
     el("h3", { text: "Drivers" }),
     toggles,
     el("div", {

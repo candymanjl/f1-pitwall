@@ -3,11 +3,13 @@ import { bindDriverSelect } from "../lib/bindSelect";
 import { teamColor, teamFill } from "../lib/colors";
 import { el } from "../lib/dom";
 import { MAP_CAR_R, MAP_CAR_R_SELECTED, MAP_LINE_WIDTH } from "../lib/mapMarks";
+import { followViewBox, MAP_FOLLOW_ZOOM } from "../lib/mapZoom";
 import {
   gapFrac,
   onTrackGaps,
   pointOnCircle,
   racingFrac,
+  rejoinGapText,
   rejoinPreview,
   wedgePath,
   wrap01,
@@ -102,13 +104,12 @@ function carsOnCircle(): CircleCar[] {
   });
 }
 
-function drawCircle(svg: SVGSVGElement): void {
+function drawCircle(svg: SVGSVGElement, followZoom = false): void {
   svg.replaceChildren();
   const snap = state.snap;
   if (!snap) return;
   const w = svg.clientWidth || 640;
   const h = svg.clientHeight || 640;
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
   const cx = w / 2;
   const cy = h / 2;
   const r = Math.min(w, h) * 0.34;
@@ -116,6 +117,51 @@ function drawCircle(svg: SVGSVGElement): void {
   const pitEntry = state.bundle?.pitEntry ?? DEFAULT_PIT_ENTRY;
   const pitExit = state.bundle?.pitExit ?? DEFAULT_PIT_EXIT;
   const cars = carsOnCircle();
+  const sel = snap.rows.find((row) => row.driver.driver_number === state.selectedDriver);
+  const loss = state.pitLoss[state.pitMode];
+  const selCar = sel && !sel.retired ? cars.find((c) => c.driver === sel.driver.driver_number) : undefined;
+  const preview =
+    sel && !sel.retired
+      ? rejoinPreview(
+          cars.filter((c) => c.driver !== sel.driver.driver_number),
+          selCar?.frac ?? 0,
+          loss,
+          lap,
+        )
+      : null;
+
+  let followX = cx;
+  let followY = cy;
+  let followId = "";
+  let followKind = "";
+  if (followZoom) {
+    if (preview && sel) {
+      const gp = pointOnCircle(cx, cy, r, preview.frac);
+      followX = gp.x;
+      followY = gp.y;
+      followId = String(sel.driver.driver_number);
+      followKind = "rejoin";
+    } else {
+      const leader = cars.find((c) => c.driver === snap.rows[0]?.driver.driver_number) ?? cars[0];
+      if (leader) {
+        const lp = pointOnCircle(cx, cy, leader.inPit ? r - 16 : r, leader.frac);
+        followX = lp.x;
+        followY = lp.y;
+        followId = String(leader.driver);
+        followKind = "leader";
+      }
+    }
+    const box = followViewBox(followX, followY, w, h, MAP_FOLLOW_ZOOM);
+    svg.setAttribute("viewBox", `${box.x.toFixed(1)} ${box.y.toFixed(1)} ${box.w.toFixed(1)} ${box.h.toFixed(1)}`);
+    svg.dataset.zoom = "follow";
+    svg.dataset.follow = followId;
+    svg.dataset.followKind = followKind;
+  } else {
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.dataset.zoom = "full";
+    svg.dataset.follow = "";
+    svg.dataset.followKind = "";
+  }
 
   const gaps = onTrackGaps(cars, lap);
   for (const g of gaps) {
@@ -210,16 +256,7 @@ function drawCircle(svg: SVGSVGElement): void {
     });
   }
 
-  const sel = snap.rows.find((row) => row.driver.driver_number === state.selectedDriver);
-  const loss = state.pitLoss[state.pitMode];
-  if (sel && !sel.retired) {
-    const selCar = cars.find((c) => c.driver === sel.driver.driver_number);
-    const preview = rejoinPreview(
-      cars.filter((c) => c.driver !== sel.driver.driver_number),
-      selCar?.frac ?? 0,
-      loss,
-      lap,
-    );
+  if (sel && !sel.retired && preview) {
     const gf = preview.frac;
     const { x: gx, y: gy } = pointOnCircle(cx, cy, r, gf);
     const ghostColor = teamColor(sel.driver.team_colour);
@@ -357,10 +394,36 @@ function mountPitDeltaBar(parent: HTMLElement): PitField[] {
   return fields;
 }
 
-function formatRejoinHint(): string {
+function rejoinName(code: string, colour: string | undefined, extraClass = ""): HTMLElement {
+  const sw = el("span", { class: "swatch" });
+  sw.style.background = teamColor(colour);
+  const name = el("span", { class: "pit-rejoin-code", text: code });
+  name.style.color = teamColor(colour);
+  return el("span", { class: `pit-rejoin-drv ${extraClass}`.trim() }, [sw, name]);
+}
+
+function rejoinGapChip(
+  code: string,
+  colour: string | undefined,
+  seconds: number | null,
+  side: "ahead" | "behind",
+): HTMLElement {
+  const sw = el("span", { class: "swatch" });
+  sw.style.background = teamColor(colour);
+  const name = el("span", { class: "pit-rejoin-code", text: code });
+  name.style.color = teamColor(colour);
+  const delta = el("span", { class: "pit-rejoin-delta", text: rejoinGapText(code, seconds, side).slice(code.length).trim() });
+  return el("span", { class: "pit-rejoin-gap", "data-side": side, "data-code": code }, [sw, name, delta]);
+}
+
+function renderRejoinHint(host: HTMLElement): void {
+  host.replaceChildren();
   const snap = state.snap;
   const sel = snap?.rows.find((row) => row.driver.driver_number === state.selectedDriver);
-  if (!snap || !sel || sel.retired) return "Select a driver to estimate pit rejoin.";
+  if (!snap || !sel || sel.retired) {
+    host.append(document.createTextNode("Select a driver to estimate pit rejoin."));
+    return;
+  }
   const cars = carsOnCircle();
   const selCar = cars.find((c) => c.driver === sel.driver.driver_number);
   const preview = rejoinPreview(
@@ -369,18 +432,22 @@ function formatRejoinHint(): string {
     state.pitLoss[state.pitMode],
     snap.medianGreenLap,
   );
-  const bits: string[] = [];
-  if (preview.lapsDown > 0) bits.push(`+${preview.lapsDown}L`);
+  host.append(rejoinName(sel.driver.name_acronym, sel.driver.team_colour, "sel"));
+  host.append(
+    document.createTextNode(` rejoin · ${state.pitMode.toUpperCase()} −${state.pitLoss[state.pitMode].toFixed(0)}s`),
+  );
+  if (preview.lapsDown > 0) host.append(document.createTextNode(` · +${preview.lapsDown}L`));
   if (preview.behind && preview.ahead && preview.behind.driver !== preview.ahead.driver) {
-    const back = preview.gapBehind != null ? formatDelta(preview.gapBehind) : "—";
-    const fwd = preview.gapAhead != null ? formatDelta(preview.gapAhead) : "—";
-    bits.push(`between ${preview.behind.code} (${back}) and ${preview.ahead.code} (${fwd})`);
+    host.append(document.createTextNode(" · "));
+    host.append(rejoinGapChip(preview.ahead.code, preview.ahead.color, preview.gapAhead, "ahead"));
+    host.append(document.createTextNode(" · "));
+    host.append(rejoinGapChip(preview.behind.code, preview.behind.color, preview.gapBehind, "behind"));
   } else if (preview.ahead) {
-    bits.push(`ahead of ${preview.ahead.code}${preview.gapAhead != null ? ` (${formatDelta(preview.gapAhead)})` : ""}`);
+    host.append(document.createTextNode(" · "));
+    host.append(rejoinGapChip(preview.ahead.code, preview.ahead.color, preview.gapAhead, "ahead"));
   } else {
-    bits.push("no on-track traffic");
+    host.append(document.createTextNode(" · no on-track traffic"));
   }
-  return `${sel.driver.name_acronym} rejoin · ${state.pitMode.toUpperCase()} −${state.pitLoss[state.pitMode].toFixed(0)}s · ${bits.join(" · ")}`;
 }
 
 function syncPitDeltaBar(fields: PitField[]): void {
@@ -392,7 +459,15 @@ function syncPitDeltaBar(fields: PitField[]): void {
 
 export function mountPitCircle(parent: HTMLElement): { update: () => void } {
   const left = panel("Timing tower");
-  const right = panel("Pit circle  ·  on-track gaps");
+  let followZoom = false;
+  const zoomBtn = el("button", {
+    type: "button",
+    class: "map-zoom",
+    text: "Zoom",
+    "aria-pressed": "false",
+    title: "Zoom into the leader, or the gap a selected driver would rejoin into",
+  });
+  const right = panel("Pit circle  ·  on-track gaps", "", zoomBtn);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add("circle");
   const wrap = el("div", { class: "chart-wrap" });
@@ -408,11 +483,26 @@ export function mountPitCircle(parent: HTMLElement): { update: () => void } {
   right.body.append(wrap);
   const page = el("div", { class: "page pitcircle" }, [left.root, right.root]);
   parent.append(page);
-  mountTowerSplitter(page, { onResize: () => drawCircle(svg) });
+
+  const syncZoomBtn = () => {
+    zoomBtn.classList.toggle("on", followZoom);
+    zoomBtn.setAttribute("aria-pressed", followZoom ? "true" : "false");
+    zoomBtn.textContent = followZoom ? "Full map" : "Zoom";
+  };
+  const draw = () => drawCircle(svg, followZoom);
+  zoomBtn.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    followZoom = !followZoom;
+    syncZoomBtn();
+    draw();
+  });
+
+  mountTowerSplitter(page, { onResize: draw });
   bindDriverSelect(left.body);
   bindDriverSelect(svg);
   if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver(() => drawCircle(svg)).observe(wrap);
+    new ResizeObserver(() => draw()).observe(wrap);
   }
 
   const update = () => {
@@ -429,8 +519,8 @@ export function mountPitCircle(parent: HTMLElement): { update: () => void } {
       );
     }
     syncPitDeltaBar(fields);
-    rejoinHint.textContent = formatRejoinHint();
-    drawCircle(svg);
+    renderRejoinHint(rejoinHint);
+    draw();
   };
   return { update };
 }
