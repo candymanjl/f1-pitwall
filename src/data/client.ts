@@ -1,4 +1,4 @@
-import { API_BASE, HISTORICAL_TTL_MS, RATE_MIN_GAP_MS, RATE_PER_MINUTE } from "../config";
+import { HISTORICAL_TTL_MS, RATE_MIN_GAP_MS, RATE_PER_MINUTE, restBase } from "../config";
 import { hasUsableAuth, peekAccessToken } from "./auth";
 import { authorizedFetch } from "./clientAuth";
 import { classifyOpenF1Failure, isNetworkFailure, OpenF1Error } from "./errors";
@@ -104,7 +104,7 @@ async function httpError(
 /** Live `latest` feeds must stay authenticated; every other session can fall back to public REST. */
 export function shouldRetryWithoutAuth(url: string): boolean {
   try {
-    const u = new URL(url, API_BASE);
+    const u = new URL(url, restBase());
     const session = u.searchParams.get("session_key");
     const meeting = u.searchParams.get("meeting_key");
     return session !== "latest" && meeting !== "latest";
@@ -169,7 +169,7 @@ export async function apiGet<T>(
     }
   }
 
-  const url = new URL(`${API_BASE}/${path.replace(/^\//, "")}`);
+  const url = new URL(`${restBase()}/${path.replace(/^\//, "")}`);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
   }

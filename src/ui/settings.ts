@@ -1,4 +1,4 @@
-import { DEFAULT_PIT_LOSS, readToken } from "../config";
+import { DEFAULT_PIT_LOSS, readRelayUrl, readToken, writeRelayUrl } from "../config";
 import { peekAuth, signIn, signOut, writeManualToken } from "../data/auth";
 import { el } from "../lib/dom";
 import { UI_SCALE_OPTIONS, type UiScalePref } from "../lib/scale";
@@ -34,9 +34,14 @@ export function openSettings(): void {
 
   const token = el("input", { type: "password", placeholder: "Bearer token (optional fallback)" }) as HTMLInputElement;
   token.value = readToken();
+  const relay = el("input", {
+    type: "url",
+    placeholder: "https://your-app.azurewebsites.net/api",
+  }) as HTMLInputElement;
+  relay.value = readRelayUrl();
   const mode = el("select") as HTMLSelectElement;
   mode.append(el("option", { value: "historical", text: "Historical replay (REST)" }));
-  mode.append(el("option", { value: "live", text: "Live (MQTT over WebSocket, REST fallback)" }));
+  mode.append(el("option", { value: "live", text: "Live (MQTT, or 4s REST poll when a relay is set)" }));
   mode.value = state.mode;
   const scale = el("select") as HTMLSelectElement;
   for (const opt of UI_SCALE_OPTIONS) {
@@ -67,6 +72,7 @@ export function openSettings(): void {
   };
 
   signInBtn.onclick = async () => {
+    writeRelayUrl(relay.value);
     authErr.hidden = true;
     setBusy(true);
     try {
@@ -104,6 +110,11 @@ export function openSettings(): void {
       el("div", { class: "row" }, [signInBtn, signOutBtn]),
       status,
       authErr,
+      el("label", { text: "OpenF1 relay URL" }),
+      relay,
+      el("p", {
+        text: "Paste your Azure Function URL (ends with /api). Sign-in and every OpenF1 REST call then go through it so the browser can send your bearer token. Leave blank to call OpenF1 directly. Live mode uses 4s REST polling through the relay (MQTT is skipped).",
+      }),
       el("label", { text: "Data mode" }),
       mode,
       el("label", { text: "UI scale" }),
@@ -126,6 +137,7 @@ export function openSettings(): void {
 
   save.onclick = () => {
     writeManualToken(token.value);
+    writeRelayUrl(relay.value);
     setDataMode(mode.value === "live" ? "live" : "historical");
     setPitLoss({ green: Number(g.value), vsc: Number(v.value), sc: Number(s.value) });
     const pref = scale.value === "auto" ? "auto" : (Number(scale.value) as UiScalePref);

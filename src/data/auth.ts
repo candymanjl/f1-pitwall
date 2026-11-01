@@ -5,8 +5,8 @@ import {
   AUTH_USER_KEY,
   TOKEN_REFRESH_SKEW_MS,
   TOKEN_STORAGE_KEY,
-  TOKEN_URL,
   readToken,
+  tokenUrl,
 } from "../config";
 import { extractDetail, isNetworkFailure, OpenF1Error } from "./errors";
 
@@ -179,7 +179,7 @@ export async function requestToken(username: string, password: string): Promise<
   params.set("username", username);
   params.set("password", password);
   try {
-    const res = await deps.fetch(TOKEN_URL, {
+    const res = await deps.fetch(tokenUrl(), {
       method: "POST",
       headers: {
         accept: "application/json",

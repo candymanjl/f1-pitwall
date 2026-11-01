@@ -1,0 +1,27 @@
+name: Deploy OpenF1 relay
+
+on:
+  workflow_dispatch:
+    inputs:
+      function_app_name:
+        description: "Azure Function App name (e.g. f1pw-openf1-relay)"
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install relay packages
+        working-directory: relay
+        run: npm install --omit=dev
+      - name: Deploy relay folder
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ inputs.function_app_name }}
+          package: relay
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}

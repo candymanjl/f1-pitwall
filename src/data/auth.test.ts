@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TOKEN_REFRESH_SKEW_MS, TOKEN_STORAGE_KEY } from "../config";
+import { TOKEN_REFRESH_SKEW_MS, TOKEN_STORAGE_KEY, writeRelayUrl } from "../config";
 import {
   configureAuth,
   getAccessToken,
@@ -22,10 +22,35 @@ function jsonRes(status: number, body: unknown): Response {
 
 afterEach(() => {
   resetAuthForTests();
+  writeRelayUrl("");
+  try {
+    Reflect.deleteProperty(globalThis, "localStorage");
+  } catch {
+    /* ignore */
+  }
   vi.useRealTimers();
 });
 
 describe("requestToken", () => {
+  it("POSTs the token request through the saved relay", async () => {
+    const memory = new Map<string, string>([["f1pitwall.openf1Relay", "https://f1pw.azurewebsites.net/api"]]);
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (k: string) => memory.get(k) ?? null,
+        setItem: (k: string, v: string) => void memory.set(k, v),
+        removeItem: (k: string) => void memory.delete(k),
+      },
+      configurable: true,
+    });
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      expect(String(url)).toBe("https://f1pw.azurewebsites.net/api/token");
+      return jsonRes(200, { access_token: "tok-relay", expires_in: "3600" });
+    });
+    configureAuth({ fetch: fetchMock as unknown as typeof fetch, store: memoryStore() });
+    const tok = await requestToken("ada", "pw");
+    expect(tok.access_token).toBe("tok-relay");
+  });
+
   it("POSTs form-urlencoded username and password", async () => {
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       expect(String(_url)).toMatch(/\/token$/);

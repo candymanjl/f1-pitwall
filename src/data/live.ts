@@ -1,4 +1,4 @@
-import { LIVE_POLL_MS, MQTT_URL } from "../config";
+import { LIVE_POLL_MS, MQTT_URL, readRelayUrl } from "../config";
 import { getAccessToken, peekAuth } from "./auth";
 import { apiGet } from "./client";
 import { LIVE_TOPICS } from "./liveMerge";
@@ -112,10 +112,14 @@ export function startLiveFeed(opts: {
     }
   };
 
-  mqttAttempt = connectMqtt();
-  window.setTimeout(() => {
-    if (!stopped && !pollTimer) startPoll("Waiting for MQTT…");
-  }, 4000);
+  if (readRelayUrl()) {
+    startPoll("Relay: REST poll every 4s (MQTT skipped)");
+  } else {
+    mqttAttempt = connectMqtt();
+    window.setTimeout(() => {
+      if (!stopped && !pollTimer) startPoll("Waiting for MQTT…");
+    }, 4000);
+  }
 
   return {
     stop: () => {
