@@ -110,7 +110,7 @@ describe("scrub vs live ingest", () => {
     expect(state.end).toBeGreaterThan(Date.parse(LAP66));
   });
 
-  it("defaults a historical load to mid-session and a live load to the end", () => {
+  it("defaults a finished session to mid-race even when data mode is live", () => {
     const mid = "2026-10-31T20:46:52.000Z";
     const last = "2026-10-31T21:33:32.000Z";
     const b = fixture();
@@ -128,7 +128,25 @@ describe("scrub vs live ingest", () => {
     expect(state.t).toBeLessThan(state.end);
     state.mode = "live";
     applyLoadedClock();
+    expect(state.t).toBe(Date.parse(mid));
+    expect(state.t).toBeLessThan(state.end);
+  });
+
+  it("keeps an in-progress live session on the newest sample", () => {
+    const now = Date.now();
+    const start = new Date(now - 30 * 60 * 1000).toISOString();
+    const latest = new Date(now - 2_000).toISOString();
+    const b = fixture();
+    b.session.date_start = start;
+    b.session.date_end = new Date(now + 90 * 60 * 1000).toISOString();
+    b.laps = [{ ...b.laps[0], lap_number: 12, date_start: latest, lap_duration: null }];
+    b.intervals = [{ date: latest, driver_number: 1, gap_to_leader: 0, interval: 0 }];
+    state.bundle = b;
+    state.start = Date.parse(start);
+    state.mode = "live";
+    applyLoadedClock();
     expect(state.t).toBe(state.end);
+    expect(state.t).toBe(Date.parse(latest));
   });
 
   it("jumps to the newest sample only after LIVE", () => {

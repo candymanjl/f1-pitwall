@@ -6,6 +6,20 @@ import { polylineLength } from "./track";
 export const DEFAULT_PIT_ENTRY = 0.97;
 export const DEFAULT_PIT_EXIT = 0.05;
 
+/** Same racing-line fractions the footer strip uses for pit in / pit out. */
+export function pitLaneFracs(bundle: { pitEntry?: number; pitExit?: number } | null | undefined): {
+  entry: number;
+  exit: number;
+} {
+  const entry = bundle?.pitEntry;
+  const exit = bundle?.pitExit;
+  const norm = (v: number) => (v >= 0 && v < 1 ? v : wrap01(v));
+  return {
+    entry: typeof entry === "number" && Number.isFinite(entry) ? norm(entry) : DEFAULT_PIT_ENTRY,
+    exit: typeof exit === "number" && Number.isFinite(exit) ? norm(exit) : DEFAULT_PIT_EXIT,
+  };
+}
+
 /** Closest point on the racing-line polyline, as a 0–1 fraction from S/F. */
 export function nearestFrac(pts: [number, number][], x: number, y: number): number {
   if (pts.length < 2) return 0;

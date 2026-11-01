@@ -79,6 +79,27 @@ export function historicalStartMs(
   return clampMs(lo.t + (hi.t - lo.t) * frac, start, end);
 }
 
+/** Keep a just-finished session on the live cursor this long after the last sample. */
+export const LIVE_SESSION_GRACE_MS = 10 * 60 * 1000;
+
+/**
+ * Old / archived session, not an in-progress live feed.
+ * Uses the later of scheduled date_end and the newest sample, plus a short grace.
+ */
+export function isFinishedSession(
+  bundle: SessionBundle | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!bundle) return false;
+  const scheduled = parseTs(bundle.session.date_end);
+  const latest = latestSampleMs(bundle);
+  const hints: number[] = [];
+  if (Number.isFinite(scheduled)) hints.push(scheduled);
+  if (Number.isFinite(latest)) hints.push(latest);
+  if (!hints.length) return false;
+  return Math.max(...hints) + LIVE_SESSION_GRACE_MS < now;
+}
+
 export const SCRUB_LIVE_EDGE = 0.995;
 
 /** Re-arm live-follow only when the user parks the slider on the last sliver. */
