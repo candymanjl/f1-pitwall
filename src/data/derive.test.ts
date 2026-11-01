@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseTs } from "../lib/time";
-import { countPitsAt, safetyCarBands, snapshotAt, visibleLapTiming } from "./derive";
+import { countPitsAt, previousLapDelta, safetyCarBands, snapshotAt, visibleLapTiming } from "./derive";
 import type { Driver, Lap, Pit, Position, RaceControl, Session, SessionBundle } from "./types";
 
 const T0 = "2025-10-26T20:00:00.000Z";
@@ -300,6 +300,57 @@ describe("snapshotAt race order without intervals", () => {
     expect(snap.rows[0].pos).toBe(1);
     expect(snap.rows[1].gap).toBeCloseTo(10);
     expect(snap.rows.every((r) => r.posChange == null)).toBe(true);
+  });
+});
+
+describe("previous lap delta", () => {
+  function timed(partial: Partial<Lap> & Pick<Lap, "lap_number" | "date_start" | "lap_duration">): Lap {
+    return {
+      driver_number: 1,
+      duration_sector_1: 28,
+      duration_sector_2: 32,
+      duration_sector_3: 20,
+      is_pit_out_lap: false,
+      segments_sector_1: null,
+      segments_sector_2: null,
+      segments_sector_3: null,
+      i1_speed: null,
+      i2_speed: null,
+      st_speed: null,
+      ...partial,
+    };
+  }
+
+  const lap1 = timed({ lap_number: 1, date_start: "2025-10-26T20:00:00.000Z", lap_duration: 80 });
+  const lap2 = timed({ lap_number: 2, date_start: "2025-10-26T20:01:20.000Z", lap_duration: 80.312 });
+  const lap3 = timed({ lap_number: 3, date_start: "2025-10-26T20:02:40.312Z", lap_duration: 80.097 });
+
+  it("is blank on lap 1 and when the neighbouring lap is a pit in or pit out", () => {
+    expect(previousLapDelta([lap1], new Set())).toBeNull();
+    expect(previousLapDelta([lap1, { ...lap2, is_pit_out_lap: true }], new Set())).toBeNull();
+    expect(previousLapDelta([{ ...lap1, is_pit_out_lap: true }, lap2], new Set())).toBeNull();
+    expect(previousLapDelta([lap1, lap2], new Set([2]))).toBeNull();
+    expect(previousLapDelta([lap1, lap2, lap3], new Set([2]))).toBeNull();
+    expect(previousLapDelta([lap1, lap3], new Set())).toBeNull();
+  });
+
+  it("subtracts the previous lap, slower positive and faster negative", () => {
+    expect(previousLapDelta([lap1, lap2], new Set())).toBeCloseTo(0.312, 3);
+    expect(previousLapDelta([lap1, { ...lap2, lap_duration: 79.785 }], new Set())).toBeCloseTo(-0.215, 3);
+  });
+
+  it("puts that gap on the timing row and ignores a pit that has not happened yet", () => {
+    const now = parseTs("2025-10-26T20:02:41.000Z");
+    const snap = snapshotAt(
+      bundle({
+        laps: [lap1, lap2],
+        drivers: [driver(1, "AAA")],
+        pits: [{ date: "2025-10-26T20:10:00.000Z", driver_number: 1, lap_number: 2, lane_duration: 20, pit_duration: 22, stop_duration: 2 }],
+      }),
+      now,
+    );
+    expect(snap.rows[0].lastLap).toBeCloseTo(80.312, 3);
+    expect(snap.rows[0].lastLapDelta).toBeCloseTo(0.312, 3);
   });
 });
 

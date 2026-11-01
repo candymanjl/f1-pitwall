@@ -25,6 +25,7 @@ function row(n: number, code: string, pos: number, gap: number | null): TowerRow
     compound: "MEDIUM",
     tyreAge: 4,
     lastLap: 79,
+    lastLapDelta: null,
     bestLap: 78,
     interval: pos === 1 ? null : 0.3,
     gap,

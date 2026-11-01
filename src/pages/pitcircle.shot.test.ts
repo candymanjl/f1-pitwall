@@ -38,6 +38,7 @@ function row(d: Driver, pos: number, progress: number, extra: Partial<TowerRow> 
     compound: "MEDIUM",
     tyreAge: 8,
     lastLap: 78.4,
+    lastLapDelta: null,
     bestLap: 77.9,
     interval: pos === 1 ? null : 0.4,
     gap: pos === 1 ? 0 : pos * 1.1,

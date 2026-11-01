@@ -1,6 +1,6 @@
 import { teamColor, tyreColor } from "../lib/colors";
 import { el } from "../lib/dom";
-import { formatDelta, formatLap, formatSector } from "../lib/time";
+import { formatDelta, formatLap, formatLapDelta, formatSector } from "../lib/time";
 import type { TowerRow } from "../data/types";
 import { hasDriverSelection, isDriverSelected } from "../state";
 
@@ -24,6 +24,7 @@ const COLS: Record<TowerCols, { label: string; cls: string }[]> = {
     { label: "Tyre", cls: "c-tyre" },
     { label: "Pits", cls: "c-pits" },
     { label: "Last", cls: "c-lap" },
+    { label: "Δ", cls: "c-ldelta" },
     { label: "Best", cls: "c-lap" },
     { label: "Int", cls: "c-gap" },
     { label: "Gap", cls: "c-gap" },
@@ -88,6 +89,17 @@ export function driverNameCell(row: TowerRow): HTMLElement {
   dot.style.background = teamColor(row.driver.team_colour);
   const kids: Array<Node | string | null> = [dot, row.driver.name_acronym, posChangeBadge(row)];
   return el("span", { class: "code" }, kids);
+}
+
+function lapDeltaCell(delta: number | null | undefined): HTMLElement {
+  const td = el("td", { class: "c-ldelta" });
+  if (delta == null || !Number.isFinite(delta)) return td;
+  const faster = delta < -0.0005;
+  const slower = delta > 0.0005;
+  const text = formatLapDelta(delta);
+  td.title = faster ? `${text} faster than the previous lap` : slower ? `${text} slower than the previous lap` : "Level with the previous lap";
+  td.append(el("span", { class: `lap-delta${faster ? " faster" : slower ? " slower" : ""}`, text }));
+  return td;
 }
 
 function secClass(kind: TowerRow["s1Kind"]): string {
@@ -155,6 +167,7 @@ export function renderTower(
         el("td", { class: "c-tyre" }, [tyreCell(row)]),
         el("td", { class: "c-pits", text: String(row.pits) }),
         el("td", { class: "c-lap", text: formatLap(row.lastLap) }),
+        lapDeltaCell(row.lastLapDelta),
         el("td", { class: "c-lap", text: formatLap(row.bestLap) }),
         el("td", { class: "c-gap", text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
         el("td", { class: "c-gap", text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),

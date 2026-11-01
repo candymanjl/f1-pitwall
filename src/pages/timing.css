@@ -1,6 +1,7 @@
 /* Timing page only. Column widths stay on the shared tower's fixed colgroup. */
 
 .page.timing .tower col.c-lap { width: 5.15rem; }
+.page.timing .tower col.c-ldelta { width: 4.15rem; }
 .page.timing .tower col.c-gap { width: 4.5rem; }
 .page.timing .tower col.c-sec { width: 8.15rem; }
 /* auto takes the leftover width so the blocks, not a blank margin, fill the row. */
@@ -15,8 +16,11 @@
   color: var(--muted);
   font-weight: 600;
 }
-.page.timing .sec-delta.faster { color: var(--green); }
-.page.timing .sec-delta.slower { color: #f87171; }
+.page.timing .sec-delta.faster,
+.page.timing .lap-delta.faster { color: var(--green); }
+.page.timing .sec-delta.slower,
+.page.timing .lap-delta.slower { color: #f87171; }
+.page.timing .lap-delta { font-weight: 600; color: var(--muted); }
 
 .timing-legend {
   display: flex;
@@ -84,6 +88,7 @@
   .page.timing .tower { font-size: 0.875rem; }
   .page.timing .tower col.c-drv { width: 5.25rem; }
   .page.timing .tower col.c-lap { width: 4.85rem; }
+  .page.timing .tower col.c-ldelta { width: 3.75rem; }
   .page.timing .tower col.c-gap { width: 4.15rem; }
   .page.timing .tower col.c-sec { width: 7.35rem; }
 }
