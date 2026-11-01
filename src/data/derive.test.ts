@@ -301,6 +301,27 @@ describe("snapshotAt race order without intervals", () => {
     expect(snap.rows[1].gap).toBeCloseTo(10);
     expect(snap.rows.every((r) => r.posChange == null)).toBe(true);
   });
+
+  it("marks cars that have never left the garage and blanks +9876-style gaps", () => {
+    const snap = snapshotAt(
+      bundle({
+        session: session("Practice 1"),
+        drivers: [driver(1, "AAA"), driver(44, "BBB"), driver(14, "ALO"), driver(18, "SLA")],
+        laps,
+        positions: [],
+        intervals: [],
+      }),
+      parseTs("2025-10-26T20:08:00.000Z"),
+    );
+    const onTrack = snap.rows.filter((r) => !r.inGarage);
+    const garage = snap.rows.filter((r) => r.inGarage);
+    expect(onTrack.map((r) => r.driver.name_acronym).sort()).toEqual(["AAA", "BBB"]);
+    expect(garage.map((r) => r.driver.name_acronym).sort()).toEqual(["ALO", "SLA"]);
+    expect(garage.every((r) => r.status === "GARAGE")).toBe(true);
+    expect(garage.every((r) => r.gap == null && r.interval == null && r.currentLap == null)).toBe(true);
+    expect(onTrack.every((r) => r.status !== "GARAGE")).toBe(true);
+    expect(onTrack.every((r) => r.gap == null || (typeof r.gap === "number" && r.gap < 100))).toBe(true);
+  });
 });
 
 describe("previous lap delta", () => {

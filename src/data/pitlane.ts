@@ -50,7 +50,7 @@ export function nearestFrac(pts: [number, number][], x: number, y: number): numb
   return wrap01(bestAt / total);
 }
 
-function distToTrack(pts: [number, number][], x: number, y: number): number {
+export function distToTrack(pts: [number, number][], x: number, y: number): number {
   if (pts.length < 2) return Infinity;
   let best = Infinity;
   for (let i = 1; i < pts.length; i++) {

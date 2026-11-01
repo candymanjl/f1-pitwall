@@ -270,4 +270,100 @@ describe("track map zoom", () => {
     expect(new Set(xs.map((x) => x.toFixed(1))).size).toBe(ids.length);
     expect(svg.querySelector("[data-driver='4'] .drv-label")?.textContent).toBe("NOR");
   });
+
+  it("spreads practice cars from /location and hides garage rows", () => {
+    const drivers = [
+      driver(12, "ANT"),
+      driver(16, "LEC"),
+      driver(11, "PER"),
+      driver(14, "ALO"),
+      driver(18, "SLA"),
+    ];
+    const now = Date.parse("2026-01-16T20:06:47.000Z");
+    state.bundle = {
+      meeting: {
+        meeting_key: 1300,
+        meeting_name: "Mexico City Grand Prix",
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        date_start: "2026-01-16T20:00:00.000Z",
+        year: 2026,
+      },
+      session: {
+        session_key: 9991,
+        meeting_key: 1300,
+        session_name: "Practice 1",
+        session_type: "Practice",
+        date_start: "2026-01-16T20:00:00.000Z",
+        date_end: "2026-01-16T21:00:00.000Z",
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        year: 2026,
+      },
+      weekendSessions: [],
+      drivers,
+      laps: [],
+      intervals: [],
+      positions: [],
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [
+        [0, 0],
+        [120, 0],
+        [120, 80],
+        [0, 80],
+        [0, 0],
+      ],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+      locations: [
+        { date: new Date(now).toISOString(), driver_number: 12, x: 10, y: 0 },
+        { date: new Date(now).toISOString(), driver_number: 16, x: 120, y: 40 },
+        { date: new Date(now).toISOString(), driver_number: 11, x: 40, y: 80 },
+      ],
+    } as SessionBundle;
+    state.snap = {
+      now,
+      rows: [
+        row(drivers[0], 1, 0.71, { gap: 0, currentLap: 4, lapActive: true }),
+        row(drivers[1], 2, 0.7, { gap: 0.4, currentLap: 4, lapActive: true }),
+        row(drivers[2], 3, 0.69, { gap: 0.8, currentLap: 3, lapActive: true }),
+        row(drivers[3], 4, 0, { gap: 9876, status: "GARAGE", inGarage: true, currentLap: null }),
+        row(drivers[4], 5, 0, { gap: 9917, status: "GARAGE", inGarage: true, currentLap: null }),
+      ],
+      leaderLap: 4,
+      medianGreenLap: 80,
+      weather: null,
+      bestSectors: { s1: null, s2: null, s3: null },
+      flagMode: "green",
+      scBands: [],
+      raceLaps: 4,
+    } as TimingSnapshot;
+
+    const root = document.createElement("div");
+    document.body.append(root);
+    const api = mountTrackMap(root);
+    const svg = root.querySelector("svg.track") as SVGSVGElement;
+    Object.defineProperty(svg, "clientWidth", { value: 800 });
+    Object.defineProperty(svg, "clientHeight", { value: 600 });
+    api.update();
+    const ids = [...svg.querySelectorAll("[data-driver]")].map((n) => n.getAttribute("data-driver"));
+    expect(ids).toEqual(["12", "16", "11"]);
+    expect(svg.dataset.cars).toBe("3");
+    expect(svg.querySelector("[data-driver='14']")).toBeNull();
+    expect(svg.querySelector("[data-driver='18']")).toBeNull();
+    const places = ids.map((id) => svg.querySelector(`[data-driver='${id}']`)?.getAttribute("data-place"));
+    expect(places).toEqual(["location", "location", "location"]);
+    const fracs = ids.map((id) => Number(svg.querySelector(`[data-driver='${id}']`)?.getAttribute("data-frac")));
+    expect(fracs[0]).not.toBeCloseTo(fracs[1], 2);
+    expect(fracs[1]).not.toBeCloseTo(fracs[2], 2);
+    expect(fracs[0]).not.toBeCloseTo(fracs[2], 2);
+    expect(root.querySelector("tr[data-driver='14'] td.c-stat")?.textContent).toBe("GARAGE");
+    expect(root.querySelector("tr[data-driver='18'] .status.garage")).toBeTruthy();
+  });
 });

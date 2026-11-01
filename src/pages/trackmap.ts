@@ -1,4 +1,6 @@
+import { indexLocations } from "../data/carLocation";
 import { snapshotAt } from "../data/derive";
+import { isRaceOrSprint } from "../data/grid";
 import { pitLaneFracs } from "../data/pitlane";
 import { pointAt, project } from "../data/track";
 import type { SessionBundle, TimingSnapshot } from "../data/types";
@@ -17,7 +19,7 @@ import {
   MAP_SECTOR_R,
 } from "../lib/mapMarks";
 import { followViewBox, MAP_FOLLOW_ZOOM } from "../lib/mapZoom";
-import { trackCarFrac } from "../lib/pitcircle";
+import { placeTrackCar } from "../lib/pitcircle";
 import { appendDriverDot } from "../lib/svgcar";
 import { panel } from "../ui/panel";
 import { mountTowerSplitter } from "../ui/splitter";
@@ -119,15 +121,22 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
   let followPx = w / 2;
   let followPy = h / 2;
   let running = 0;
+  const placeOpts = {
+    leaderProgress: leaderProg,
+    lapSec: snap.medianGreenLap,
+    pitEntry: pits.entry,
+    pitExit: pits.exit,
+    now: snap.now,
+    track: pts,
+    locations: bundle.locations,
+    locIndex: indexLocations(bundle.locations),
+    useRaceGaps: isRaceOrSprint(bundle.session),
+  };
   for (const row of snap.rows) {
-    if (row.retired) continue;
+    const placed = placeTrackCar(row, placeOpts);
+    if (!placed) continue;
     running += 1;
-    const frac = trackCarFrac(row, {
-      leaderProgress: leaderProg,
-      lapSec: snap.medianGreenLap,
-      pitEntry: pits.entry,
-      pitExit: pits.exit,
-    });
+    const frac = placed.frac;
     const [x, y] = pointAt(pts, frac);
     const [px, py] = map(x, y);
     if (row.driver.driver_number === followN) {
@@ -147,6 +156,7 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
       labelY: py + MAP_LABEL_DY,
     });
     dot.dataset.frac = frac.toFixed(4);
+    dot.dataset.place = placed.source;
   }
   svg.dataset.cars = String(running);
 

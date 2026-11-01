@@ -1,3 +1,5 @@
+import { indexLocations } from "../data/carLocation";
+import { isRaceOrSprint } from "../data/grid";
 import { DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT } from "../data/pitlane";
 import { bindDriverSelect } from "../lib/bindSelect";
 import { teamColor, teamFill } from "../lib/colors";
@@ -9,7 +11,7 @@ import {
   pointOnCircle,
   rejoinGapText,
   rejoinPreview,
-  trackCarFrac,
+  placeTrackCar,
   wedgePath,
   wrap01,
   type CircleCar,
@@ -85,22 +87,33 @@ function carsOnCircle(): CircleCar[] {
   const pitExit = state.bundle?.pitExit ?? DEFAULT_PIT_EXIT;
   const leaderProg = snap.rows[0]?.progress ?? 0;
   const lap = Math.max(1, snap.medianGreenLap);
-  return snap.rows.map((row) => {
-    const frac = trackCarFrac(row, {
+  const bundle = state.bundle;
+  const locIndex = indexLocations(bundle?.locations);
+  return snap.rows.flatMap((row) => {
+    const placed = placeTrackCar(row, {
       leaderProgress: leaderProg,
       lapSec: lap,
       pitEntry,
       pitExit,
+      now: snap.now,
+      track: bundle?.track ?? [],
+      locations: bundle?.locations,
+      locIndex,
+      useRaceGaps: bundle ? isRaceOrSprint(bundle.session) : false,
     });
-    return {
-      driver: row.driver.driver_number,
-      code: row.driver.name_acronym,
-      frac,
-      inPit: row.inPit,
-      retired: row.retired,
-      pace: typeof row.lastLap === "number" && row.lastLap > 0 ? row.lastLap : snap.medianGreenLap,
-      color: teamColor(row.driver.team_colour),
-    };
+    if (!placed) return [];
+    return [
+      {
+        driver: row.driver.driver_number,
+        code: row.driver.name_acronym,
+        frac: placed.frac,
+        inPit: row.inPit,
+        retired: row.retired,
+        pace: typeof row.lastLap === "number" && row.lastLap > 0 ? row.lastLap : snap.medianGreenLap,
+        color: teamColor(row.driver.team_colour),
+        place: placed.source,
+      },
+    ];
   });
 }
 
@@ -245,7 +258,7 @@ function drawCircle(svg: SVGSVGElement, followZoom = false): void {
     const on = isDriverSelected(row.driver.driver_number);
     const dim = hasDriverSelection() && !on;
     const lab = pointOnCircle(cx, cy, rr + 18, car.frac);
-    appendDriverDot(svg, x, y, {
+    const dot = appendDriverDot(svg, x, y, {
       n: row.driver.driver_number,
       color: teamColor(row.driver.team_colour),
       selected: on,
@@ -256,6 +269,8 @@ function drawCircle(svg: SVGSVGElement, followZoom = false): void {
       labelX: lab.x,
       labelY: lab.y,
     });
+    dot.dataset.frac = car.frac.toFixed(4);
+    if (car.place) dot.dataset.place = car.place;
   }
   svg.dataset.cars = String(running);
 
