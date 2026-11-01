@@ -65,6 +65,7 @@ export function racingFrac(progress: number, pitOut: boolean, pitExit: number): 
 export type TrackCarRow = {
   pos: number;
   gap: number | string | null;
+  interval?: number | string | null;
   progress: number;
   pitOut: boolean;
   inPit?: boolean;
@@ -87,6 +88,8 @@ export type PlaceCarOpts = {
   locIndex?: Map<number, LocHit[]>;
   /** Race / sprint only. Practice and quali never use tower Gap/Int. */
   useRaceGaps?: boolean;
+  /** Track map / strip only. Pit circle never uses GPS in a race. */
+  preferLocation?: boolean;
 };
 
 export type PlacedCar = { frac: number; source: "location" | "progress" | "gap" | "pit" };
@@ -99,8 +102,39 @@ function canUseProgress(row: TrackCarRow): boolean {
   return row.currentLap != null;
 }
 
+function lapsBehind(value: number | string | null | undefined): number | null {
+  if (typeof value !== "string" || !/lap/i.test(value)) return null;
+  const n = Number((value.match(/(\d+)/) ?? [])[1]);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function numericRaceGap(value: number | string | null | undefined): number | null {
+  const gap = asNumber(value);
+  if (gap == null || Math.abs(gap) > RACE_GAP_MAX_SEC) return null;
+  return gap;
+}
+
 /**
- * Map / strip / circle placement.
+ * Time (seconds) behind the leader for the pit-circle clock.
+ * Numeric Gap/Int win. "+1 LAP" adds a full lap to the previous car's time
+ * once; later +1 LAP cars without an interval fall through to the caller.
+ */
+export function raceGapSec(row: TrackCarRow, prevGap: number | null, lapSec: number): number | null {
+  if (row.pos === 1) return 0;
+  const gap = numericRaceGap(row.gap);
+  if (gap != null) return gap;
+  const iv = numericRaceGap(row.interval);
+  if (prevGap != null && iv != null) return prevGap + iv;
+  const behind = lapsBehind(row.gap) ?? lapsBehind(row.interval);
+  if (prevGap != null && behind != null) {
+    const already = Math.floor((prevGap + 1e-9) / Math.max(1, lapSec));
+    if (already < behind) return prevGap + (behind - already) * Math.max(1, lapSec);
+  }
+  return null;
+}
+
+/**
+ * Map / strip placement.
  * Prefer a live /location sample when the car is on the racing line.
  * Races then keep interval-gap placement (#28); practice/quali never use
  * tower Gap/Int (those are best-lap deltas, not on-track gaps).
@@ -109,21 +143,23 @@ export function placeTrackCar(row: TrackCarRow, opts: PlaceCarOpts): PlacedCar |
   if (row.retired || row.inGarage || row.status === "GARAGE") return null;
   if (row.inPit) return { frac: wrap01(opts.pitEntry), source: "pit" };
 
-  const now = opts.now ?? 0;
-  const track = opts.track ?? [];
-  const n = row.driver?.driver_number;
-  const index = opts.locIndex ?? indexLocations(opts.locations);
-  const hit = n != null ? nearestIndexed(index.get(n), now) : null;
-  if (isRecentLocation(hit, now) && hit) {
-    if (locationOnTrack(track, hit.x, hit.y)) {
-      return { frac: nearestFrac(track, hit.x, hit.y), source: "location" };
+  if (opts.preferLocation !== false) {
+    const now = opts.now ?? 0;
+    const track = opts.track ?? [];
+    const n = row.driver?.driver_number;
+    const index = opts.locIndex ?? indexLocations(opts.locations);
+    const hit = n != null ? nearestIndexed(index.get(n), now) : null;
+    if (isRecentLocation(hit, now) && hit) {
+      if (locationOnTrack(track, hit.x, hit.y)) {
+        return { frac: nearestFrac(track, hit.x, hit.y), source: "location" };
+      }
+      return null;
     }
-    return null;
   }
 
   if (opts.useRaceGaps) {
-    const gapSec = row.pos === 1 ? 0 : asNumber(row.gap);
-    if (gapSec != null && Math.abs(gapSec) <= RACE_GAP_MAX_SEC) {
+    const gapSec = row.pos === 1 ? 0 : numericRaceGap(row.gap);
+    if (gapSec != null) {
       return { frac: gapFrac(opts.leaderProgress, gapSec, opts.lapSec), source: "gap" };
     }
   }
@@ -133,6 +169,31 @@ export function placeTrackCar(row: TrackCarRow, opts: PlaceCarOpts): PlacedCar |
   }
 
   return null;
+}
+
+/**
+ * Pit-circle placement. Races are a time clock (gap/interval seconds).
+ * GPS and lap-progress must not drive the circle during a race — that is
+ * what made Mexico 2025 replay jitter after #30.
+ */
+export function placeCircleCars(rows: TrackCarRow[], opts: PlaceCarOpts): Array<PlacedCar | null> {
+  if (!opts.useRaceGaps) {
+    return rows.map((row) => placeTrackCar(row, { ...opts, preferLocation: true, useRaceGaps: false }));
+  }
+  let prevGap: number | null = null;
+  return rows.map((row) => {
+    if (row.retired || row.inGarage || row.status === "GARAGE") return null;
+    if (row.inPit) return { frac: wrap01(opts.pitEntry), source: "pit" };
+    const gapSec = raceGapSec(row, prevGap, opts.lapSec);
+    if (gapSec != null) {
+      prevGap = gapSec;
+      return { frac: gapFrac(opts.leaderProgress, gapSec, opts.lapSec), source: "gap" };
+    }
+    if (canUseProgress(row)) {
+      return { frac: racingFrac(row.progress, row.pitOut, opts.pitExit), source: "progress" };
+    }
+    return null;
+  });
 }
 
 /**
