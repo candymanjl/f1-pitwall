@@ -1,6 +1,7 @@
 /** @vitest-environment happy-dom */
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
+import { emptyTrackFlag, sheetFlagState } from "../data/trackFlag";
 import type { Driver, TimingSnapshot, TowerRow } from "../data/types";
 import { state } from "../state";
 import { mountStatusBar } from "./statusbar";
@@ -70,6 +71,7 @@ function snap(): TimingSnapshot {
       s3: { time: 26.4, code: "LEC" },
     },
     flagMode: "green",
+    trackFlag: emptyTrackFlag(),
     scBands: [],
     raceLaps: 71,
   };
@@ -140,6 +142,15 @@ describe("mountStatusBar", () => {
     const strip = root.querySelector("canvas.gapline") as HTMLCanvasElement;
     expect(strip).toBeTruthy();
     expect(root.querySelector("svg.wind-map")).toBeTruthy();
+    const flag = root.querySelector(".flag-indicator") as HTMLElement;
+    expect(flag).toBeTruthy();
+    expect(flag.dataset.kind).toBe("green");
+    expect(flag.querySelector(".flag-name")?.textContent).toBe("GREEN");
+    expect(root.querySelector(".strip-best")?.firstElementChild?.classList.contains("flag-slot")).toBe(true);
+    expect(flag.nextElementSibling ?? root.querySelector(".strip-sectors")).toBeTruthy();
+    const slot = root.querySelector(".flag-slot");
+    const sectors = root.querySelector(".strip-sectors");
+    expect(slot && sectors && (slot.compareDocumentPosition(sectors) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
     const sf = Number(strip.dataset.sf);
     expect(strip.dataset.mode).toBe("track");
     expect(sf).toBeGreaterThan(40);
@@ -308,5 +319,31 @@ describe("mountStatusBar", () => {
     api.update();
     expect(row.textContent).toContain("1010.2 mbar");
     expect(row.getAttribute("data-trend")).toBe("none");
+  });
+
+  it("places the current flag immediately left of the purple sector times", () => {
+    const host = document.createElement("div");
+    const api = mountStatusBar(host);
+    state.snap = { ...snap(), trackFlag: sheetFlagState("yellow") };
+    api.update();
+    const root = host.querySelector(".statusbar")!;
+    const flag = root.querySelector(".flag-indicator") as HTMLElement;
+    expect(flag.dataset.kind).toBe("yellow");
+    expect(flag.dataset.badge).toBe("S2");
+    expect(flag.textContent).toContain("YELLOW");
+    expect(flag.textContent).not.toMatch(/-/);
+    expect(flag.querySelector(".flag-badge")?.textContent).toBe("S2");
+    expect(flag.querySelector(".flag-icon-wrap .flag-badge")?.textContent).toBe("S2");
+    const best = root.querySelector(".strip-best")!;
+    expect(best.children[0].classList.contains("flag-slot")).toBe(true);
+    expect(best.children[1].classList.contains("strip-sectors")).toBe(true);
+    expect(best.querySelector(".sec-purple")?.textContent).toMatch(/^S1/);
+
+    state.snap = { ...snap(), trackFlag: sheetFlagState("doubleYellow") };
+    api.update();
+    const dy = root.querySelector(".flag-indicator") as HTMLElement;
+    expect(dy.dataset.kind).toBe("doubleYellow");
+    expect(dy.querySelector(".flag-name")?.textContent).toBe("DOUBLE YELLOW");
+    expect(dy.querySelector("svg")?.getAttribute("viewBox")).toContain("132");
   });
 });
