@@ -439,17 +439,7 @@ svg.wind-map.wind-still .wind-arrow-chevrons { animation: none; }
 svg.track, svg.circle, canvas.chart { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 svg.mini { width: 100%; height: 10rem; display: block; }
 .car-label { font-family: var(--cond); font-size: 0.8125rem; font-weight: 700; pointer-events: none; }
-.pit-mark { pointer-events: none; }
-.pit-mark-label {
-  font-size: 0.875rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  paint-order: stroke fill;
-  stroke: #07080d;
-  stroke-width: 3.4px;
-  stroke-linejoin: round;
-}
-.page.trackmap .pit-mark-label { font-size: 1rem; }
+.map-mark { pointer-events: none; }
 .page.pitcircle .car-label { font-size: 1.05rem; }
 .page.pitcircle .gap-callout { font-size: 0.875rem; }
 .page.pitcircle .sf-label { font-size: 1.125rem; }
