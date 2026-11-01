@@ -65,7 +65,7 @@ describe("driverTimingAt", () => {
     expect(view.s1).toMatchObject({ time: 29.153, held: true });
     expect(view.s2).toMatchObject({ time: 31.804, held: true });
     expect(view.s3).toMatchObject({ time: 19.22, held: true, kind: "overall" });
-    expect(view.minis.s1).toEqual([null, SEG_YELLOW, SEG_PERSONAL]);
+    expect(view.minis.s1).toEqual([SEG_OVERALL, SEG_YELLOW, SEG_PERSONAL]);
     expect(view.minis.s2).toEqual([SEG_YELLOW, SEG_OVERALL]);
     expect(view.minis.s3).toEqual([SEG_PIT, SEG_YELLOW]);
     expect(visibleLapTiming(laps[1], lap2 + 1000).s1).toBeNull();
@@ -94,11 +94,77 @@ describe("driverTimingAt", () => {
 
   it("keeps an empty mini-sector in place instead of closing the gap", () => {
     const start = parseTs("2025-10-26T20:00:00.000Z");
-    const view = driverTimingAt(laps, 1, start + 29_153, slots);
-    expect(view.minis.s1).toEqual([null, SEG_YELLOW, SEG_PERSONAL]);
+    const holed = laps.map((row, index) => (index === 0 ? { ...row, segments_sector_1: [SEG_YELLOW, null, SEG_PERSONAL] } : row));
+    const view = driverTimingAt(holed, 1, start + 29_153, slots);
+    expect(view.minis.s1).toEqual([SEG_YELLOW, null, SEG_PERSONAL]);
     expect(view.s1).toMatchObject({ time: 29.153, held: false });
     expect(view.s2.held).toBe(false);
     expect(view.s2.time).toBeNull();
+  });
+
+  it("fills a blank S1 block 1 once the car is past it", () => {
+    const start = parseTs("2025-10-26T20:00:00.000Z");
+    const early = driverTimingAt(laps, 1, start + 5_000, slots);
+    expect(early.minis.s1).toEqual([null, null, null]);
+
+    const mid = driverTimingAt(laps, 1, start + 20_000, slots);
+    expect(mid.s1.time).toBeNull();
+    expect(mid.minis.s1).toEqual([SEG_YELLOW, SEG_YELLOW, null]);
+
+    const done = driverTimingAt(laps, 1, start + 29_153, slots);
+    expect(done.s1.kind).toBe("overall");
+    expect(done.minis.s1).toEqual([SEG_OVERALL, SEG_YELLOW, SEG_PERSONAL]);
+
+    const pitOnly = [
+      lap({
+        driver_number: 1,
+        lap_number: 1,
+        date_start: "2025-10-26T20:00:00.000Z",
+        segments_sector_1: [SEG_PIT, null, SEG_YELLOW],
+      }),
+    ];
+    const pit = driverTimingAt(pitOnly, 1, start + 29_153, sessionMiniSlots(pitOnly));
+    expect(pit.minis.s1).toEqual([SEG_PIT, null, SEG_YELLOW]);
+  });
+
+  it("colours a blank S1 block 1 from the sector time, and yellow before that time exists", () => {
+    const t0 = parseTs("2025-10-26T20:00:00.000Z");
+    const lap2 = parseTs("2025-10-26T20:01:20.000Z");
+    const rows = [
+      lap({
+        driver_number: 1,
+        lap_number: 1,
+        date_start: "2025-10-26T20:00:00.000Z",
+        duration_sector_1: 29,
+        segments_sector_1: [null, SEG_YELLOW, SEG_YELLOW],
+      }),
+      lap({
+        driver_number: 1,
+        lap_number: 2,
+        date_start: "2025-10-26T20:01:20.000Z",
+        duration_sector_1: 31,
+        segments_sector_1: [0, SEG_YELLOW, SEG_YELLOW],
+      }),
+      lap({
+        driver_number: 44,
+        lap_number: 1,
+        date_start: "2025-10-26T20:00:00.000Z",
+        duration_sector_1: 28,
+        segments_sector_1: [SEG_YELLOW, SEG_YELLOW, SEG_YELLOW],
+      }),
+    ];
+    const wide = sessionMiniSlots(rows);
+    const personal = driverTimingAt(rows, 1, t0 + 29_000, wide);
+    expect(personal.s1.kind).toBe("personal");
+    expect(personal.minis.s1[0]).toBe(SEG_PERSONAL);
+
+    const opened = driverTimingAt(rows, 1, lap2 + 11_000, wide);
+    expect(opened.s1.held).toBe(true);
+    expect(opened.minis.s1).toEqual([SEG_YELLOW, null, null]);
+
+    const slower = driverTimingAt(rows, 1, lap2 + 31_000, wide);
+    expect(slower.s1).toMatchObject({ time: 31, kind: "yellow", held: false });
+    expect(slower.minis.s1[0]).toBe(SEG_YELLOW);
   });
 
   it("lights mini-sectors one by one, including a partial S3", () => {

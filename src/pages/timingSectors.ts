@@ -168,6 +168,43 @@ function paintCodes(lap: Lap | null, which: Which, slots: number, revealed: numb
   return out;
 }
 
+/** How many mini-sectors of this sector the car has finished at `now`. */
+function revealedMinis(lap: Lap, which: Which, now: number, slots: number): number {
+  const startMs = parseTs(lap.date_start);
+  if (!Number.isFinite(startMs) || now < startMs || slots <= 0) return 0;
+  const window = sectorWindow(lap, which);
+  if (!window || window.dur <= 0) return 0;
+  const elapsed = (now - startMs) / 1000;
+  const count = segmentCount(lap, which, slots);
+  const lapDone = lap.lap_duration != null && startMs + lap.lap_duration * 1000 <= now;
+  if (lapDone || elapsed + 1e-6 >= window.start + window.dur) return slots;
+  if (elapsed < window.start) return 0;
+  const slice = window.dur / count;
+  return Math.min(count, Math.floor((elapsed - window.start + 1e-6) / slice));
+}
+
+function miniForKind(kind: SectorKind): MiniCode {
+  if (kind === "overall") return SEG_OVERALL;
+  if (kind === "personal") return SEG_PERSONAL;
+  return SEG_YELLOW;
+}
+
+/**
+ * OpenF1 often stores nothing in S1 segment 1. Once the car is past that block,
+ * paint it from the S1 time: purple or green when that time is the best, otherwise yellow.
+ * A real pit-lane code, and any colour OpenF1 did send, stays as stored.
+ */
+function fillS1Block1(painted: MiniCode[], lap: Lap, revealed: number, now: number, personalS1: number | null, overallS1: number | null): MiniCode[] {
+  if (revealed < 1 || painted.length === 0) return painted;
+  const first = painted[0];
+  if (first === SEG_PIT || first === SEG_YELLOW || first === SEG_PERSONAL || first === SEG_OVERALL) return painted;
+  const done = sectorFlags(lap, now).s1;
+  const kind = done ? classify(durationOf(lap, "s1"), personalS1, overallS1) : "yellow";
+  const out = painted.slice();
+  out[0] = miniForKind(kind);
+  return out;
+}
+
 /** Every stored block, including the last S3 segment that finishes on the line. */
 function fullMinis(lap: Lap | null, which: Which, slots: number): MiniCode[] {
   return paintCodes(lap, which, slots, slots);
@@ -178,20 +215,7 @@ function fullMinis(lap: Lap | null, which: Which, slots: number): MiniCode[] {
  * Index 0 completes at 1/n, so it is the first block, not the second.
  */
 function partialMinis(lap: Lap, which: Which, now: number, slots: number): MiniCode[] {
-  const startMs = parseTs(lap.date_start);
-  if (!Number.isFinite(startMs) || now < startMs || slots <= 0) return emptyMinis(slots);
-  const window = sectorWindow(lap, which);
-  if (!window || window.dur <= 0) return emptyMinis(slots);
-  const elapsed = (now - startMs) / 1000;
-  const count = segmentCount(lap, which, slots);
-  const lapDone = lap.lap_duration != null && startMs + lap.lap_duration * 1000 <= now;
-  let revealed = 0;
-  if (lapDone || elapsed + 1e-6 >= window.start + window.dur) revealed = slots;
-  else if (elapsed >= window.start) {
-    const slice = window.dur / count;
-    revealed = Math.min(count, Math.floor((elapsed - window.start + 1e-6) / slice));
-  }
-  return paintCodes(lap, which, slots, revealed);
+  return paintCodes(lap, which, slots, revealedMinis(lap, which, now, slots));
 }
 
 export function formatSectorDelta(delta: number): string {
@@ -264,17 +288,12 @@ export function driverTimingAt(laps: Lap[], driver: number, now: number, slots: 
       if (!lap) {
         return { s1: emptyMinis(slots.s1), s2: emptyMinis(slots.s2), s3: emptyMinis(slots.s3) };
       }
-      if (holdFinished) {
-        return {
-          s1: fullMinis(lap, "s1", slots.s1),
-          s2: fullMinis(lap, "s2", slots.s2),
-          s3: fullMinis(lap, "s3", slots.s3),
-        };
-      }
+      const s1Painted = holdFinished ? fullMinis(lap, "s1", slots.s1) : partialMinis(lap, "s1", now, slots.s1);
+      const s1Revealed = revealedMinis(lap, "s1", now, slots.s1);
       return {
-        s1: partialMinis(lap, "s1", now, slots.s1),
-        s2: partialMinis(lap, "s2", now, slots.s2),
-        s3: partialMinis(lap, "s3", now, slots.s3),
+        s1: fillS1Block1(s1Painted, lap, s1Revealed, now, personal.s1, overall.s1),
+        s2: holdFinished ? fullMinis(lap, "s2", slots.s2) : partialMinis(lap, "s2", now, slots.s2),
+        s3: holdFinished ? fullMinis(lap, "s3", slots.s3) : partialMinis(lap, "s3", now, slots.s3),
       };
     })(),
   };
