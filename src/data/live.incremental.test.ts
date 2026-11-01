@@ -105,4 +105,36 @@ describe("relay incremental live poll", () => {
     expect(calls).toBeGreaterThan(before);
     handle.stop();
   });
+
+  it("rewinds the location cursor to now minus 10s on 422", async () => {
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
+    vi.useFakeTimers();
+    const now = Date.parse("2025-10-26T20:10:20.000Z");
+    vi.setSystemTime(now);
+    const { OpenF1Error } = await import("./errors");
+    const since: string[] = [];
+    apiGet.mockImplementation(async (path: string, params: Record<string, string | number>) => {
+      if (path === "location") {
+        since.push(String(params["date>"]));
+        throw new OpenF1Error("http", "too large", 422);
+      }
+      return [];
+    });
+    const statuses: string[] = [];
+    const handle = startLiveFeed({
+      username: "ada",
+      sessionKey: 1,
+      cursors: { location: "2025-10-26T18:00:00.000Z" },
+      onMessage: () => {},
+      onStatus: (source, detail) => statuses.push(`${source}:${detail ?? ""}`),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(since[0]).toBe("2025-10-26T18:00:00.000Z");
+    expect(statuses.some((s) => /retry/i.test(s))).toBe(false);
+    await vi.advanceTimersByTimeAsync(4000);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(since.some((iso) => iso === new Date(now - 10_000).toISOString())).toBe(true);
+    handle.stop();
+  });
 });

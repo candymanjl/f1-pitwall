@@ -450,4 +450,57 @@ describe("pit stop count at current time", () => {
     expect(one?.pits).toBe(1);
     expect(forty?.pits).toBe(1);
   });
+
+  it("caps IN PIT to 60s of lane time and shows STOPPED under a red flag", () => {
+    const pit: Pit = {
+      date: "2025-10-26T20:10:00.000Z",
+      driver_number: 1,
+      lap_number: 8,
+      lane_duration: 600,
+      pit_duration: 22,
+      stop_duration: 2,
+    };
+    const during = snapshotAt(bundle({ pits: [pit], drivers: [driver(1, "AAA")] }), parseTs("2025-10-26T20:10:30.000Z"));
+    expect(during.rows[0].inPit).toBe(true);
+    expect(during.rows[0].status).toBe("IN PIT");
+
+    const afterCap = snapshotAt(bundle({ pits: [pit], drivers: [driver(1, "AAA")] }), parseTs("2025-10-26T20:11:10.000Z"));
+    expect(afterCap.rows[0].inPit).toBe(false);
+
+    const red = snapshotAt(
+      bundle({
+        pits: [pit],
+        drivers: [driver(1, "AAA")],
+        raceControl: [rc({ date: "2025-10-26T20:10:05.000Z", flag: "RED", scope: "Track", message: "RED FLAG" })],
+      }),
+      parseTs("2025-10-26T20:10:30.000Z"),
+    );
+    expect(red.rows[0].status).toBe("STOPPED");
+    expect(red.trackFlag?.kind).toBe("red");
+  });
+
+  it("excludes laps over 3x the green median from last-lap display", () => {
+    const base = {
+      driver_number: 1,
+      duration_sector_1: 28,
+      duration_sector_2: 32,
+      duration_sector_3: 20,
+      is_pit_out_lap: false,
+      segments_sector_1: null,
+      segments_sector_2: null,
+      segments_sector_3: null,
+      i1_speed: null,
+      i2_speed: null,
+      st_speed: null,
+    };
+    const laps: Lap[] = [
+      { ...base, lap_number: 1, date_start: "2025-10-26T20:00:00.000Z", lap_duration: 80 },
+      { ...base, lap_number: 2, date_start: "2025-10-26T20:01:20.000Z", lap_duration: 80.2 },
+      { ...base, lap_number: 3, date_start: "2025-10-26T20:02:40.000Z", lap_duration: 79.8 },
+      { ...base, lap_number: 4, date_start: "2025-10-26T20:04:00.000Z", lap_duration: 400 },
+    ];
+    const snap = snapshotAt(bundle({ laps, drivers: [driver(1, "AAA")] }), parseTs("2025-10-26T20:12:00.000Z"));
+    expect(snap.rows[0].lastLap).toBeNull();
+    expect(snap.rows[0].lastLapDelta).toBeNull();
+  });
 });

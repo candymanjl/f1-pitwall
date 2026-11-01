@@ -1,7 +1,8 @@
 /** @vitest-environment happy-dom */
 import { afterEach, describe, expect, it } from "vitest";
 import { stepPlayback } from "./lib/playback";
-import { applyLoadedClock, ingestLive, pinToLive, setClock, setPlaying, setScrubbing, state } from "./state";
+import { applyLoadedClock, ingestLive, pinToLive, setClock, setPlaying, setScrubbing, state, stepClock } from "./state";
+import { latestSampleScanCount, resetLatestSampleScanCount } from "./lib/sessionClock";
 import type { SessionBundle } from "./data/types";
 
 const START = "2026-10-31T20:00:00.000Z";
@@ -79,6 +80,8 @@ afterEach(() => {
   state.t = 0;
   state.start = 0;
   state.end = 1;
+  state.latestMs = Number.NaN;
+  state.lastIngestAt = 0;
 });
 
 describe("scrub vs live ingest", () => {
@@ -223,5 +226,57 @@ describe("scrub vs live ingest", () => {
     expect(state.t).toBe(Date.parse(later));
     expect(state.followLive).toBe(true);
     expect(state.playing).toBe(true);
+  });
+
+  it("live follow advances past date_end plus grace while rows arrive", () => {
+    const now = Date.now();
+    const start = now - 3 * 60 * 60 * 1000;
+    const dateEnd = now - 20 * 60 * 1000;
+    state.mode = "live";
+    state.bundle = fixture();
+    state.bundle.session.date_start = new Date(start).toISOString();
+    state.bundle.session.date_end = new Date(dateEnd).toISOString();
+    state.start = start;
+    state.end = dateEnd;
+    state.latestMs = dateEnd - 1000;
+    state.t = dateEnd - 1000;
+    state.followLive = true;
+    state.playing = true;
+    const later = now - 1000;
+    ingestLive("v1/location", [{ date: new Date(later).toISOString(), driver_number: 1, x: 8, y: 9, session_key: 99 }]);
+    expect(state.end).toBe(later);
+    expect(state.t).toBe(later);
+    expect(state.end).toBeGreaterThan(dateEnd);
+    expect(state.lastIngestAt).toBeGreaterThan(0);
+  });
+
+  it("tick does not rescan the bundle for latest sample", () => {
+    state.mode = "live";
+    state.bundle = fixture();
+    state.start = Date.parse(START);
+    state.latestMs = Date.parse(LAP66);
+    state.end = Date.parse(LAP66);
+    state.t = Date.parse(LAP66);
+    state.followLive = true;
+    state.playing = true;
+    resetLatestSampleScanCount();
+    stepClock(16);
+    stepClock(16);
+    stepClock(16);
+    expect(latestSampleScanCount()).toBe(0);
+    expect(state.end).toBe(Date.parse(LAP66));
+  });
+
+  it("skips emit when a poll adds zero rows", () => {
+    state.mode = "live";
+    state.bundle = fixture();
+    state.start = Date.parse(START);
+    state.end = Date.parse(LAP66);
+    state.latestMs = Date.parse(LAP66);
+    state.t = Date.parse(LAP66);
+    const before = state.bundle.intervals.length;
+    ingestLive("v1/intervals", []);
+    expect(state.bundle.intervals).toHaveLength(before);
+    expect(state.lastIngestAt).toBe(0);
   });
 });

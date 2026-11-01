@@ -14,12 +14,12 @@ import { hasUsableAuth, peekAccessToken, peekAuth } from "./data/auth";
 import { applyUiScale, readUiScale, writeUiScale, type UiScalePref } from "./lib/scale";
 import { snapshotAt } from "./data/derive";
 import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
-import { applyLiveMessage } from "./data/liveMerge";
+import { applyLiveUpdate } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
 import { emptyLiveDebug, seedLiveCursors, type LivePollDebug } from "./data/livePoll";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
-import { historicalStartMs, isFinishedSession, playableEndMs } from "./lib/sessionClock";
+import { historicalStartMs, isFinishedSession, latestSampleMs, playableEndMs } from "./lib/sessionClock";
 import { nextSelection } from "./lib/select";
 import { parseTs } from "./lib/time";
 import type { DataMode } from "./config";
@@ -63,6 +63,10 @@ export type AppState = {
   uiScale: UiScalePref;
   showLiveDebug: boolean;
   liveDebug: LivePollDebug;
+  /** Newest sample time, maintained on ingest. Full scan only after a bundle load. */
+  latestMs: number;
+  /** Wall clock of the last poll/MQTT batch that added rows. */
+  lastIngestAt: number;
 };
 
 type Listener = () => void;
@@ -104,6 +108,8 @@ export const state: AppState = {
   uiScale: readUiScale(),
   showLiveDebug: readLiveDebug(),
   liveDebug: emptyLiveDebug(),
+  latestMs: Number.NaN,
+  lastIngestAt: 0,
 };
 
 export function subscribe(fn: Listener): () => void {
@@ -124,6 +130,40 @@ export function emit(immediate = false): void {
   }, 80);
 }
 
+const LIVE_SNAP_MS = 125;
+let liveSnapAt = 0;
+let liveSnapTimer = 0;
+
+function sessionIsFinished(bundle = state.bundle): boolean {
+  return isFinishedSession(bundle, Date.now(), {
+    live: state.mode === "live",
+    lastIngestAt: state.lastIngestAt,
+    latestMs: state.latestMs,
+  });
+}
+
+function applyLatestMs(t: number): void {
+  if (!Number.isFinite(t)) return;
+  if (!Number.isFinite(state.latestMs) || t > state.latestMs) state.latestMs = t;
+}
+
+function scheduleLiveSnap(): void {
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+  if (now - liveSnapAt >= LIVE_SNAP_MS) {
+    liveSnapAt = now;
+    refreshSnap();
+    emit();
+    return;
+  }
+  if (liveSnapTimer) return;
+  liveSnapTimer = window.setTimeout(() => {
+    liveSnapTimer = 0;
+    liveSnapAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    refreshSnap();
+    emit();
+  }, LIVE_SNAP_MS);
+}
+
 function refreshSnap(): void {
   if (!state.bundle) {
     state.snap = null;
@@ -138,11 +178,15 @@ export function setPage(page: PageId): void {
   emit(true);
 }
 
-function syncPlayableRange(): void {
+function syncPlayableRange(scan = false): void {
   if (!state.bundle) return;
   const start = parseTs(state.bundle.session.date_start);
   if (Number.isFinite(start)) state.start = start;
-  state.end = playableEndMs(state.start, state.bundle);
+  if (scan || !Number.isFinite(state.latestMs)) {
+    state.latestMs = latestSampleMs(state.bundle);
+  }
+  if (Number.isFinite(state.latestMs) && state.latestMs > state.start) state.end = state.latestMs;
+  else state.end = playableEndMs(state.start, state.bundle);
   if (state.end <= state.start) state.end = state.start + 1;
 }
 
@@ -152,8 +196,8 @@ function syncPlayableRange(): void {
  * There is no saved playhead — localStorage only keeps the data mode, not t.
  */
 export function applyLoadedClock(): void {
-  syncPlayableRange();
-  if (state.mode === "live" && !isFinishedSession(state.bundle)) {
+  syncPlayableRange(true);
+  if (state.mode === "live" && !sessionIsFinished()) {
     state.t = state.end;
     return;
   }
@@ -237,7 +281,7 @@ export function setPitMode(mode: AppState["pitMode"]): void {
 export function setDataMode(mode: DataMode): void {
   state.mode = mode;
   writeMode(mode);
-  if (mode === "live" && state.bundle && !isFinishedSession(state.bundle)) {
+  if (mode === "live" && state.bundle && !sessionIsFinished()) {
     syncPlayableRange();
     state.followLive = true;
     state.playing = true;
@@ -310,6 +354,7 @@ export async function retryNow(): Promise<void> {
     state.retryAt = 0;
   }
   await reloadAll({ force: true });
+  if (state.sessionKey) await loadSelectedSession();
 }
 
 let reloadInFlight: Promise<void> | null = null;
@@ -329,11 +374,8 @@ export async function reloadAll(opts: { force?: boolean } = {}): Promise<void> {
       state.sessions = await loadSessions(state.meetingKey);
       if (gen !== reloadGen) return;
       state.listsBusy = false;
-      if (state.sessionKey) await loadSelectedSession();
-      else {
-        state.loading = "";
-        emit(true);
-      }
+      state.loading = "";
+      emit(true);
     } catch (err) {
       if (gen !== reloadGen) return;
       state.listsBusy = false;
@@ -461,9 +503,10 @@ function applyPartialBundle(bundle: SessionBundle, first: boolean): void {
   const firstApply = first || !state.bundle || state.bundle.session.session_key !== bundle.session.session_key;
   state.bundle = bundle;
   if (firstApply) {
+    state.lastIngestAt = 0;
     state.start = parseTs(bundle.session.date_start);
     applyLoadedClock();
-    if (state.mode === "live" && !isFinishedSession(bundle)) {
+    if (state.mode === "live" && !sessionIsFinished(bundle)) {
       state.followLive = true;
       state.playing = true;
     } else {
@@ -487,29 +530,37 @@ function applyPartialBundle(bundle: SessionBundle, first: boolean): void {
 let lastTick = performance.now();
 let liveTimer = 0;
 
-function tick(now: number): void {
-  const dt = now - lastTick;
-  lastTick = now;
-  if (state.playing && state.bundle && !state.scrubbing) {
-    syncPlayableRange();
-    const next = stepPlayback({
-      t: state.t,
-      start: state.start,
-      end: state.end,
-      playing: state.playing,
-      speed: state.speed,
-      dt,
-      mode: state.mode,
-      followLive: state.followLive,
-      now: Date.now(),
-      scrubbing: state.scrubbing,
-    });
-    state.t = next.t;
-    state.playing = next.playing;
-    state.followLive = next.followLive;
+export function stepClock(dt: number): void {
+  if (!state.playing || !state.bundle || state.scrubbing) return;
+  if (Number.isFinite(state.latestMs) && state.latestMs > state.start) {
+    state.end = Math.max(state.end, state.latestMs);
+  }
+  const next = stepPlayback({
+    t: state.t,
+    start: state.start,
+    end: state.end,
+    playing: state.playing,
+    speed: state.speed,
+    dt,
+    mode: state.mode,
+    followLive: state.followLive,
+    now: Date.now(),
+    scrubbing: state.scrubbing,
+  });
+  state.t = next.t;
+  state.playing = next.playing;
+  state.followLive = next.followLive;
+  if (state.mode === "live" && state.followLive) scheduleLiveSnap();
+  else {
     refreshSnap();
     emit();
   }
+}
+
+function tick(now: number): void {
+  const dt = now - lastTick;
+  lastTick = now;
+  stepClock(dt);
   requestAnimationFrame(tick);
 }
 
@@ -526,20 +577,25 @@ export function startClock(): void {
 export function applyLiveClock(_source: "poll" | "mqtt" | "ingest" = "ingest"): void {
   if (state.mode !== "live" || !state.bundle) return;
   const held = state.t;
-  syncPlayableRange();
+  if (Number.isFinite(state.latestMs) && state.latestMs > state.start) {
+    state.end = Math.max(state.end, state.latestMs);
+  }
   if (state.scrubbing || !state.followLive) {
     state.t = Math.min(state.end, Math.max(state.start, held));
     return;
   }
   state.t = state.end;
-  refreshSnap();
-  emit();
+  scheduleLiveSnap();
 }
 
 /** Merge an MQTT/poll payload and keep a scrubbed cursor put. */
 export function ingestLive(topic: string, payload: unknown, mode: "merge" | "replace" = "merge"): void {
   if (!state.bundle) return;
-  state.bundle = applyLiveMessage(state.bundle, topic, payload, loadedSessionKey() || undefined, mode);
+  const result = applyLiveUpdate(state.bundle, topic, payload, loadedSessionKey() || undefined, mode);
+  if (result.added === 0) return;
+  state.bundle = result.bundle;
+  applyLatestMs(result.latestMs);
+  state.lastIngestAt = Date.now();
   applyLiveClock("mqtt");
   if (!(state.followLive && state.playing) || state.scrubbing) {
     refreshSnap();

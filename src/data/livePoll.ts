@@ -88,15 +88,26 @@ export function seedLiveCursors(bundle: SessionBundle | null | undefined): Recor
   return out;
 }
 
+export const LOCATION_LIVE_WINDOW_MS = 10_000;
+
+export function locationLiveSinceIso(now = Date.now()): string {
+  return new Date(now - LOCATION_LIVE_WINDOW_MS).toISOString();
+}
+
 export function livePollParams(
   spec: LivePollSpec,
   sessionKey: number,
   cursors: Record<string, string>,
   fallbackSince: string,
+  now = Date.now(),
 ): Record<string, string | number> {
   const params: Record<string, string | number> = { session_key: sessionKey };
   if (spec.dateField) {
-    params[`${spec.dateField}>`] = normalizeFilterIso(cursors[spec.path] || fallbackSince);
+    if (spec.path === "location" && !cursors[spec.path]) {
+      params["date>"] = locationLiveSinceIso(now);
+    } else {
+      params[`${spec.dateField}>`] = normalizeFilterIso(cursors[spec.path] || fallbackSince);
+    }
   }
   return params;
 }

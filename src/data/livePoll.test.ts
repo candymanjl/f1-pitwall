@@ -65,6 +65,12 @@ describe("live incremental poll helpers", () => {
       lastSeenIso([{ date: "2025-10-26T20:10:01.000Z" }, { date: "2025-10-26T20:10:04.000Z" }], "date"),
     ).toBe("2025-10-26T20:10:04.000Z");
     expect(fallbackSinceIso(1_700_000_020_000, 20_000)).toBe(new Date(1_700_000_000_000).toISOString());
+    const locSpec = LIVE_POLL_SPECS.find((s) => s.path === "location")!;
+    const firstLoc = livePollParams(locSpec, 99, {}, "x", 1_700_000_020_000);
+    expect(firstLoc["date>"]).toBe(new Date(1_700_000_010_000).toISOString());
+    expect(livePollParams(locSpec, 99, { location: "2025-10-26T20:10:05.000Z" }, "x")["date>"]).toBe(
+      "2025-10-26T20:10:05.000Z",
+    );
     expect(
       formatLiveDebug({
         lastPollAt: Date.parse("2026-11-01T20:57:04.000Z"),

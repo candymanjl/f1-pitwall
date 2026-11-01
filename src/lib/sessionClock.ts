@@ -1,6 +1,16 @@
 import { parseTs } from "./time";
 import type { SessionBundle } from "../data/types";
 
+let sampleScans = 0;
+
+export function latestSampleScanCount(): number {
+  return sampleScans;
+}
+
+export function resetLatestSampleScanCount(): void {
+  sampleScans = 0;
+}
+
 function consider(max: number, raw: string | null | undefined): number {
   const t = parseTs(raw);
   return Number.isFinite(t) && t > max ? t : max;
@@ -8,6 +18,7 @@ function consider(max: number, raw: string | null | undefined): number {
 
 /** Newest timestamp that actually exists in the bundle — not wall clock, not scheduled date_end. */
 export function latestSampleMs(bundle: SessionBundle | null | undefined): number {
+  sampleScans += 1;
   if (!bundle) return NaN;
   let max = -Infinity;
   for (const lap of bundle.laps) {
@@ -23,7 +34,13 @@ export function latestSampleMs(bundle: SessionBundle | null | undefined): number
   for (const row of bundle.pits) max = consider(max, row.date);
   for (const row of bundle.weather) max = consider(max, row.date);
   for (const row of bundle.raceControl) max = consider(max, row.date);
-  for (const row of bundle.locations ?? []) max = consider(max, row.date);
+  for (const row of bundle.locations ?? []) {
+    if (typeof row.t === "number" && Number.isFinite(row.t)) {
+      if (row.t > max) max = row.t;
+    } else {
+      max = consider(max, row.date);
+    }
+  }
   for (const row of bundle.carData ?? []) max = consider(max, row.date);
   return Number.isFinite(max) && max > 0 ? max : NaN;
 }
@@ -83,18 +100,43 @@ export function historicalStartMs(
 
 /** Keep a just-finished session on the live cursor this long after the last sample. */
 export const LIVE_SESSION_GRACE_MS = 10 * 60 * 1000;
+export const LIVE_POLL_FRESH_MS = 2 * 60 * 1000;
+
+export type FinishedCheck = {
+  live?: boolean;
+  lastIngestAt?: number;
+  latestMs?: number;
+};
+
+function hasChequered(bundle: SessionBundle): boolean {
+  return bundle.raceControl.some((ev) => {
+    const flag = (ev.flag ?? "").toUpperCase();
+    const msg = (ev.message ?? "").toUpperCase();
+    return flag.includes("CHEQUERED") || flag.includes("CHECKERED") || msg.includes("CHEQUERED") || msg.includes("CHECKERED");
+  });
+}
 
 /**
  * Old / archived session, not an in-progress live feed.
- * Uses the later of scheduled date_end and the newest sample, plus a short grace.
+ * In live mode, ignore scheduled date_end while polls or samples are still flowing
+ * (a red flag can push a race past the published end).
  */
 export function isFinishedSession(
   bundle: SessionBundle | null | undefined,
   now = Date.now(),
+  opts?: FinishedCheck,
 ): boolean {
   if (!bundle) return false;
+  const latest = opts?.latestMs ?? latestSampleMs(bundle);
+  if (opts?.live) {
+    if (opts.lastIngestAt && now - opts.lastIngestAt <= LIVE_POLL_FRESH_MS) return false;
+    if (Number.isFinite(latest) && now - latest <= LIVE_POLL_FRESH_MS) return false;
+    const chequered = hasChequered(bundle);
+    if (!chequered && Number.isFinite(latest) && now - latest <= LIVE_SESSION_GRACE_MS) return false;
+    if (chequered) return !Number.isFinite(latest) || latest + LIVE_SESSION_GRACE_MS < now;
+    return Number.isFinite(latest) && latest + LIVE_SESSION_GRACE_MS < now;
+  }
   const scheduled = parseTs(bundle.session.date_end);
-  const latest = latestSampleMs(bundle);
   const hints: number[] = [];
   if (Number.isFinite(scheduled)) hints.push(scheduled);
   if (Number.isFinite(latest)) hints.push(latest);

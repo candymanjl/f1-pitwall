@@ -16,6 +16,8 @@ import {
   changeSession,
   changeYear,
   loadSelectedSession,
+  reloadAll,
+  retryNow,
   sessionPickerDirty,
   state,
 } from "./state";
@@ -152,5 +154,38 @@ describe("deferred session load", () => {
     state.mode = "historical";
     state.followLive = false;
     state.playing = false;
+  });
+
+  it("page open and picker changes fetch zero bundles until Load", async () => {
+    state.bundle = null;
+    state.sessionKey = 9877;
+    loadMeetings.mockResolvedValue([meeting]);
+    loadSessions.mockResolvedValue([race]);
+    await reloadAll();
+    expect(loadMeetings).toHaveBeenCalled();
+    expect(loadSessions).toHaveBeenCalled();
+    expect(loadBundle).not.toHaveBeenCalled();
+    expect(state.bundle).toBeNull();
+
+    await changeYear(2024);
+    await changeMeeting(10);
+    changeSession(20);
+    expect(loadBundle).not.toHaveBeenCalled();
+
+    loadBundle.mockResolvedValue({ ...loadedBundle, session: race });
+    await loadSelectedSession();
+    expect(loadBundle).toHaveBeenCalledTimes(1);
+  });
+
+  it("explicit retry still loads the selected bundle", async () => {
+    state.bundle = null;
+    state.sessionKey = 20;
+    state.lock = null;
+    loadMeetings.mockResolvedValue([meeting]);
+    loadSessions.mockResolvedValue([race]);
+    loadBundle.mockResolvedValue({ ...loadedBundle, session: race });
+    await retryNow();
+    expect(loadBundle).toHaveBeenCalled();
+    expect(state.bundle).toMatchObject({ session: { session_key: 20 } });
   });
 });

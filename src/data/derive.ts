@@ -60,19 +60,31 @@ export function visibleLapTiming(lap: Lap | null, now: number): {
   };
 }
 
-function racingLap(lap: Lap, pitIn: Set<number>): boolean {
-  return lap.lap_duration != null && Number.isFinite(lap.lap_duration) && lap.lap_duration > 0 && !lap.is_pit_out_lap && !pitIn.has(lap.lap_number);
+export const PIT_LANE_CAP_S = 60;
+export const LONG_LAP_MEDIAN_MULT = 3;
+
+function racingLap(lap: Lap, pitIn: Set<number>, median = 0): boolean {
+  if (lap.lap_duration == null || !Number.isFinite(lap.lap_duration) || lap.lap_duration <= 0) return false;
+  if (lap.is_pit_out_lap || pitIn.has(lap.lap_number)) return false;
+  if (median > 0 && lap.lap_duration > median * LONG_LAP_MEDIAN_MULT) return false;
+  return true;
+}
+
+export function displayLapTime(duration: number | null | undefined, median: number): number | null {
+  if (duration == null || !Number.isFinite(duration) || duration <= 0) return null;
+  if (median > 0 && duration > median * LONG_LAP_MEDIAN_MULT) return null;
+  return duration;
 }
 
 /** Last completed lap minus the lap before it. Blank for lap 1, pit in/out, or a missing time. */
-export function previousLapDelta(completed: Lap[], pitIn: Set<number>): number | null {
+export function previousLapDelta(completed: Lap[], pitIn: Set<number>, median = 0): number | null {
   let last: Lap | null = null;
   for (const lap of completed) {
     if (!last || lap.lap_number >= last.lap_number) last = lap;
   }
-  if (!last || last.lap_number <= 1 || !racingLap(last, pitIn) || last.lap_duration == null) return null;
+  if (!last || last.lap_number <= 1 || !racingLap(last, pitIn, median) || last.lap_duration == null) return null;
   const prev = completed.find((lap) => lap.lap_number === last.lap_number - 1) ?? null;
-  if (!prev || !racingLap(prev, pitIn) || prev.lap_duration == null) return null;
+  if (!prev || !racingLap(prev, pitIn, median) || prev.lap_duration == null) return null;
   return last.lap_duration - prev.lap_duration;
 }
 
@@ -244,6 +256,8 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
 
   const medianGreenLap = median(greenLaps) || 90;
   const hasIntervals = isRace && intervals.length > 0;
+  const trackFlag = trackFlagAt(bundle.raceControl, now);
+  const redFlag = trackFlag.kind === "red";
 
   const bestByDriver = new Map<number, { lap: number; s1: number; s2: number; s3: number }>();
   const lastByDriver = new Map<number, Lap>();
@@ -301,9 +315,8 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
         : null;
 
     const lastStart = parseTs(cur?.date_start ?? last?.date_start);
-    const inPit =
-      !!lastPit &&
-      now - parseTs(lastPit.date) < (lastPit.lane_duration ?? 28) * 1000 + 4000;
+    const laneS = Math.min(Math.max(lastPit?.lane_duration ?? 28, 0), PIT_LANE_CAP_S);
+    const inPit = !!lastPit && now - parseTs(lastPit.date) < laneS * 1000 + 4000;
     const stale = Number.isFinite(lastStart) && now - lastStart > medianGreenLap * 2500;
     const retired = isRace && stale && !inPit && (cur?.lap_number ?? 0) + 2 < leaderLap;
     const lapActive =
@@ -332,12 +345,12 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
       driver,
       compound: stint?.compound ?? null,
       tyreAge,
-      lastLap: last?.lap_duration ?? null,
-      lastLapDelta: previousLapDelta(completedBefore(dlaps, now), pitInLaps(driverPits, driver.driver_number, now)),
+      lastLap: displayLapTime(last?.lap_duration, medianGreenLap),
+      lastLapDelta: previousLapDelta(completedBefore(dlaps, now), pitInLaps(driverPits, driver.driver_number, now), medianGreenLap),
       bestLap,
       interval,
       gap,
-      status: retired ? "OUT" : inPit ? "IN PIT" : inGarage ? "GARAGE" : "ON TRACK",
+      status: redFlag ? "STOPPED" : retired ? "OUT" : inPit ? "IN PIT" : inGarage ? "GARAGE" : "ON TRACK",
       currentLap: cur?.lap_number ?? last?.lap_number ?? null,
       lapActive,
       inGarage,
@@ -451,7 +464,7 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
     weather: weatherNow,
     bestSectors,
     flagMode: flagAt(now, bands),
-    trackFlag: trackFlagAt(bundle.raceControl, now),
+    trackFlag,
     scBands: bands,
     raceLaps,
     scheduledLaps: scheduled,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyLiveMessage, mergeLiveRows } from "./liveMerge";
+import { applyLiveMessage, applyLiveUpdate, mergeLiveRows } from "./liveMerge";
 import type { SessionBundle } from "./types";
 
 function bundle(partial: Partial<SessionBundle> = {}): SessionBundle {
@@ -76,6 +76,35 @@ describe("mergeLiveRows", () => {
     const a = { driver_number: 1, position: 1, date: "t1" };
     const b = { driver_number: 1, position: 2, date: "t2" };
     expect(mergeLiveRows([a], b)).toEqual([a, b]);
+    expect(mergeLiveRows([a], b, true)).toEqual([a, b]);
+  });
+
+  it("merges 200k stored locations plus 800 new rows in under 50ms", () => {
+    const t0 = Date.parse("2025-10-26T20:00:00.000Z");
+    const existing = Array.from({ length: 200_000 }, (_, i) => ({
+      date: new Date(t0 + i * 50).toISOString(),
+      driver_number: (i % 20) + 1,
+      x: i,
+      y: i,
+      t: t0 + i * 50,
+    }));
+    const incoming = Array.from({ length: 800 }, (_, i) => ({
+      date: new Date(t0 + 200_000 * 50 + i * 50).toISOString(),
+      driver_number: (i % 20) + 1,
+      x: 200_000 + i,
+      y: i,
+    }));
+    const start = bundle({ locations: existing });
+    const t1 = performance.now();
+    const result = applyLiveUpdate(start, "v1/location", incoming, 99);
+    const dt = performance.now() - t1;
+    expect(dt).toBeLessThan(50);
+    expect(result.added).toBe(800);
+    const locs = result.bundle.locations ?? [];
+    expect(locs.length).toBeGreaterThan(0);
+    expect(locs.length).toBeLessThan(existing.length);
+    expect(locs.at(-1)?.x).toBeGreaterThan(200_000);
+    expect(result.latestMs).toBe(t0 + 200_000 * 50 + 799 * 50);
   });
 });
 

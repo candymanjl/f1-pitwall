@@ -205,6 +205,43 @@ describe("isFinishedSession", () => {
       ),
     ).toBe(true);
   });
+
+  it("in live mode ignores date_end while rows or polls are still flowing", () => {
+    const now = Date.parse("2026-11-01T21:40:00.000Z");
+    const pastEnd = new Date(now - LIVE_SESSION_GRACE_MS - 60_000).toISOString();
+    const flowing = bundle({
+      session: { ...bundle().session, date_end: pastEnd },
+      intervals: [{ date: new Date(now - 8_000).toISOString(), driver_number: 1, gap_to_leader: 0, interval: 0 }],
+    });
+    expect(isFinishedSession(flowing, now, { live: true, latestMs: now - 8_000 })).toBe(false);
+    expect(
+      isFinishedSession(flowing, now, {
+        live: true,
+        lastIngestAt: now - 20_000,
+        latestMs: now - LIVE_SESSION_GRACE_MS - 1,
+      }),
+    ).toBe(false);
+    expect(
+      isFinishedSession(
+        bundle({
+          session: { ...bundle().session, date_end: pastEnd },
+          raceControl: [
+            {
+              date: pastEnd,
+              category: "Flag",
+              flag: "CHEQUERED",
+              scope: "Track",
+              message: "CHEQUERED FLAG",
+              lap_number: 71,
+              driver_number: null,
+            },
+          ],
+        }),
+        now,
+        { live: true, lastIngestAt: now - 5 * 60_000, latestMs: now - LIVE_SESSION_GRACE_MS - 1 },
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("followLiveFromSlider", () => {
