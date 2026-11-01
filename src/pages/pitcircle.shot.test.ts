@@ -159,8 +159,17 @@ describe("pit circle page", () => {
     expect(svg.querySelector(".pit-ghost")).toBeTruthy();
     expect(svg.querySelector(".pit-ghost-ring")).toBeTruthy();
     expect(svg.querySelector(".pit-ghost-label")?.textContent).toMatch(/VER\s+REJOIN/);
-    expect(root.querySelector(".pit-rejoin-hint")?.textContent).toMatch(/VER rejoin/);
-    expect(root.querySelector(".pit-rejoin-hint")?.textContent).toMatch(/between|ahead of/);
+    const hint = root.querySelector(".pit-rejoin-hint")!;
+    expect(hint.textContent).toMatch(/VER rejoin/);
+    expect(hint.querySelector(".pit-rejoin-drv.sel .pit-rejoin-code")?.textContent).toBe("VER");
+    expect((hint.querySelector(".pit-rejoin-drv.sel .pit-rejoin-code") as HTMLElement).style.color.toLowerCase()).toBe(
+      "#3671c6",
+    );
+    const ahead = hint.querySelector<HTMLElement>(".pit-rejoin-gap[data-side='ahead']");
+    const behind = hint.querySelector<HTMLElement>(".pit-rejoin-gap[data-side='behind']");
+    expect(ahead || hint.textContent).toBeTruthy();
+    if (ahead) expect(ahead.textContent).toMatch(/[−-]\d+\.\d{3}/);
+    if (behind) expect(behind.textContent).toMatch(/\+\d+\.\d{3}/);
     expect(Number(svg.querySelector(".pit-ghost")?.getAttribute("r"))).toBeGreaterThan(MAP_CAR_R);
     expect(svg.querySelector(".pit-ghost")?.getAttribute("fill")).toMatch(/rgba\(54,\s*113,\s*198/);
     expect(svg.querySelector(".pit-lane")).toBeTruthy();
@@ -199,6 +208,28 @@ describe("pit circle page", () => {
     expect(svg.querySelector(".pit-ghost-g")?.getAttribute("data-laps-down")).not.toBe("0");
     expect(svg.querySelector(".pit-ghost-label")?.textContent).toMatch(/\+\d+L/);
     expect(root.querySelector(".pit-rejoin-hint")?.textContent).toMatch(/\+\d+L/);
+
+    const zoom = root.querySelector<HTMLButtonElement>("button.map-zoom")!;
+    expect(svg.dataset.zoom).toBe("full");
+    zoom.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(zoom.getAttribute("aria-pressed")).toBe("true");
+    expect(svg.dataset.zoom).toBe("follow");
+    expect(svg.dataset.follow).toBe("1");
+    expect(svg.dataset.followKind).toBe("rejoin");
+    const vb = svg.getAttribute("viewBox")!.split(" ").map(Number);
+    expect(vb[2]).toBeLessThan(640);
+    expect(vb[3]).toBeLessThan(620);
+    zoom.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(svg.dataset.zoom).toBe("full");
+    expect(svg.getAttribute("viewBox")).toBe("0 0 640 620");
+    state.selectedDriver = null;
+    state.selectedDrivers = [];
+    api.update();
+    zoom.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(svg.dataset.zoom).toBe("follow");
+    expect(svg.dataset.followKind).toBe("leader");
+    expect(svg.dataset.follow).toBe("1");
+    zoom.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
 
     const css = readFileSync(resolve("src/styles.css"), "utf8");
     writeFileSync(

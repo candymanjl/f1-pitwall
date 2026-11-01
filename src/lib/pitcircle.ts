@@ -158,6 +158,17 @@ export type RejoinPreview = {
   frac: number;
 };
 
+/** Ahead is negative (time to the car in front); behind is positive. */
+export function rejoinGapText(
+  code: string,
+  seconds: number | null | undefined,
+  side: "ahead" | "behind",
+): string {
+  if (seconds == null || !Number.isFinite(seconds)) return `${code} —`;
+  const mag = Math.abs(seconds).toFixed(3);
+  return side === "ahead" ? `${code} −${mag}` : `${code} +${mag}`;
+}
+
 /** Who a pit rejoin sits between, and the on-track gaps in seconds. */
 export function rejoinPreview(
   cars: CircleCar[],

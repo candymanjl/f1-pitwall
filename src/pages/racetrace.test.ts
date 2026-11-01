@@ -86,7 +86,7 @@ describe("race trace controls", () => {
     const api = mountRaceTrace(root);
     api.update();
     const avg = root.querySelector<HTMLButtonElement>("button[data-trace-mode='average']")!;
-    const ham = root.querySelector<HTMLButtonElement>("button[data-driver='44']")!;
+    const ham = root.querySelector<HTMLButtonElement>(".trace-drivers button[data-driver='44']")!;
     avg.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(state.traceMode).toBe("average");
     api.update();
@@ -94,13 +94,27 @@ describe("race trace controls", () => {
     ham.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(state.selectedDrivers).toEqual([44]);
     api.update();
-    expect(root.querySelector("button[data-driver='44']")).toBe(ham);
+    expect(root.querySelector(".trace-drivers button[data-driver='44']")).toBe(ham);
     expect(ham.classList.contains("sel")).toBe(true);
     root.querySelector<HTMLButtonElement>("button[data-trace-mode='driver']")!.dispatchEvent(
       new PointerEvent("pointerdown", { bubbles: true }),
     );
     expect(state.traceMode).toBe("driver");
     api.update();
-    expect(root.querySelector<HTMLSelectElement>("select.trace-ref")?.hidden).toBe(false);
+    const picker = root.querySelector<HTMLElement>(".trace-ref")!;
+    expect(picker.hidden).toBe(false);
+    const btn = root.querySelector<HTMLButtonElement>(".trace-ref-btn")!;
+    btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    const list = root.querySelector<HTMLElement>(".trace-ref-list")!;
+    expect(list.hidden).toBe(false);
+    expect(list.querySelectorAll(".trace-ref-opt").length).toBe(2);
+    expect(list.querySelector(".swatch")).toBeTruthy();
+    root.querySelector<HTMLButtonElement>(".trace-ref-opt[data-driver='44']")!.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true }),
+    );
+    expect(state.traceDriver).toBe(44);
+    api.update();
+    expect(root.querySelector<HTMLElement>(".trace-ref-list")?.hidden).toBe(true);
+    expect(root.querySelector(".trace-ref-btn .trace-ref-code")?.textContent).toBe("HAM");
   });
 });

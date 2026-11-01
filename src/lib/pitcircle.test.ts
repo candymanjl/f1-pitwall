@@ -9,6 +9,7 @@ import {
   midFracClockwise,
   neighborsAt,
   onTrackGaps,
+  rejoinGapText,
   rejoinPreview,
   pointOnCircle,
   racingFrac,
@@ -85,6 +86,13 @@ describe("pit circle geometry", () => {
     expect(preview.frac).toBeGreaterThanOrEqual(0);
     expect(preview.frac).toBeLessThan(1);
     expect(preview.ahead || preview.behind).toBeTruthy();
+  });
+
+  it("signs the car ahead negative and the car behind positive", () => {
+    expect(rejoinGapText("NOR", 1.234, "ahead")).toBe("NOR −1.234");
+    expect(rejoinGapText("VER", 0.876, "behind")).toBe("VER +0.876");
+    expect(rejoinGapText("LEC", -2.5, "ahead")).toBe("LEC −2.500");
+    expect(rejoinGapText("HAM", null, "behind")).toBe("HAM —");
   });
 
   it("finds physical neighbors at a rejoin fraction", () => {
