@@ -81,13 +81,19 @@ button { cursor: pointer; }
 .toolbar select, .toolbar input[type="number"] {
   background: #121623; border: 1px solid #2a3144; border-radius: 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.8125rem;
 }
-.replay { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+.replay { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-left: auto; flex: 1 1 0; min-width: 0; }
 .replay button, .toolbar .ghost {
   background: #151a27; border: 1px solid #2a3144; border-radius: 0.25rem; padding: 0.3125rem 0.625rem; font-weight: 700;
 }
 .replay button.primary { background: var(--red); border-color: var(--red); }
 .replay button.live-btn.on { background: var(--red); border-color: var(--red); color: #fff; }
-.replay input[type="range"] { width: 13.75rem; accent-color: var(--red); }
+.replay input[type="range"] {
+  width: 41.25rem;
+  max-width: 41.25rem;
+  min-width: 0;
+  flex: 1 1 41.25rem;
+  accent-color: var(--red);
+}
 .badge {
   font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase;
   background: #1b2030; border: 1px solid #2c3348; padding: 0.1875rem 0.5rem; border-radius: 6.1875rem; color: var(--muted);

@@ -139,29 +139,59 @@ function sectorWindow(lap: Lap, which: Which): { start: number; dur: number } | 
   return { start, dur: lapDur * fracs[idx] };
 }
 
-/**
- * One block per mini-sector. Each lights when that slice of the sector clock has elapsed,
- * so a sector fills one by one — including S3, which ends as the next lap begins.
- */
-function revealMinis(lap: Lap | null, which: Which, now: number, slots: number): MiniCode[] {
-  const out: MiniCode[] = Array.from({ length: slots }, () => null);
-  if (!lap || slots <= 0) return out;
-  const startMs = parseTs(lap.date_start);
-  if (!Number.isFinite(startMs) || now < startMs) return out;
+function emptyMinis(slots: number): MiniCode[] {
+  return Array.from({ length: Math.max(0, slots) }, () => null);
+}
+
+function segmentCount(lap: Lap, which: Which, slots: number): number {
+  const n = segmentsOf(lap, which)?.length ?? 0;
+  return Math.max(1, n || slots);
+}
+
+/** Seconds from the lap start until mini-sector `index` (0-based) is complete. */
+function miniDoneAt(lap: Lap, which: Which, index: number, slots: number): number | null {
   const window = sectorWindow(lap, which);
-  if (!window || window.dur <= 0) return out;
-  const elapsed = (now - startMs) / 1000;
-  if (elapsed < window.start) return out;
+  if (!window || window.dur <= 0) return null;
+  const count = segmentCount(lap, which, slots);
+  return window.start + ((index + 1) / count) * window.dur;
+}
+
+function paintCodes(lap: Lap | null, which: Which, slots: number, revealed: number): MiniCode[] {
+  const out = emptyMinis(slots);
+  if (!lap) return out;
   const src = segmentsOf(lap, which) ?? [];
-  const count = Math.max(1, src.length || slots);
-  const lapDone = lap.lap_duration != null && startMs + lap.lap_duration * 1000 <= now;
-  for (let i = 0; i < slots; i++) {
-    const doneAt = window.start + ((i + 1) / count) * window.dur;
-    if (!lapDone && elapsed + 1e-6 < doneAt) continue;
+  const limit = Math.min(slots, revealed);
+  for (let i = 0; i < limit; i++) {
     const code = src[i];
     out[i] = typeof code === "number" ? code : null;
   }
   return out;
+}
+
+/** Every stored block, including the last S3 segment that finishes on the line. */
+function fullMinis(lap: Lap | null, which: Which, slots: number): MiniCode[] {
+  return paintCodes(lap, which, slots, slots);
+}
+
+/**
+ * Blocks 0..n-1 light when that slice of the sector clock has elapsed.
+ * Index 0 completes at 1/n, so it is the first block, not the second.
+ */
+function partialMinis(lap: Lap, which: Which, now: number, slots: number): MiniCode[] {
+  const startMs = parseTs(lap.date_start);
+  if (!Number.isFinite(startMs) || now < startMs || slots <= 0) return emptyMinis(slots);
+  const window = sectorWindow(lap, which);
+  if (!window || window.dur <= 0) return emptyMinis(slots);
+  const elapsed = (now - startMs) / 1000;
+  const count = segmentCount(lap, which, slots);
+  const lapDone = lap.lap_duration != null && startMs + lap.lap_duration * 1000 <= now;
+  let revealed = 0;
+  if (lapDone || elapsed + 1e-6 >= window.start + window.dur) revealed = slots;
+  else if (elapsed >= window.start) {
+    const slice = window.dur / count;
+    revealed = Math.min(count, Math.floor((elapsed - window.start + 1e-6) / slice));
+  }
+  return paintCodes(lap, which, slots, revealed);
 }
 
 export function formatSectorDelta(delta: number): string {
@@ -189,8 +219,9 @@ export function segmentLabel(code: MiniCode): string {
 
 /**
  * Sector times and mini-sectors for one driver at the replay clock.
- * Mini-sectors are the current lap only and clear when that lap starts.
- * A sector time stays on the previous lap until the new one completes.
+ * A finished lap keeps every block, including the last S3 segment, until the
+ * first S1 mini-sector of the next lap completes. That moment lights block 1
+ * and clears the rest. A sector time stays on the previous lap until the new one completes.
  */
 export function driverTimingAt(laps: Lap[], driver: number, now: number, slots: MiniSlots): DriverTiming {
   const mine = laps.filter((lap) => lap.driver_number === driver);
@@ -199,6 +230,15 @@ export function driverTimingAt(laps: Lap[], driver: number, now: number, slots: 
   const flags = cur ? sectorFlags(cur, now) : { s1: false, s2: false, s3: false };
   const personal = bests(mine, now);
   const overall = bests(laps, now);
+
+  const holdFinished = (() => {
+    if (!cur || !prev) return false;
+    const start = parseTs(cur.date_start);
+    if (!Number.isFinite(start) || now < start) return false;
+    const firstEnd = miniDoneAt(cur, "s1", 0, slots.s1);
+    if (firstEnd == null) return false;
+    return (now - start) / 1000 + 1e-9 < firstEnd;
+  })();
 
   const priorTime = (lap: Lap | null, which: Which): number | null => {
     if (!lap || !sectorFlags(lap, now)[which]) return null;
@@ -219,10 +259,23 @@ export function driverTimingAt(laps: Lap[], driver: number, now: number, slots: 
     s1: readout("s1"),
     s2: readout("s2"),
     s3: readout("s3"),
-    minis: {
-      s1: revealMinis(cur, "s1", now, slots.s1),
-      s2: revealMinis(cur, "s2", now, slots.s2),
-      s3: revealMinis(cur, "s3", now, slots.s3),
-    },
+    minis: (() => {
+      const lap = holdFinished ? prev : cur ?? prev;
+      if (!lap) {
+        return { s1: emptyMinis(slots.s1), s2: emptyMinis(slots.s2), s3: emptyMinis(slots.s3) };
+      }
+      if (holdFinished) {
+        return {
+          s1: fullMinis(lap, "s1", slots.s1),
+          s2: fullMinis(lap, "s2", slots.s2),
+          s3: fullMinis(lap, "s3", slots.s3),
+        };
+      }
+      return {
+        s1: partialMinis(lap, "s1", now, slots.s1),
+        s2: partialMinis(lap, "s2", now, slots.s2),
+        s3: partialMinis(lap, "s3", now, slots.s3),
+      };
+    })(),
   };
 }
