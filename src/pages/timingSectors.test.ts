@@ -81,8 +81,9 @@ describe("driverTimingAt", () => {
     expect(s1.minis.s3.every((code) => code == null)).toBe(true);
 
     const done = driverTimingAt(laps, 1, lap2 + 80_000, slots);
-    expect(done.s3).toMatchObject({ time: 19.0, kind: "overall", held: false });
+    expect(done.s3).toMatchObject({ time: 19.0, kind: "overall", held: false, delta: 19 - 19.22 });
     expect(done.minis.s3).toEqual([SEG_YELLOW, SEG_YELLOW]);
+    expect(done.s1.delta).toBeCloseTo(28.5 - 29.153, 3);
     expect(done.s1.time).toBe(visibleLapTiming(laps[1], lap2 + 80_000).s1);
   });
 
@@ -93,6 +94,23 @@ describe("driverTimingAt", () => {
     expect(view.s1).toMatchObject({ time: 29.153, held: false });
     expect(view.s2.held).toBe(false);
     expect(view.s2.time).toBeNull();
+  });
+
+  it("lights mini-sectors one by one, including a partial S3", () => {
+    const early = driverTimingAt(laps, 1, lap2 + 9_500, slots);
+    expect(early.minis.s1).toEqual([SEG_OVERALL, null, null]);
+    expect(early.minis.s3.every((code) => code == null)).toBe(true);
+
+    const midS1 = driverTimingAt(laps, 1, lap2 + 19_000, slots);
+    expect(midS1.minis.s1).toEqual([SEG_OVERALL, SEG_YELLOW, null]);
+
+    const s3Start = 28.5 + 32.1;
+    const midS3 = driverTimingAt(laps, 1, lap2 + (s3Start + 9.5) * 1000, slots);
+    expect(midS3.minis.s1).toEqual([SEG_OVERALL, SEG_YELLOW, SEG_YELLOW]);
+    expect(midS3.minis.s2).toEqual([SEG_PERSONAL, SEG_YELLOW]);
+    expect(midS3.minis.s3).toEqual([SEG_YELLOW, null]);
+    expect(midS3.s3.held).toBe(true);
+    expect(midS3.s1.delta).toBeCloseTo(28.5 - 29.153, 3);
   });
 
   it("maps OpenF1 segment codes to overall, personal, yellow, pit, and empty", () => {

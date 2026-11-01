@@ -2,7 +2,7 @@
 
 .page.timing .tower col.c-lap { width: 5.15rem; }
 .page.timing .tower col.c-gap { width: 4.5rem; }
-.page.timing .tower col.c-sec { width: 5rem; }
+.page.timing .tower col.c-sec { width: 8.15rem; }
 /* auto takes the leftover width so the blocks, not a blank margin, fill the row. */
 .page.timing .tower col.c-mini { width: auto; }
 
@@ -10,6 +10,13 @@
 .page.timing .tower th.c-sec {
   font-variant-numeric: tabular-nums;
 }
+.page.timing .sec-delta {
+  margin-left: 0.28rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.page.timing .sec-delta.faster { color: var(--green); }
+.page.timing .sec-delta.slower { color: #f87171; }
 
 .timing-legend {
   display: flex;
@@ -78,5 +85,5 @@
   .page.timing .tower col.c-drv { width: 5.25rem; }
   .page.timing .tower col.c-lap { width: 4.85rem; }
   .page.timing .tower col.c-gap { width: 4.15rem; }
-  .page.timing .tower col.c-sec { width: 4.65rem; }
+  .page.timing .tower col.c-sec { width: 7.35rem; }
 }

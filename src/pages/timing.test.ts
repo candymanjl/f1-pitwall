@@ -134,13 +134,38 @@ describe("timing page", () => {
     state.snap = snapshotAt(state.bundle, later);
     api.update();
     const done = [...root.querySelectorAll("tbody tr")].at(-1)!;
-    const doneSecs = [...done.querySelectorAll("td.c-sec")].map((cell) => cell.textContent);
+    const doneSecs = [...done.querySelectorAll("td.c-sec .sec-time")].map((cell) => cell.textContent);
     expect(doneSecs).toEqual(["28.400", "31.200", "18.900"]);
+    const deltas = [...done.querySelectorAll("td.c-sec .sec-delta")].map((cell) => ({
+      text: cell.textContent,
+      faster: cell.classList.contains("faster"),
+      slower: cell.classList.contains("slower"),
+    }));
+    expect(deltas.map((d) => d.text)).toEqual(["(-0.753)", "(-0.604)", "(-0.143)"]);
+    expect(deltas.every((d) => d.faster && !d.slower)).toBe(true);
     expect(done.querySelector(".mini-group[data-sector='S1'] .seg-overall")).not.toBeNull();
     expect(done.querySelector(".mini-group[data-sector='S1'] .seg-pit")).not.toBeNull();
     expect(done.querySelector(".mini-group[data-sector='S3'] .seg-overall")).not.toBeNull();
 
-    done.querySelector(".seg")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    const mid = parseTs("2025-10-26T20:01:20.000Z") + 7_200;
+    state.snap = snapshotAt(state.bundle, mid);
+    api.update();
+    const partial = [...root.querySelectorAll("tbody tr")].at(-1)!;
+    const s1Segs = [...partial.querySelectorAll(".mini-group[data-sector='S1'] .seg")].map((seg) => seg.className);
+    expect(s1Segs.filter((name) => !name.includes("seg-none")).length).toBeGreaterThan(0);
+    expect(s1Segs.filter((name) => name.includes("seg-none")).length).toBeGreaterThan(0);
+    const s3Segs = [...partial.querySelectorAll(".mini-group[data-sector='S3'] .seg")].map((seg) => seg.className);
+    expect(s3Segs.every((name) => name.includes("seg-none"))).toBe(true);
+
+    const inS3 = parseTs("2025-10-26T20:01:20.000Z") + 64_000;
+    state.snap = snapshotAt(state.bundle, inS3);
+    api.update();
+    const s3row = [...root.querySelectorAll("tbody tr")].at(-1)!;
+    const s3now = [...s3row.querySelectorAll(".mini-group[data-sector='S3'] .seg")].map((seg) => seg.className);
+    expect(s3now.some((name) => name.includes("seg-yellow"))).toBe(true);
+    expect(s3now.some((name) => name.includes("seg-none"))).toBe(true);
+
+    s3row.querySelector(".seg")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
     expect(state.selectedDrivers).toEqual([1]);
   });
 });
