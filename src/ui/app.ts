@@ -20,6 +20,7 @@ import {
   changeMeeting,
   changeSession,
   changeYear,
+  applyLoadedClock,
   ingestLive,
   pinToLive,
   reloadAll,
@@ -231,6 +232,7 @@ export function boot(root: HTMLElement): void {
     setScrubbing,
     pinToLive,
     ingestLive,
+    applyLoadedClock,
   };
   const e2e = new URLSearchParams(location.search).has("e2e") || location.hash.includes("e2e");
   if (!e2e) void reloadAll();

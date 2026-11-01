@@ -1,6 +1,6 @@
 /** @vitest-environment happy-dom */
 import { afterEach, describe, expect, it } from "vitest";
-import { ingestLive, pinToLive, setClock, setPlaying, setScrubbing, state } from "./state";
+import { applyLoadedClock, ingestLive, pinToLive, setClock, setPlaying, setScrubbing, state } from "./state";
 import type { SessionBundle } from "./data/types";
 
 const START = "2026-10-31T20:00:00.000Z";
@@ -108,6 +108,27 @@ describe("scrub vs live ingest", () => {
     expect(state.t).toBe(Date.parse(LAP1));
     expect(state.followLive).toBe(false);
     expect(state.end).toBeGreaterThan(Date.parse(LAP66));
+  });
+
+  it("defaults a historical load to mid-session and a live load to the end", () => {
+    const mid = "2026-10-31T20:46:52.000Z";
+    const last = "2026-10-31T21:33:32.000Z";
+    const b = fixture();
+    b.laps = [
+      { ...b.laps[0], lap_number: 1, date_start: LAP1 },
+      { ...b.laps[0], lap_number: 36, date_start: mid },
+      { ...b.laps[0], lap_number: 71, date_start: last },
+    ];
+    b.intervals = [{ date: last, driver_number: 1, gap_to_leader: 0, interval: 0 }];
+    state.bundle = b;
+    state.start = Date.parse(START);
+    state.mode = "historical";
+    applyLoadedClock();
+    expect(state.t).toBe(Date.parse(mid));
+    expect(state.t).toBeLessThan(state.end);
+    state.mode = "live";
+    applyLoadedClock();
+    expect(state.t).toBe(state.end);
   });
 
   it("jumps to the newest sample only after LIVE", () => {

@@ -7,7 +7,7 @@ import { applyLiveMessage } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
-import { playableEndMs } from "./lib/sessionClock";
+import { historicalStartMs, playableEndMs } from "./lib/sessionClock";
 import { nextSelection } from "./lib/select";
 import { parseTs } from "./lib/time";
 import type { DataMode } from "./config";
@@ -125,6 +125,16 @@ function syncPlayableRange(): void {
   if (Number.isFinite(start)) state.start = start;
   state.end = playableEndMs(state.start, state.bundle);
   if (state.end <= state.start) state.end = state.start + 1;
+}
+
+/** Live stays on the newest sample. Historical opens at mid-race, not the end. */
+export function applyLoadedClock(): void {
+  syncPlayableRange();
+  if (state.mode === "live") {
+    state.t = state.end;
+    return;
+  }
+  state.t = historicalStartMs(state.start, state.end, state.bundle);
 }
 
 export function setClock(t: number, source: "scrub" | "code" = "code"): void {
@@ -358,18 +368,7 @@ export async function changeSession(sessionKey: number): Promise<void> {
     const bundle = await loadBundle(sessionKey);
     state.bundle = bundle;
     state.start = parseTs(bundle.session.date_start);
-    syncPlayableRange();
-    const firstLap = bundle.laps
-      .map((l) => parseTs(l.date_start))
-      .filter((t) => Number.isFinite(t))
-      .sort((a, b) => a - b)[0];
-    const interesting = Number.isFinite(firstLap)
-      ? firstLap + Math.min(18 * 60 * 1000, (state.end - firstLap) * 0.28)
-      : state.start + (state.end - state.start) * 0.25;
-    state.t =
-      state.mode === "live"
-        ? state.end
-        : Math.min(state.end, Math.max(state.start, interesting));
+    applyLoadedClock();
     state.followLive = false;
     state.selectedDriver = null;
     state.selectedDrivers = [];
