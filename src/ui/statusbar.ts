@@ -1,49 +1,98 @@
+import { DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT } from "../data/pitlane";
 import { project, windArrowScreen } from "../data/track";
 import type { TimingSnapshot } from "../data/types";
 import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
+import { racingFrac, wrap01 } from "../lib/pitcircle";
 import { formatSector } from "../lib/time";
+import { nearestStripCar, stripX } from "../lib/trackStrip";
 import {
   prefersReducedMotion,
-  WIND_ARROW_WIDTH,
   WIND_FLOW_CYCLE,
   WIND_FLOW_DASH,
   WIND_FLOW_WIDTH,
+  windArrowPaths,
   windFlowPeriodMs,
 } from "../lib/windFlow";
 import { hasDriverSelection, isDriverSelected, selectDriver, state } from "../state";
 
-let windMarkerSeq = 0;
+type StripCar = { n: number; x: number };
+
+let lastStrip: { w: number; cars: StripCar[] } = { w: 0, cars: [] };
+
+function lapFrac(row: TimingSnapshot["rows"][number], pitEntry: number, pitExit: number): number {
+  if (row.inPit) return wrap01(pitEntry);
+  return racingFrac(row.progress, row.pitOut, pitExit);
+}
 
 function drawGap(canvas: HTMLCanvasElement, rows: TimingSnapshot["rows"]): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
   const w = canvas.clientWidth || 400;
   const h = 36;
+  const pad = 8;
+  const pitEntry = state.bundle?.pitEntry ?? DEFAULT_PIT_ENTRY;
+  const pitExit = state.bundle?.pitExit ?? DEFAULT_PIT_EXIT;
+  const midY = h / 2;
+  const sfX = stripX(0, w, pad);
+  const pitInX = stripX(pitEntry, w, pad);
+  const pitOutX = stripX(pitExit, w, pad);
+  canvas.dataset.sf = String(sfX);
+  canvas.dataset.pitIn = String(pitInX);
+  canvas.dataset.pitOut = String(pitOutX);
+  canvas.dataset.mode = "track";
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    lastStrip = {
+      w,
+      cars: rows
+        .filter((row) => !row.retired)
+        .map((row) => ({ n: row.driver.driver_number, x: stripX(lapFrac(row, pitEntry, pitExit), w, pad) })),
+    };
+    return;
+  }
   canvas.width = w * devicePixelRatio;
   canvas.height = h * devicePixelRatio;
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   ctx.clearRect(0, 0, w, h);
+
   ctx.strokeStyle = "#2a3144";
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(8, h / 2);
-  ctx.lineTo(w - 8, h / 2);
+  ctx.moveTo(pad, midY);
+  ctx.lineTo(w - pad, midY);
   ctx.stroke();
-  const gaps = rows.map((r) => (typeof r.gap === "number" ? r.gap : r.pos === 1 ? 0 : null)).filter((g): g is number => g != null);
-  const max = Math.max(8, ...(gaps.length ? gaps : [8]));
+
+  const mark = (x: number, color: string, label: string) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 6);
+    ctx.lineTo(x, h - 6);
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.font = "700 10px Titillium Web, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(label, x, 10);
+  };
+  mark(sfX, "#e10600", "S/F");
+  mark(pitInX, "#fbbf24", "IN");
+  mark(pitOutX, "#22c55e", "OUT");
+
   const dim = hasDriverSelection();
+  const cars: StripCar[] = [];
   for (const row of rows) {
-    const g = row.pos === 1 ? 0 : typeof row.gap === "number" ? row.gap : null;
-    if (g == null) continue;
-    const x = 8 + (g / max) * (w - 16);
+    if (row.retired) continue;
+    const frac = lapFrac(row, pitEntry, pitExit);
+    const x = stripX(frac, w, pad);
     const on = isDriverSelected(row.driver.driver_number);
     ctx.globalAlpha = dim && !on ? 0.28 : 1;
     ctx.fillStyle = teamColor(row.driver.team_colour);
     ctx.beginPath();
-    ctx.arc(x, h / 2, on ? 6 : 4, 0, Math.PI * 2);
+    ctx.arc(x, midY, on ? 6 : 4, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
+    cars.push({ n: row.driver.driver_number, x });
   }
+  lastStrip = { w, cars };
 }
 
 function drawWind(svg: SVGSVGElement): void {
@@ -92,38 +141,26 @@ function drawWind(svg: SVGSVGElement): void {
   svg.style.setProperty("--wind-flow-ms", `${period}ms`);
   svg.classList.toggle("wind-still", reduce || (speed ?? 0) < 0.15);
 
-  let markerId = svg.dataset.windMarker;
-  if (!markerId) {
-    markerId = `wind-head-${++windMarkerSeq}`;
-    svg.dataset.windMarker = markerId;
-  }
-
-  let shaft = svg.querySelector<SVGLineElement>("line.wind-arrow-shaft");
-  let flow = svg.querySelector<SVGLineElement>("line.wind-arrow-flow");
-  if (!shaft || !flow) {
-    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-    defs.innerHTML = `<marker id="${markerId}" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto"><path d="M0,0 L12,5 L0,10 Z" fill="#38bdf8"/></marker>`;
-    shaft = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    shaft.setAttribute("class", "wind-arrow-shaft");
-    shaft.setAttribute("stroke", "#38bdf8");
-    shaft.setAttribute("stroke-width", String(WIND_ARROW_WIDTH));
-    shaft.setAttribute("stroke-linecap", "round");
-    shaft.setAttribute("marker-end", `url(#${markerId})`);
-    flow = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  const { body, flow: flowD } = windArrowPaths(x1, y1, x2, y2);
+  let bodyEl = svg.querySelector<SVGPathElement>("path.wind-arrow-body");
+  let flow = svg.querySelector<SVGPathElement>("path.wind-arrow-flow");
+  if (!bodyEl || !flow) {
+    svg.querySelectorAll("line.wind-arrow-shaft, line.wind-arrow-flow, defs").forEach((n) => n.remove());
+    bodyEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    bodyEl.setAttribute("class", "wind-arrow-body");
+    flow = document.createElementNS("http://www.w3.org/2000/svg", "path");
     flow.setAttribute("class", "wind-arrow-flow");
+    flow.setAttribute("fill", "none");
     flow.setAttribute("stroke", "#e0f2fe");
     flow.setAttribute("stroke-width", String(WIND_FLOW_WIDTH));
     flow.setAttribute("stroke-linecap", "round");
+    flow.setAttribute("stroke-linejoin", "round");
     flow.setAttribute("stroke-dasharray", WIND_FLOW_DASH);
     flow.dataset.cycle = String(WIND_FLOW_CYCLE);
-    svg.append(defs, shaft, flow);
+    svg.append(bodyEl, flow);
   }
-  for (const line of [shaft, flow]) {
-    line.setAttribute("x1", String(x1));
-    line.setAttribute("y1", String(y1));
-    line.setAttribute("x2", String(x2));
-    line.setAttribute("y2", String(y2));
-  }
+  bodyEl.setAttribute("d", body);
+  flow.setAttribute("d", flowD);
 }
 
 export function mountStatusBar(parent: HTMLElement): { update: () => void } {
@@ -137,27 +174,17 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
   const s3 = el("div", { class: "sec-purple" });
   const best = el("div", { class: "strip-best" }, [el("div", { class: "legend", text: "Best sectors" }), s1, s2, s3]);
   const canvas = el("canvas", { class: "gapline" }) as HTMLCanvasElement;
-  canvas.addEventListener("click", (ev) => {
+  canvas.setAttribute("aria-label", "Track strip, start/finish at center");
+  const pick = (ev: PointerEvent) => {
     const rows = state.snap?.rows;
     if (!rows) return;
     const rect = canvas.getBoundingClientRect();
     const x = ev.clientX - rect.left;
-    const gaps = rows.map((r) => (typeof r.gap === "number" ? r.gap : r.pos === 1 ? 0 : null));
-    const max = Math.max(8, ...gaps.filter((g): g is number => g != null));
-    let bestN: number | null = null;
-    let bestD = Infinity;
-    rows.forEach((row, i) => {
-      const g = gaps[i];
-      if (g == null) return;
-      const px = 8 + (g / max) * (rect.width - 16);
-      const d = Math.abs(px - x);
-      if (d < bestD && d < 14) {
-        bestD = d;
-        bestN = row.driver.driver_number;
-      }
-    });
-    if (bestN != null) selectDriver(bestN, ev);
-  });
+    const scale = lastStrip.w > 0 ? lastStrip.w / Math.max(1, rect.width) : 1;
+    const hit = nearestStripCar(lastStrip.cars, x * scale, 18);
+    if (hit) selectDriver(hit.n, ev);
+  };
+  canvas.addEventListener("pointerdown", pick);
   const air = el("div");
   const track = el("div");
   const wind = el("div");
@@ -187,10 +214,8 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
       ? `Wind ${w.wind_speed?.toFixed(1) ?? "—"} m/s${windDir != null ? ` ${Math.round(windDir)}°` : ""}`
       : "—";
     hum.textContent = w ? `Hum ${w.humidity?.toFixed(0) ?? "—"}% · ${w.rainfall ? "rain" : "dry"}` : "—";
-    requestAnimationFrame(() => {
-      drawGap(canvas, snap.rows);
-      drawWind(windSvg);
-    });
+    drawGap(canvas, snap.rows);
+    drawWind(windSvg);
   };
   return { update };
 }

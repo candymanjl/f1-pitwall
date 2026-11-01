@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prefersReducedMotion, windFlowPeriodMs } from "./windFlow";
+import { prefersReducedMotion, windArrowPaths, windFlowPeriodMs } from "./windFlow";
 
 describe("windFlowPeriodMs", () => {
   it("is near-still when calm and faster as wind_speed rises", () => {
@@ -11,6 +11,17 @@ describe("windFlowPeriodMs", () => {
     expect(stiff).toBeLessThan(breeze);
     expect(stiff).toBeLessThan(700);
     expect(windFlowPeriodMs(null)).toBe(calm);
+  });
+});
+
+describe("windArrowPaths", () => {
+  it("builds a closed tail+head body and a flow path along the whole arrow", () => {
+    const { body, flow } = windArrowPaths(10, 20, 80, 20);
+    expect(body.startsWith("M")).toBe(true);
+    expect(body.endsWith("Z")).toBe(true);
+    expect(flow).toContain("M10.0,20.0");
+    expect(flow).toContain("L80.0,20.0");
+    expect(flow.match(/M/g)?.length).toBeGreaterThanOrEqual(2);
   });
 });
 

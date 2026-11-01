@@ -81,7 +81,7 @@ describe("mountStatusBar", () => {
     state.selectedDriver = null;
   });
 
-  it("renders best sectors, gap strip, weather, and a wind map", () => {
+  it("renders best sectors, gap strip, weather, and a wind map", async () => {
     const host = document.createElement("div");
     const api = mountStatusBar(host);
     state.snap = snap();
@@ -133,8 +133,15 @@ describe("mountStatusBar", () => {
     expect(root.textContent).toContain("VER");
     expect(root.textContent).toContain("Air 21.4°C");
     expect(root.textContent).toContain("Wind 3.6 m/s 210°");
-    expect(root.querySelector("canvas.gapline")).toBeTruthy();
+    const strip = root.querySelector("canvas.gapline") as HTMLCanvasElement;
+    expect(strip).toBeTruthy();
     expect(root.querySelector("svg.wind-map")).toBeTruthy();
+    const sf = Number(strip.dataset.sf);
+    expect(strip.dataset.mode).toBe("track");
+    expect(sf).toBeGreaterThan(40);
+    expect(Math.abs(sf - (strip.clientWidth || 400) / 2)).toBeLessThan(30);
+    expect(Number(strip.dataset.pitIn)).not.toBe(sf);
+    expect(Number(strip.dataset.pitOut)).not.toBe(sf);
   });
 
   it("draws a thick flowing wind arrow whose period follows wind_speed", async () => {
@@ -186,11 +193,12 @@ describe("mountStatusBar", () => {
     api.update();
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     const svg = host.querySelector("svg.wind-map") as SVGSVGElement;
-    const shaft = svg.querySelector(".wind-arrow-shaft");
+    const body = svg.querySelector(".wind-arrow-body");
     const flow = svg.querySelector(".wind-arrow-flow");
-    expect(shaft).toBeTruthy();
+    expect(body).toBeTruthy();
     expect(flow).toBeTruthy();
-    expect(Number(shaft!.getAttribute("stroke-width"))).toBeGreaterThanOrEqual(4);
+    expect(body!.getAttribute("d") ?? "").toMatch(/Z$/);
+    expect((flow!.getAttribute("d") ?? "").startsWith("M")).toBe(true);
     expect(svg.style.getPropertyValue("--wind-flow-ms")).toMatch(/ms/);
     const breeze = Number.parseInt(svg.style.getPropertyValue("--wind-flow-ms"), 10);
     state.snap = { ...snap(), weather: { ...snap().weather!, wind_speed: 0 } };

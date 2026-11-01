@@ -82,9 +82,8 @@ function draw(canvas: HTMLCanvasElement, mode: Mode): void {
   const maxY = Math.max(2, ...ys);
   const pad = { l: 48, r: 16, t: 16, b: 28 };
   const xOf = (lap: number) => pad.l + (lap / maxLap) * (w - pad.l - pad.r);
-  const yOf = (y: number) => pad.t + ((y - minY) / (maxY - minY)) * (h - pad.t - pad.b);
+  const yOf = (y: number) => pad.t + ((y - minY) / (maxY - minY) ) * (h - pad.t - pad.b);
 
-  const start = parseTs(state.bundle.session.date_start);
   for (const band of state.snap.scBands) {
     const lapStart = state.bundle.laps.find((l) => Math.abs(parseTs(l.date_start) - band.start) < 20000)?.lap_number ?? 1;
     const lapEnd = state.bundle.laps.find((l) => Math.abs(parseTs(l.date_start) - band.end) < 20000)?.lap_number ?? lapStart + 1;
@@ -94,7 +93,6 @@ function draw(canvas: HTMLCanvasElement, mode: Mode): void {
     ctx.font = "11px Titillium Web";
     ctx.fillText(band.kind, xOf(lapStart) + 4, pad.t + 12);
   }
-  void start;
 
   ctx.strokeStyle = "#2a3144";
   ctx.beginPath();
@@ -133,9 +131,113 @@ export function mountRaceTrace(parent: HTMLElement): { update: () => void } {
   const chart = panel("Race trace  ·  pit markers  ·  SC / VSC bands");
   const side = panel("Projection");
   const canvas = el("canvas", { class: "chart" }) as HTMLCanvasElement;
+  canvas.setAttribute("aria-hidden", "true");
   const wrap = el("div", { class: "chart-wrap" });
   wrap.append(canvas);
   chart.body.append(wrap);
+
+  const modes = el("div", { class: "drivers y-axis" });
+  const modeBtns = new Map<Mode, HTMLButtonElement>();
+  for (const [id, label] of [
+    ["leader", "Gap to leader"],
+    ["average", "Delta to average"],
+    ["driver", "Delta to driver"],
+  ] as const) {
+    const b = el("button", {
+      type: "button",
+      class: "",
+      text: label,
+      "data-trace-mode": id,
+    }) as HTMLButtonElement;
+    b.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      setTraceMode(id);
+    });
+    modes.append(b);
+    modeBtns.set(id, b);
+  }
+  const refSel = el("select", { class: "trace-ref", "aria-label": "Reference driver" }) as HTMLSelectElement;
+  refSel.hidden = true;
+  refSel.addEventListener("change", () => setTraceMode("driver", Number(refSel.value)));
+  modes.append(refSel);
+
+  const toggles = el("div", { class: "drivers trace-drivers" });
+  let driverKey = "";
+
+  const syncDrivers = () => {
+    const list = state.bundle?.drivers ?? [];
+    const key = list.map((d) => d.driver_number).join(",");
+    if (key !== driverKey) {
+      driverKey = key;
+      toggles.replaceChildren();
+      for (const d of list) {
+        const b = el("button", {
+          type: "button",
+          class: "on",
+          text: d.name_acronym,
+          "data-driver": String(d.driver_number),
+        }) as HTMLButtonElement;
+        b.style.borderColor = teamColor(d.team_colour);
+        b.addEventListener("pointerdown", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (ev.altKey) {
+            const i = state.hiddenDrivers.indexOf(d.driver_number);
+            if (i >= 0) state.hiddenDrivers.splice(i, 1);
+            else state.hiddenDrivers.push(d.driver_number);
+            syncDriverLooks();
+            requestAnimationFrame(() => draw(canvas, state.traceMode));
+            return;
+          }
+          selectDriver(d.driver_number, ev);
+        });
+        toggles.append(b);
+      }
+    }
+    syncDriverLooks();
+  };
+
+  const syncDriverLooks = () => {
+    const hidden = new Set(state.hiddenDrivers);
+    for (const b of toggles.querySelectorAll<HTMLButtonElement>("button[data-driver]")) {
+      const n = Number(b.getAttribute("data-driver"));
+      const on = !hidden.has(n);
+      const sel = isDriverSelected(n);
+      b.classList.toggle("on", on);
+      b.classList.toggle("sel", sel);
+      b.style.outline = sel ? "1px solid #fde68a" : "";
+    }
+    if (state.bundle) {
+      const current = [...refSel.options].map((o) => o.value).join(",");
+      const next = state.bundle.drivers.map((d) => String(d.driver_number)).join(",");
+      if (current !== next) {
+        refSel.replaceChildren();
+        for (const d of state.bundle.drivers) {
+          const o = el("option", { value: String(d.driver_number), text: d.name_acronym }) as HTMLOptionElement;
+          refSel.append(o);
+        }
+      }
+      if (state.traceDriver != null) refSel.value = String(state.traceDriver);
+    }
+    refSel.hidden = state.traceMode !== "driver";
+  };
+
+  const syncModes = () => {
+    for (const [id, b] of modeBtns) b.classList.toggle("on", state.traceMode === id);
+  };
+
+  side.body.append(
+    el("h3", { text: "Y axis" }),
+    modes,
+    el("h3", { text: "Drivers" }),
+    toggles,
+    el("div", {
+      class: "help",
+      text: "Click a driver to select (shift-click for several). Alt-click hides a line. Circles mark pit laps. Yellow bands are SC / VSC.",
+    }),
+  );
+  side.root.classList.add("racetrace-side");
   const page = el("div", { class: "page racetrace" }, [chart.root, side.root]);
   parent.append(page);
 
@@ -143,61 +245,9 @@ export function mountRaceTrace(parent: HTMLElement): { update: () => void } {
     const issue = !state.snap && !state.lock ? state.error || (state.loading ? null : "No session data loaded.") : null;
     chart.setError(issue);
     side.setError(issue);
-    const modes = el("div", { class: "drivers" });
-    for (const [id, label] of [
-      ["leader", "Gap to leader"],
-      ["average", "Delta to average"],
-      ["driver", "Delta to driver"],
-    ] as const) {
-      const b = el("button", { class: state.traceMode === id ? "on" : "", text: label });
-      b.onclick = () => {
-        setTraceMode(id);
-        update();
-      };
-      modes.append(b);
-    }
-    if (state.traceMode === "driver" && state.bundle) {
-      const sel = el("select") as HTMLSelectElement;
-      for (const d of state.bundle.drivers) {
-        const o = el("option", { value: String(d.driver_number), text: d.name_acronym }) as HTMLOptionElement;
-        if (d.driver_number === state.traceDriver) o.selected = true;
-        sel.append(o);
-      }
-      sel.onchange = () => {
-        setTraceMode("driver", Number(sel.value));
-        update();
-      };
-      modes.append(sel);
-    }
-    const toggles = el("div", { class: "drivers" });
-    const hidden = state.hiddenDrivers;
-    for (const d of state.bundle?.drivers ?? []) {
-      const on = !hidden.includes(d.driver_number);
-      const sel = isDriverSelected(d.driver_number);
-      const b = el("button", { class: `${on ? "on" : ""} ${sel ? "sel" : ""}`.trim(), text: d.name_acronym });
-      b.style.borderColor = teamColor(d.team_colour);
-      if (sel) b.style.outline = "1px solid #fde68a";
-      b.onclick = (ev) => {
-        if (ev.altKey) {
-          const i = hidden.indexOf(d.driver_number);
-          if (i >= 0) hidden.splice(i, 1);
-          else hidden.push(d.driver_number);
-          update();
-          return;
-        }
-        selectDriver(d.driver_number, ev);
-      };
-      toggles.append(b);
-    }
-    side.body.replaceChildren(
-      el("h3", { text: "Y axis" }),
-      modes,
-      el("h3", { text: "Drivers" }),
-      toggles,
-      el("div", { class: "help", text: "Click a driver to select (shift-click for several). Alt-click hides a line. Circles mark pit laps. Yellow bands are SC / VSC." }),
-    );
+    syncModes();
+    syncDrivers();
     requestAnimationFrame(() => draw(canvas, state.traceMode));
   };
   return { update };
 }
-
