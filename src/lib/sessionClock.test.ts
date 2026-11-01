@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { followLiveFromSlider, historicalStartMs, latestSampleMs, playableEndMs } from "./sessionClock";
+import {
+  followLiveFromSlider,
+  historicalStartMs,
+  isFinishedSession,
+  latestSampleMs,
+  LIVE_SESSION_GRACE_MS,
+  playableEndMs,
+} from "./sessionClock";
 import type { SessionBundle } from "../data/types";
 
 function bundle(partial: Partial<SessionBundle> = {}): SessionBundle {
@@ -126,6 +133,63 @@ describe("historicalStartMs", () => {
     expect(interpolated).toBeGreaterThan(Date.parse("2025-10-26T20:00:12.000Z"));
     expect(interpolated).toBeLessThan(Date.parse("2025-10-26T20:22:52.000Z"));
     expect(historicalStartMs(start, end, bundle())).toBe(start + (end - start) * 0.5);
+  });
+});
+
+describe("isFinishedSession", () => {
+  it("treats an old race as finished and a current session as live", () => {
+    const now = Date.parse("2026-11-01T14:00:00.000Z");
+    expect(
+      isFinishedSession(
+        bundle({
+          session: {
+            ...bundle().session,
+            date_end: "2025-10-26T22:00:00.000Z",
+          },
+          intervals: [{ date: "2025-10-26T21:33:32.000Z", driver_number: 1, gap_to_leader: 0, interval: 0 }],
+        }),
+        now,
+      ),
+    ).toBe(true);
+
+    const liveEnd = new Date(now + 90 * 60 * 1000).toISOString();
+    const liveSample = new Date(now - 5_000).toISOString();
+    expect(
+      isFinishedSession(
+        bundle({
+          session: { ...bundle().session, date_end: liveEnd },
+          intervals: [{ date: liveSample, driver_number: 1, gap_to_leader: 0, interval: 0 }],
+        }),
+        now,
+      ),
+    ).toBe(false);
+
+    expect(
+      isFinishedSession(
+        bundle({
+          session: { ...bundle().session, date_end: new Date(now - 2 * 60 * 1000).toISOString() },
+          intervals: [{ date: new Date(now - 30_000).toISOString(), driver_number: 1, gap_to_leader: 0, interval: 0 }],
+        }),
+        now,
+      ),
+    ).toBe(false);
+
+    expect(
+      isFinishedSession(
+        bundle({
+          session: { ...bundle().session, date_end: new Date(now - LIVE_SESSION_GRACE_MS - 1).toISOString() },
+          intervals: [
+            {
+              date: new Date(now - LIVE_SESSION_GRACE_MS - 1).toISOString(),
+              driver_number: 1,
+              gap_to_leader: 0,
+              interval: 0,
+            },
+          ],
+        }),
+        now,
+      ),
+    ).toBe(true);
   });
 });
 

@@ -7,7 +7,7 @@ import { applyLiveMessage } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
-import { historicalStartMs, playableEndMs } from "./lib/sessionClock";
+import { historicalStartMs, isFinishedSession, playableEndMs } from "./lib/sessionClock";
 import { nextSelection } from "./lib/select";
 import { parseTs } from "./lib/time";
 import type { DataMode } from "./config";
@@ -127,10 +127,14 @@ function syncPlayableRange(): void {
   if (state.end <= state.start) state.end = state.start + 1;
 }
 
-/** Live stays on the newest sample. Historical opens at mid-race, not the end. */
+/**
+ * In-progress live stays on the newest sample.
+ * Historical *and* finished sessions (even if Settings data mode is Live) open at mid-race.
+ * There is no saved playhead — localStorage only keeps the data mode, not t.
+ */
 export function applyLoadedClock(): void {
   syncPlayableRange();
-  if (state.mode === "live") {
+  if (state.mode === "live" && !isFinishedSession(state.bundle)) {
     state.t = state.end;
     return;
   }
