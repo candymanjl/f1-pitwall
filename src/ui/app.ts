@@ -4,6 +4,7 @@ import { shouldShowLiveLockBanner } from "../data/errors";
 import { isRaceOrSprint } from "../data/grid";
 import { PAGES } from "../data/types";
 import { el } from "../lib/dom";
+import { formatLiveDebug } from "../data/livePoll";
 import { formatReplayBadge, formatSessionHeadline } from "../lib/sessionHeadline";
 import { applyLoadingOverlay, shouldShowLoadingOverlay } from "./overlays";
 import { openSettings } from "./settings";
@@ -30,6 +31,7 @@ import {
   setClock,
   setPlaying,
   setScrubbing,
+  setShowLiveDebug,
   setSpeed,
   startClock,
   state,
@@ -87,6 +89,8 @@ export function boot(root: HTMLElement): void {
     el("div", { class: "replay" }, [play, liveBtn, speedSel, scrub, elapsed, settingsBtn]),
   ]);
 
+  const liveDebug = el("div", { class: "live-debug", role: "status" });
+  liveDebug.hidden = true;
   const banner = el("div", { class: "lock-banner", role: "status" });
   banner.hidden = true;
   const main = el("main");
@@ -96,7 +100,7 @@ export function boot(root: HTMLElement): void {
   const toast = el("div", { class: "toast" });
   toast.hidden = true;
 
-  root.append(top, nav, toolbar, banner, main, statusHost, overlay, toast);
+  root.append(top, nav, toolbar, liveDebug, banner, main, statusHost, overlay, toast);
   const statusApi = mountStatusBar(statusHost);
 
   let currentPage = "";
@@ -114,7 +118,7 @@ export function boot(root: HTMLElement): void {
       sessionName: session?.session_name,
       elapsedMs: state.t - state.start,
       currentLap: leader?.currentLap ?? state.snap?.leaderLap ?? null,
-      totalLaps: state.snap?.raceLaps ?? null,
+      totalLaps: state.snap?.scheduledLaps ?? null,
       race: session ? isRaceOrSprint(session) : false,
     });
     play.textContent = state.playing ? "Pause" : "Play";
@@ -142,6 +146,8 @@ export function boot(root: HTMLElement): void {
     );
     toast.hidden = !state.error || !!state.lock;
     toast.textContent = state.error;
+    liveDebug.hidden = !state.showLiveDebug;
+    liveDebug.textContent = state.showLiveDebug ? formatLiveDebug(state.liveDebug) : "";
     syncBanner(banner);
   };
 
@@ -258,6 +264,7 @@ export function boot(root: HTMLElement): void {
     changeSession,
     loadSelectedSession,
     sessionPickerDirty,
+    setShowLiveDebug,
   };
   const e2e = new URLSearchParams(location.search).has("e2e") || location.hash.includes("e2e");
   if (!e2e) void reloadAll();

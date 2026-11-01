@@ -213,6 +213,8 @@ export type TimingSnapshot = {
   flagMode: FlagMode;
   scBands: { start: number; end: number; kind: "SC" | "VSC" }[];
   raceLaps: number;
+  /** Official scheduled distance; null when unknown so the headline never shows Lap X / X. */
+  scheduledLaps?: number | null;
 };
 
 export type PageId =

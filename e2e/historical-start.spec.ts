@@ -150,7 +150,7 @@ test("Mexico 2025 historical load opens at mid-race, not the end", async ({ page
   expect(api.state.t).toBeLessThan(api.state.end);
   expect(api.state.snap?.rows[0]?.currentLap).toBe(36);
   expect(api.state.snap?.raceLaps).toBe(71);
-  await expect(page.locator(".session-clock")).toContainText("LAP 36/71");
+  await expect(page.locator(".session-clock")).toContainText("Lap 36 / 71");
   const scrub = Number(await page.locator("input[type='range']").inputValue());
   expect(scrub).toBeGreaterThan(200);
   expect(scrub).toBeLessThan(800);
@@ -195,7 +195,7 @@ test("refresh of a finished race opens at mid-lap even when data mode is live", 
   expect(api.state.t).toBeGreaterThan(api.state.start);
   expect(api.state.t).toBeLessThan(api.state.end);
   expect(api.state.snap?.rows[0]?.currentLap).toBe(36);
-  await expect(page.locator(".session-clock")).toContainText("LAP 36/71");
+  await expect(page.locator(".session-clock")).toContainText("Lap 36 / 71");
 
   await page.reload();
   await expect.poll(async () => page.evaluate(() => Boolean((window as unknown as { __f1pw?: unknown }).__f1pw))).toBe(
@@ -211,7 +211,7 @@ test("refresh of a finished race opens at mid-lap even when data mode is live", 
   expect(api.state.t).toBe(LAP36);
   expect(api.state.t).toBeLessThan(api.state.end);
   expect(api.state.snap?.rows[0]?.currentLap).toBe(36);
-  await expect(page.locator(".session-clock")).toContainText("LAP 36/71");
+  await expect(page.locator(".session-clock")).toContainText("Lap 36 / 71");
   const scrub = Number(await page.locator("input[type='range']").inputValue());
   expect(scrub).toBeGreaterThan(200);
   expect(scrub).toBeLessThan(800);

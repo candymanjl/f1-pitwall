@@ -13,10 +13,13 @@ export const DEFAULT_SESSION_KEY = 9877; // Race
 
 export const RATE_MIN_GAP_MS = 380;
 export const RATE_PER_MINUTE = 28;
-/** Through the Azure relay the browser is not the OpenF1 CORS client, so we can pipeline more. */
-export const RELAY_RATE_MIN_GAP_MS = 40;
-export const RELAY_RATE_PER_MINUTE = 90;
-export const RELAY_CONCURRENCY = 8;
+/**
+ * OpenF1 paid tier is 6 req/s and 60 req/min (free is 3/s, 30/min).
+ * Stay under the paid cap even when the Azure relay would let us burst.
+ */
+export const RELAY_RATE_MIN_GAP_MS = 220;
+export const RELAY_RATE_PER_MINUTE = 48;
+export const RELAY_CONCURRENCY = 2;
 export const HISTORICAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const LIVE_POLL_MS = 4000;
 /** How often to retry OpenF1 after a live-session lock (or CORS 401). */
@@ -31,6 +34,7 @@ export const AUTH_ACCESS_KEY = "f1pitwall.openf1AccessToken";
 export const AUTH_EXPIRY_KEY = "f1pitwall.openf1ExpiresAt";
 export const MODE_STORAGE_KEY = "f1pitwall.dataMode";
 export const PIT_LOSS_STORAGE_KEY = "f1pitwall.pitLoss";
+export const LIVE_DEBUG_STORAGE_KEY = "f1pitwall.liveDebug";
 
 export const DEFAULT_PIT_LOSS = {
   green: 22,
@@ -91,6 +95,23 @@ export function readPitLoss(): typeof DEFAULT_PIT_LOSS {
 
 export function writePitLoss(loss: typeof DEFAULT_PIT_LOSS): void {
   localStorage.setItem(PIT_LOSS_STORAGE_KEY, JSON.stringify(loss));
+}
+
+export function readLiveDebug(): boolean {
+  try {
+    return localStorage.getItem(LIVE_DEBUG_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeLiveDebug(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(LIVE_DEBUG_STORAGE_KEY, "1");
+    else localStorage.removeItem(LIVE_DEBUG_STORAGE_KEY);
+  } catch {
+    /* quota / node tests */
+  }
 }
 
 export function normalizeRelayUrl(raw: string): string {

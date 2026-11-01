@@ -32,7 +32,7 @@ export function formatSessionHeadline(opts: {
   if (lap == null || !Number.isFinite(lap) || lap < 1) return prefix;
   const n = Math.floor(lap);
   if (opts.race && opts.totalLaps && opts.totalLaps > 0) {
-    return `${prefix} / LAP ${n}/${Math.floor(opts.totalLaps)}`;
+    return `${prefix} / Lap ${n} / ${Math.floor(opts.totalLaps)}`;
   }
-  return `${prefix} / LAP ${n}`;
+  return `${prefix} / Lap ${n}`;
 }

@@ -508,7 +508,7 @@ test("Mexico 2025 Race lap 68 prefers /location and keeps every running car", as
   await loadMexico2025Race(page);
   const t68 = RACE_START + 67 * LAP_MS + 0.4 * LAP_MS;
   await page.evaluate((now) => (window as unknown as { __f1pw: Hooks }).__f1pw.setClock(now, "code"), t68);
-  await expect(page.locator(".session-clock")).toContainText("LAP 68/");
+  await expect(page.locator(".session-clock")).toContainText("Lap 68 /");
 
   const api = await hooks(page);
   const running = (api.state.snap?.rows ?? []).filter((r) => !r.retired && r.status !== "OUT");
