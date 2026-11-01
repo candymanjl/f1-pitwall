@@ -88,6 +88,22 @@ describe("renderTower", () => {
     expect(table.querySelector("td.c-pits")?.textContent).toBe("1");
   });
 
+  it("puts the previous-lap delta between Last and Best on the basic tower", () => {
+    const table = renderTower(
+      [row(1, "VER", 1, { lastLapDelta: -0.312 }), row(44, "HAM", 2, { lastLapDelta: null })],
+      { cols: "basic" },
+    );
+    const heads = [...table.querySelectorAll("th")].map((th) => th.textContent);
+    const lastAt = heads.indexOf("Last");
+    expect(heads[lastAt + 1]).toBe("Δ");
+    expect(heads[lastAt + 2]).toBe("Best");
+    expect(table.querySelectorAll("col.c-ldelta")).toHaveLength(1);
+    const ver = table.querySelector("tr[data-driver='1'] td.c-ldelta");
+    expect(ver?.textContent).toBe("-0.312");
+    expect(ver?.querySelector(".faster")).not.toBeNull();
+    expect(table.querySelector("tr[data-driver='44'] td.c-ldelta")?.textContent).toBe("");
+  });
+
   it("selects a driver on pointerdown, clears on a second press, and shift-add works", () => {
     const table = renderTower([row(1, "VER", 1), row(44, "HAM", 2)], { cols: "basic" });
     bindDriverSelect(table);

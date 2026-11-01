@@ -6,14 +6,19 @@ import { hasDriverSelection, isDriverSelected } from "../state";
 
 export type TowerCols = "basic" | "timing" | "strategy";
 
+const LAST_BEST = [
+  { label: "Last", cls: "c-lap" },
+  { label: "Δ", cls: "c-ldelta" },
+  { label: "Best", cls: "c-lap" },
+] as const;
+
 const COLS: Record<TowerCols, { label: string; cls: string }[]> = {
   basic: [
     { label: "", cls: "c-pos" },
     { label: "Driver", cls: "c-drv" },
     { label: "Tyre", cls: "c-tyre" },
     { label: "Pits", cls: "c-pits" },
-    { label: "Last", cls: "c-lap" },
-    { label: "Best", cls: "c-lap" },
+    ...LAST_BEST,
     { label: "Int", cls: "c-gap" },
     { label: "Gap", cls: "c-gap" },
     { label: "Status", cls: "c-stat" },
@@ -23,9 +28,7 @@ const COLS: Record<TowerCols, { label: string; cls: string }[]> = {
     { label: "Driver", cls: "c-drv" },
     { label: "Tyre", cls: "c-tyre" },
     { label: "Pits", cls: "c-pits" },
-    { label: "Last", cls: "c-lap" },
-    { label: "Δ", cls: "c-ldelta" },
-    { label: "Best", cls: "c-lap" },
+    ...LAST_BEST,
     { label: "Int", cls: "c-gap" },
     { label: "Gap", cls: "c-gap" },
     { label: "Lap", cls: "c-n" },
@@ -102,6 +105,14 @@ function lapDeltaCell(delta: number | null | undefined): HTMLElement {
   return td;
 }
 
+function lastBestCells(row: TowerRow): HTMLElement[] {
+  return [
+    el("td", { class: "c-lap", text: formatLap(row.lastLap) }),
+    lapDeltaCell(row.lastLapDelta),
+    el("td", { class: "c-lap", text: formatLap(row.bestLap) }),
+  ];
+}
+
 function secClass(kind: TowerRow["s1Kind"]): string {
   if (kind === "overall") return "sec-purple";
   if (kind === "personal") return "sec-green";
@@ -145,8 +156,7 @@ export function renderTower(
       cells.push(
         el("td", { class: "c-tyre" }, [tyreCell(row)]),
         el("td", { class: "c-pits", text: String(row.pits) }),
-        el("td", { class: "c-lap", text: formatLap(row.lastLap) }),
-        el("td", { class: "c-lap", text: formatLap(row.bestLap) }),
+        ...lastBestCells(row),
         el("td", { class: "c-gap", text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
         el("td", { class: "c-gap", text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
         el("td", { class: `status c-stat ${row.retired ? "out" : row.inPit ? "pit" : ""}`, text: row.status }),
@@ -166,9 +176,7 @@ export function renderTower(
       cells.push(
         el("td", { class: "c-tyre" }, [tyreCell(row)]),
         el("td", { class: "c-pits", text: String(row.pits) }),
-        el("td", { class: "c-lap", text: formatLap(row.lastLap) }),
-        lapDeltaCell(row.lastLapDelta),
-        el("td", { class: "c-lap", text: formatLap(row.bestLap) }),
+        ...lastBestCells(row),
         el("td", { class: "c-gap", text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
         el("td", { class: "c-gap", text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
         el("td", { class: "c-n", text: row.currentLap != null ? String(row.currentLap) : "—" }),

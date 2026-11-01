@@ -347,7 +347,11 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 .tower col.c-drv { width: 5.5rem; }
 .tower col.c-tyre { width: 3rem; }
 .tower col.c-lap { width: 4rem; }
+.tower col.c-ldelta { width: 3.5rem; }
 .tower col.c-gap { width: 3.625rem; }
+.tower .lap-delta { font-weight: 600; color: var(--muted); }
+.tower .lap-delta.faster { color: var(--green); }
+.tower .lap-delta.slower { color: #f87171; }
 .tower col.c-stat { width: 4.5rem; }
 .tower col.c-n { width: 2.25rem; }
 .tower col.c-pits { width: 2.5rem; }

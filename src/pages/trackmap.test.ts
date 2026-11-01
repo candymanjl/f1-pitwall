@@ -24,7 +24,7 @@ function row(d: Driver, pos: number, progress: number): TowerRow {
     compound: "MEDIUM",
     tyreAge: 4,
     lastLap: 79,
-    lastLapDelta: null,
+    lastLapDelta: pos === 1 ? -0.312 : 0.184,
     bestLap: 78,
     interval: pos === 1 ? null : 0.4,
     gap: pos === 1 ? 0 : pos * 0.4,
@@ -154,6 +154,15 @@ describe("track map zoom", () => {
     expect(markLook(sf).dx).toBe(8);
     expect(markLook(sf).dy).toBe(-8);
     expect(markLook(sf).ticks).toBe(0);
+    const tower = root.querySelector("table.tower")!;
+    const heads = [...tower.querySelectorAll("th")].map((th) => th.textContent);
+    const lastAt = heads.indexOf("Last");
+    expect(heads[lastAt + 1]).toBe("Δ");
+    expect(heads[lastAt + 2]).toBe("Best");
+    expect(tower.querySelector("tr[data-driver='1'] td.c-ldelta")?.textContent).toBe("-0.312");
+    expect(tower.querySelector("tr[data-driver='1'] .lap-delta.faster")).toBeTruthy();
+    expect(tower.querySelector("tr[data-driver='44'] td.c-ldelta")?.textContent).toBe("+0.184");
+    expect(tower.querySelector("tr[data-driver='44'] .lap-delta.slower")).toBeTruthy();
     const btn = root.querySelector<HTMLButtonElement>("button.map-zoom")!;
     btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(btn.getAttribute("aria-pressed")).toBe("true");
