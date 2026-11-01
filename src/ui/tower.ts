@@ -160,7 +160,7 @@ export function renderTower(
         el("td", { class: "c-gap", text: row.pos === 1 ? "—" : formatDelta(row.interval) }),
         el("td", { class: "c-gap", text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
         el("td", {
-          class: `status c-stat ${row.retired ? "out" : row.inPit ? "pit" : row.status === "GARAGE" ? "garage" : ""}`,
+          class: `status c-stat ${row.status === "STOPPED" ? "stopped" : row.retired ? "out" : row.inPit ? "pit" : row.status === "GARAGE" ? "garage" : ""}`,
           text: row.status,
         }),
       );

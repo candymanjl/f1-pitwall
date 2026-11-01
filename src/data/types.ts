@@ -124,6 +124,8 @@ export type LocationSample = {
   x: number;
   y: number;
   z?: number;
+  /** Parsed `date`, set once on ingest so live comparators never Date.parse. */
+  t?: number;
 };
 
 export type CarSample = {
@@ -179,7 +181,7 @@ export type TowerRow = {
   bestLap: number | null;
   interval: number | string | null;
   gap: number | string | null;
-  status: "ON TRACK" | "IN PIT" | "OUT" | "PIT" | "GARAGE";
+  status: "ON TRACK" | "IN PIT" | "OUT" | "PIT" | "GARAGE" | "STOPPED";
   currentLap: number | null;
   /** True while the current lap has started and has not yet finished. */
   lapActive?: boolean;

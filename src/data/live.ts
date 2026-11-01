@@ -11,6 +11,7 @@ import {
   FAST_POLL_MS,
   lastSeenIso,
   livePollParams,
+  locationLiveSinceIso,
   nextDueInMs,
   nextPollDelayMs,
   seedLastRan,
@@ -105,6 +106,12 @@ export function startLiveFeed(opts: {
           const status = err instanceof OpenF1Error ? err.status : null;
           if (status === 404) {
             added[spec.path] = 0;
+            continue;
+          }
+          if (status === 422 && spec.path === "location") {
+            cursors.location = locationLiveSinceIso();
+            added[spec.path] = 0;
+            lastError = "422 location (cursor rewind)";
             continue;
           }
           if (status === 429) {

@@ -431,6 +431,7 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 }
 .status { font-size: 0.75rem; letter-spacing: 0.06em; color: var(--muted); }
 .status.out { color: #f87171; }
+.status.stopped { color: #f87171; font-weight: 800; }
 .status.pit { color: #fbbf24; }
 .sec-purple { color: var(--purple); font-weight: 700; }
 .sec-green { color: var(--green); font-weight: 700; }
