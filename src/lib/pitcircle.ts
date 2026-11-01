@@ -118,6 +118,14 @@ export function ghostFrac(current: number, pitLoss: number, lapTime: number): nu
   return wrap01(current - pitLoss / lap);
 }
 
+/** How many S/F crossings a backward pit-loss jump makes (0 = same lap). */
+export function ghostLapsDown(current: number, pitLoss: number, lapTime: number): number {
+  const lap = lapTime > 0 ? lapTime : 90;
+  const raw = (Number.isFinite(current) ? current : 0) - Math.max(0, pitLoss) / lap;
+  if (raw >= 0) return 0;
+  return Math.ceil(-raw);
+}
+
 export function neighborsAt(
   cars: CircleCar[],
   frac: number,
@@ -139,4 +147,35 @@ export function neighborsAt(
   behind = on[(idx - 1 + on.length) % on.length];
   if (ahead.driver === behind.driver && on.length === 1) return { ahead: on[0], behind: on[0] };
   return { ahead, behind };
+}
+
+export type RejoinPreview = {
+  ahead: CircleCar | null;
+  behind: CircleCar | null;
+  gapAhead: number | null;
+  gapBehind: number | null;
+  lapsDown: number;
+  frac: number;
+};
+
+/** Who a pit rejoin sits between, and the on-track gaps in seconds. */
+export function rejoinPreview(
+  cars: CircleCar[],
+  current: number,
+  pitLoss: number,
+  lapTime: number,
+): RejoinPreview {
+  const frac = ghostFrac(current, pitLoss, lapTime);
+  const lapsDown = ghostLapsDown(current, pitLoss, lapTime);
+  const others = cars.filter((c) => !c.retired && !c.inPit);
+  const { ahead, behind } = neighborsAt(others, frac);
+  const paceOf = (c: CircleCar | null) => (c?.pace && c.pace > 0 ? c.pace : lapTime > 0 ? lapTime : 90);
+  return {
+    ahead,
+    behind,
+    gapAhead: ahead ? clockwiseDelta(frac, ahead.frac) * paceOf(ahead) : null,
+    gapBehind: behind ? clockwiseDelta(behind.frac, frac) * paceOf(behind) : null,
+    lapsDown,
+    frac,
+  };
 }

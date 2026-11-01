@@ -5,9 +5,11 @@ import {
   fracToAngle,
   gapFrac,
   ghostFrac,
+  ghostLapsDown,
   midFracClockwise,
   neighborsAt,
   onTrackGaps,
+  rejoinPreview,
   pointOnCircle,
   racingFrac,
   wedgePath,
@@ -68,6 +70,21 @@ describe("pit circle geometry", () => {
     expect(wrap01(0)).toBe(0);
     expect(clockwiseDelta(0.9, 0.1)).toBeCloseTo(0.2, 6);
     expect(midFracClockwise(0.9, 0.1)).toBeCloseTo(0, 6);
+  });
+
+  it("keeps a lapped rejoin on the circle and reports +1L", () => {
+    expect(ghostLapsDown(0.1, 20, 80)).toBe(1);
+    expect(ghostLapsDown(0.9, 20, 80)).toBe(0);
+    expect(ghostLapsDown(0.1, 100, 80)).toBe(2);
+    const cars = [
+      { driver: 44, code: "HAM", frac: 0.2, inPit: false, retired: false, pace: 80 },
+      { driver: 16, code: "LEC", frac: 0.85, inPit: false, retired: false, pace: 80 },
+    ];
+    const preview = rejoinPreview(cars, 0.1, 90, 80);
+    expect(preview.lapsDown).toBeGreaterThanOrEqual(1);
+    expect(preview.frac).toBeGreaterThanOrEqual(0);
+    expect(preview.frac).toBeLessThan(1);
+    expect(preview.ahead || preview.behind).toBeTruthy();
   });
 
   it("finds physical neighbors at a rejoin fraction", () => {

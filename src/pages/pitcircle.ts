@@ -5,11 +5,10 @@ import { el } from "../lib/dom";
 import { MAP_CAR_R, MAP_CAR_R_SELECTED, MAP_LINE_WIDTH } from "../lib/mapMarks";
 import {
   gapFrac,
-  ghostFrac,
-  neighborsAt,
   onTrackGaps,
   pointOnCircle,
   racingFrac,
+  rejoinPreview,
   wedgePath,
   wrap01,
   type CircleCar,
@@ -215,11 +214,18 @@ function drawCircle(svg: SVGSVGElement): void {
   const loss = state.pitLoss[state.pitMode];
   if (sel && !sel.retired) {
     const selCar = cars.find((c) => c.driver === sel.driver.driver_number);
-    const gf = ghostFrac(selCar?.frac ?? 0, loss, lap);
+    const preview = rejoinPreview(
+      cars.filter((c) => c.driver !== sel.driver.driver_number),
+      selCar?.frac ?? 0,
+      loss,
+      lap,
+    );
+    const gf = preview.frac;
     const { x: gx, y: gy } = pointOnCircle(cx, cy, r, gf);
     const ghostColor = teamColor(sel.driver.team_colour);
     const ghostR = MAP_CAR_R + 6;
-    const ghost = svgEl("g", { class: "pit-ghost-g" });
+    const lapsTag = preview.lapsDown > 0 ? ` +${preview.lapsDown}L` : "";
+    const ghost = svgEl("g", { class: "pit-ghost-g", "data-laps-down": preview.lapsDown });
     ghost.append(
       svgEl("circle", {
         cx: gx,
@@ -258,12 +264,11 @@ function drawCircle(svg: SVGSVGElement): void {
           fill: ghostColor,
           class: "car-label drv-label pit-ghost-label",
         },
-        `${sel.driver.name_acronym} REJOIN`,
+        `${sel.driver.name_acronym} REJOIN${lapsTag}`,
       ),
     );
     svg.append(ghost);
-    const others = cars.filter((c) => c.driver !== sel.driver.driver_number);
-    const { ahead, behind } = neighborsAt(others, gf);
+    const { ahead, behind } = { ahead: preview.ahead, behind: preview.behind };
     svg.append(
       svgEl(
         "text",
@@ -287,7 +292,7 @@ function drawCircle(svg: SVGSVGElement): void {
           fill: "#94a3b8",
           class: "car-label",
         },
-        `${ahead ? `rejoins ahead of ${ahead.code}` : ""} ${behind && behind.driver !== ahead?.driver ? `behind ${behind.code}` : ""}`.trim(),
+        `${ahead ? `rejoins ahead of ${ahead.code}` : ""} ${behind && behind.driver !== ahead?.driver ? `behind ${behind.code}` : ""}${lapsTag}`.trim(),
       ),
     );
   }
@@ -352,6 +357,32 @@ function mountPitDeltaBar(parent: HTMLElement): PitField[] {
   return fields;
 }
 
+function formatRejoinHint(): string {
+  const snap = state.snap;
+  const sel = snap?.rows.find((row) => row.driver.driver_number === state.selectedDriver);
+  if (!snap || !sel || sel.retired) return "Select a driver to estimate pit rejoin.";
+  const cars = carsOnCircle();
+  const selCar = cars.find((c) => c.driver === sel.driver.driver_number);
+  const preview = rejoinPreview(
+    cars.filter((c) => c.driver !== sel.driver.driver_number),
+    selCar?.frac ?? 0,
+    state.pitLoss[state.pitMode],
+    snap.medianGreenLap,
+  );
+  const bits: string[] = [];
+  if (preview.lapsDown > 0) bits.push(`+${preview.lapsDown}L`);
+  if (preview.behind && preview.ahead && preview.behind.driver !== preview.ahead.driver) {
+    const back = preview.gapBehind != null ? formatDelta(preview.gapBehind) : "—";
+    const fwd = preview.gapAhead != null ? formatDelta(preview.gapAhead) : "—";
+    bits.push(`between ${preview.behind.code} (${back}) and ${preview.ahead.code} (${fwd})`);
+  } else if (preview.ahead) {
+    bits.push(`ahead of ${preview.ahead.code}${preview.gapAhead != null ? ` (${formatDelta(preview.gapAhead)})` : ""}`);
+  } else {
+    bits.push("no on-track traffic");
+  }
+  return `${sel.driver.name_acronym} rejoin · ${state.pitMode.toUpperCase()} −${state.pitLoss[state.pitMode].toFixed(0)}s · ${bits.join(" · ")}`;
+}
+
 function syncPitDeltaBar(fields: PitField[]): void {
   for (const f of fields) {
     f.chip.classList.toggle("on", state.pitMode === f.mode);
@@ -371,6 +402,9 @@ export function mountPitCircle(parent: HTMLElement): { update: () => void } {
   wrap.style.flex = "1";
   wrap.style.minHeight = "0";
   const fields = mountPitDeltaBar(right.body);
+  const rejoinHint = el("div", { class: "pit-rejoin-hint", text: "Select a driver to estimate pit rejoin." });
+  rejoinHint.setAttribute("aria-live", "polite");
+  right.body.append(rejoinHint);
   right.body.append(wrap);
   const page = el("div", { class: "page pitcircle" }, [left.root, right.root]);
   parent.append(page);
@@ -395,6 +429,7 @@ export function mountPitCircle(parent: HTMLElement): { update: () => void } {
       );
     }
     syncPitDeltaBar(fields);
+    rejoinHint.textContent = formatRejoinHint();
     drawCircle(svg);
   };
   return { update };

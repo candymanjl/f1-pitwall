@@ -159,6 +159,8 @@ describe("pit circle page", () => {
     expect(svg.querySelector(".pit-ghost")).toBeTruthy();
     expect(svg.querySelector(".pit-ghost-ring")).toBeTruthy();
     expect(svg.querySelector(".pit-ghost-label")?.textContent).toMatch(/VER\s+REJOIN/);
+    expect(root.querySelector(".pit-rejoin-hint")?.textContent).toMatch(/VER rejoin/);
+    expect(root.querySelector(".pit-rejoin-hint")?.textContent).toMatch(/between|ahead of/);
     expect(Number(svg.querySelector(".pit-ghost")?.getAttribute("r"))).toBeGreaterThan(MAP_CAR_R);
     expect(svg.querySelector(".pit-ghost")?.getAttribute("fill")).toMatch(/rgba\(54,\s*113,\s*198/);
     expect(svg.querySelector(".pit-lane")).toBeTruthy();
@@ -189,6 +191,14 @@ describe("pit circle page", () => {
     expect(state.pitMode).toBe("vsc");
     const greenAfter = root.querySelector("input[data-mode='green']");
     expect(greenAfter).toBe(greenNode);
+
+    greenNode.value = "90";
+    greenNode.dispatchEvent(new Event("input", { bubbles: true }));
+    api.update();
+    expect(svg.querySelector(".pit-ghost")).toBeTruthy();
+    expect(svg.querySelector(".pit-ghost-g")?.getAttribute("data-laps-down")).not.toBe("0");
+    expect(svg.querySelector(".pit-ghost-label")?.textContent).toMatch(/\+\d+L/);
+    expect(root.querySelector(".pit-rejoin-hint")?.textContent).toMatch(/\+\d+L/);
 
     const css = readFileSync(resolve("src/styles.css"), "utf8");
     writeFileSync(
