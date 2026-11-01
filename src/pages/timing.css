@@ -1,0 +1,84 @@
+/* Timing page only. Column widths stay on the shared tower's fixed colgroup. */
+
+.page.timing .tower col.c-lap { width: 5.15rem; }
+.page.timing .tower col.c-gap { width: 4.5rem; }
+.page.timing .tower col.c-sec { width: 5rem; }
+.page.timing .tower col.c-mini { width: 18rem; }
+
+.page.timing .tower td.c-sec,
+.page.timing .tower th.c-sec {
+  font-variant-numeric: tabular-nums;
+}
+
+.timing-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem 0.9rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+}
+.timing-legend .lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--muted);
+}
+.timing-legend .lg::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  background: var(--sw, #1f2430);
+}
+.timing-legend .overall { --sw: var(--purple); }
+.timing-legend .personal { --sw: var(--green); }
+.timing-legend .other { --sw: var(--yellow); }
+.timing-legend .pit { --sw: #d6d9e0; }
+
+.page.timing .mini-head,
+.page.timing .mini-sectors {
+  --seg: 0.5rem;
+  --seg-gap: 2px;
+  display: grid;
+  grid-template-columns:
+    calc(var(--mini-s1, 8) * var(--seg) + (var(--mini-s1, 8) - 1) * var(--seg-gap))
+    calc(var(--mini-s2, 8) * var(--seg) + (var(--mini-s2, 8) - 1) * var(--seg-gap))
+    calc(var(--mini-s3, 6) * var(--seg) + (var(--mini-s3, 6) - 1) * var(--seg-gap));
+  column-gap: 0.7rem;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+}
+.page.timing .mini-head span {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+}
+.page.timing .mini-group {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--seg);
+  gap: var(--seg-gap);
+  justify-content: start;
+  height: 0.85rem;
+}
+.page.timing .mini-group .seg {
+  width: var(--seg);
+  height: 0.85rem;
+  display: block;
+  flex: none;
+}
+.page.timing .seg-overall { background: var(--purple); }
+.page.timing .seg-personal { background: var(--green); }
+.page.timing .seg-yellow { background: var(--yellow); }
+.page.timing .seg-pit { background: #d6d9e0; }
+.page.timing .seg-none { background: #4b5568; }
+
+@media (max-width: 1280px) {
+  .page.timing .tower { font-size: 0.875rem; }
+  .page.timing .tower col.c-drv { width: 5.25rem; }
+  .page.timing .tower col.c-lap { width: 4.85rem; }
+  .page.timing .tower col.c-gap { width: 4.15rem; }
+  .page.timing .tower col.c-sec { width: 4.65rem; }
+  .page.timing .tower col.c-mini { width: 16.5rem; }
+}
