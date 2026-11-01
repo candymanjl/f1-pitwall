@@ -4,7 +4,7 @@ The Function App already exists:
 
 **https://f1-pitwall-relay-11686.azurewebsites.net**
 
-Linux Consumption, Node 24, Functions v4. Platform CORS is `https://candymanjl.github.io`. This folder is a programming-model-v4 Node project: `package.json` + `host.json` (`routePrefix` is `""`) + `src/functions/openf1.js`. Paths are `/v1/…` and `/token`, not `/api/…`.
+Linux Consumption, **Node 22** (Node 24 failed on this plan), Functions v4. Platform CORS is `https://candymanjl.github.io`. This folder is a programming-model-v4 Node project: `package.json` + `host.json` (`routePrefix` is `""`) + `src/functions/openf1.js`. Paths are `/v1/…` and `/token`, not `/api/…`.
 
 The function still answers OPTIONS in code (harmless next to platform CORS). It forwards `Authorization` and does not store or log tokens.
 
