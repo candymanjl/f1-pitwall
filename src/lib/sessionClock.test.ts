@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { followLiveFromSlider, latestSampleMs, playableEndMs } from "./sessionClock";
+import { followLiveFromSlider, historicalStartMs, latestSampleMs, playableEndMs } from "./sessionClock";
 import type { SessionBundle } from "../data/types";
 
 function bundle(partial: Partial<SessionBundle> = {}): SessionBundle {
@@ -70,6 +70,62 @@ describe("latestSampleMs / playableEndMs", () => {
     expect(latestSampleMs(b)).toBe(lap66);
     expect(playableEndMs(start, b)).toBe(lap66);
     expect(playableEndMs(start, b)).toBeLessThan(Date.parse(b.session.date_end));
+  });
+});
+
+function lap(n: number, date: string) {
+  return {
+    driver_number: 1,
+    lap_number: n,
+    date_start: date,
+    lap_duration: 80,
+    duration_sector_1: null,
+    duration_sector_2: null,
+    duration_sector_3: null,
+    is_pit_out_lap: false,
+    segments_sector_1: null,
+    segments_sector_2: null,
+    segments_sector_3: null,
+    i1_speed: null,
+    i2_speed: null,
+    st_speed: null,
+  };
+}
+
+describe("historicalStartMs", () => {
+  it("opens on the mid race lap, not the end", () => {
+    const start = Date.parse("2025-10-26T20:00:00.000Z");
+    const mid = Date.parse("2025-10-26T20:46:52.000Z");
+    const end = Date.parse("2025-10-26T21:33:32.000Z");
+    const t = historicalStartMs(
+      start,
+      end,
+      bundle({
+        laps: [
+          lap(1, "2025-10-26T20:00:12.000Z"),
+          lap(36, "2025-10-26T20:46:52.000Z"),
+          lap(71, "2025-10-26T21:33:32.000Z"),
+        ],
+      }),
+    );
+    expect(t).toBe(mid);
+    expect(t).toBeGreaterThan(start);
+    expect(t).toBeLessThan(end);
+  });
+
+  it("interpolates when the mid lap is missing and uses the time midpoint without laps", () => {
+    const start = Date.parse("2025-10-26T20:00:00.000Z");
+    const end = Date.parse("2025-10-26T22:00:00.000Z");
+    const interpolated = historicalStartMs(
+      start,
+      end,
+      bundle({
+        laps: [lap(1, "2025-10-26T20:00:12.000Z"), lap(18, "2025-10-26T20:22:52.000Z")],
+      }),
+    );
+    expect(interpolated).toBeGreaterThan(Date.parse("2025-10-26T20:00:12.000Z"));
+    expect(interpolated).toBeLessThan(Date.parse("2025-10-26T20:22:52.000Z"));
+    expect(historicalStartMs(start, end, bundle())).toBe(start + (end - start) * 0.5);
   });
 });
 
