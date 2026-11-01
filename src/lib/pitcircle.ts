@@ -1,4 +1,5 @@
 import { teamColor, teamFill } from "./colors";
+import { asNumber } from "./time";
 
 /** One revolution, clockwise from S/F at 12 o'clock (SVG y-down). */
 
@@ -55,6 +56,29 @@ export function racingFrac(progress: number, pitOut: boolean, pitExit: number): 
   if (!pitOut) return Math.min(0.999, p);
   const exit = wrap01(pitExit);
   return wrap01(exit + p * (1 - exit));
+}
+
+export type TrackCarRow = {
+  pos: number;
+  gap: number | string | null;
+  progress: number;
+  pitOut: boolean;
+  inPit?: boolean;
+};
+
+/**
+ * On-track fraction for map, footer strip, and pit circle.
+ * Lead-lap cars with a numeric gap sit relative to the leader.
+ * Lapped / "+1 LAP" / missing-gap cars use their own lap progress so they stay visible.
+ */
+export function trackCarFrac(
+  row: TrackCarRow,
+  opts: { leaderProgress: number; lapSec: number; pitEntry: number; pitExit: number },
+): number {
+  if (row.inPit) return wrap01(opts.pitEntry);
+  const gapSec = row.pos === 1 ? 0 : asNumber(row.gap);
+  if (gapSec != null) return gapFrac(opts.leaderProgress, gapSec, opts.lapSec);
+  return racingFrac(row.progress, row.pitOut, opts.pitExit);
 }
 
 export type TrackGap = {

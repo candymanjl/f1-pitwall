@@ -5,18 +5,17 @@ import { el } from "../lib/dom";
 import { MAP_CAR_R, MAP_CAR_R_SELECTED, MAP_LINE_WIDTH } from "../lib/mapMarks";
 import { followViewBox, MAP_FOLLOW_ZOOM } from "../lib/mapZoom";
 import {
-  gapFrac,
   onTrackGaps,
   pointOnCircle,
-  racingFrac,
   rejoinGapText,
   rejoinPreview,
+  trackCarFrac,
   wedgePath,
   wrap01,
   type CircleCar,
 } from "../lib/pitcircle";
 import { appendDriverDot } from "../lib/svgcar";
-import { asNumber, formatDelta } from "../lib/time";
+import { formatDelta } from "../lib/time";
 import { panel } from "../ui/panel";
 import { mountTowerSplitter } from "../ui/splitter";
 import { renderTower } from "../ui/tower";
@@ -82,16 +81,17 @@ function labelAt(
 function carsOnCircle(): CircleCar[] {
   const snap = state.snap;
   if (!snap) return [];
+  const pitEntry = state.bundle?.pitEntry ?? DEFAULT_PIT_ENTRY;
   const pitExit = state.bundle?.pitExit ?? DEFAULT_PIT_EXIT;
   const leaderProg = snap.rows[0]?.progress ?? 0;
   const lap = Math.max(1, snap.medianGreenLap);
   return snap.rows.map((row) => {
-    const gap = row.pos === 1 ? 0 : asNumber(row.gap);
-    const frac = row.inPit
-      ? wrap01(state.bundle?.pitEntry ?? DEFAULT_PIT_ENTRY)
-      : gap != null
-        ? gapFrac(leaderProg, gap, lap)
-        : racingFrac(row.progress, row.pitOut, pitExit);
+    const frac = trackCarFrac(row, {
+      leaderProgress: leaderProg,
+      lapSec: lap,
+      pitEntry,
+      pitExit,
+    });
     return {
       driver: row.driver.driver_number,
       code: row.driver.name_acronym,
@@ -234,10 +234,12 @@ function drawCircle(svg: SVGSVGElement, followZoom = false): void {
     svg.append(labelAt(cx, cy, r + 34, g.mid, formatDelta(g.gap), "#cbd5e1", "gap-callout"));
   }
 
+  let running = 0;
   for (const row of snap.rows) {
     if (row.retired) continue;
     const car = cars.find((c) => c.driver === row.driver.driver_number);
     if (!car) continue;
+    running += 1;
     const rr = car.inPit ? pitR : r;
     const { x, y } = pointOnCircle(cx, cy, rr, car.frac);
     const on = isDriverSelected(row.driver.driver_number);
@@ -255,6 +257,7 @@ function drawCircle(svg: SVGSVGElement, followZoom = false): void {
       labelY: lab.y,
     });
   }
+  svg.dataset.cars = String(running);
 
   if (sel && !sel.retired && preview) {
     const gf = preview.frac;

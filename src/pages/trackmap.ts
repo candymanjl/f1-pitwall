@@ -17,17 +17,12 @@ import {
   MAP_SECTOR_R,
 } from "../lib/mapMarks";
 import { followViewBox, MAP_FOLLOW_ZOOM } from "../lib/mapZoom";
+import { trackCarFrac } from "../lib/pitcircle";
 import { appendDriverDot } from "../lib/svgcar";
-import { asNumber } from "../lib/time";
 import { panel } from "../ui/panel";
 import { mountTowerSplitter } from "../ui/splitter";
 import { renderTower } from "../ui/tower";
 import { hasDriverSelection, isDriverSelected, state } from "../state";
-
-function carFrac(row: TimingSnapshot["rows"][number], leaderProg: number, lap: number): number {
-  const gap = row.pos === 1 ? 0 : asNumber(row.gap) ?? 0;
-  return ((leaderProg - gap / Math.max(1, lap)) % 1 + 1) % 1;
-}
 
 function appendMapMark(
   svg: SVGSVGElement,
@@ -123,9 +118,16 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
   const followN = state.selectedDriver ?? snap.rows[0]?.driver.driver_number ?? null;
   let followPx = w / 2;
   let followPy = h / 2;
+  let running = 0;
   for (const row of snap.rows) {
     if (row.retired) continue;
-    const frac = carFrac(row, leaderProg, snap.medianGreenLap);
+    running += 1;
+    const frac = trackCarFrac(row, {
+      leaderProgress: leaderProg,
+      lapSec: snap.medianGreenLap,
+      pitEntry: pits.entry,
+      pitExit: pits.exit,
+    });
     const [x, y] = pointAt(pts, frac);
     const [px, py] = map(x, y);
     if (row.driver.driver_number === followN) {
@@ -134,7 +136,7 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
     }
     const on = isDriverSelected(row.driver.driver_number);
     const dim = hasDriverSelection() && !on;
-    appendDriverDot(svg, px, py, {
+    const dot = appendDriverDot(svg, px, py, {
       n: row.driver.driver_number,
       color: teamColor(row.driver.team_colour),
       selected: on,
@@ -144,7 +146,9 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
       labelX: px + MAP_LABEL_DX,
       labelY: py + MAP_LABEL_DY,
     });
+    dot.dataset.frac = frac.toFixed(4);
   }
+  svg.dataset.cars = String(running);
 
   if (followZoom && pts.length >= 2) {
     const box = followViewBox(followPx, followPy, w, h, MAP_FOLLOW_ZOOM);

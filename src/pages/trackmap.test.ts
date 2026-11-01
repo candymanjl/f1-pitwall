@@ -17,7 +17,7 @@ function driver(n: number, code: string): Driver {
   };
 }
 
-function row(d: Driver, pos: number, progress: number): TowerRow {
+function row(d: Driver, pos: number, progress: number, extra: Partial<TowerRow> = {}): TowerRow {
   return {
     pos,
     driver: d,
@@ -44,6 +44,7 @@ function row(d: Driver, pos: number, progress: number): TowerRow {
     progress,
     gridPos: null,
     posChange: null,
+    ...extra,
   };
 }
 
@@ -174,5 +175,99 @@ describe("track map zoom", () => {
     btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(svg.dataset.zoom).toBe("full");
     expect(svg.getAttribute("viewBox")).toBe("0 0 800 600");
+  });
+
+  it("keeps every running car on the map, including +1 LAP traffic", () => {
+    const drivers = [
+      driver(16, "LEC"),
+      driver(1, "VER"),
+      driver(4, "NOR"),
+      driver(10, "GAS"),
+      driver(18, "STR"),
+      driver(23, "ALB"),
+      driver(43, "COL"),
+      driver(6, "HAD"),
+      driver(55, "SAI"),
+    ];
+    state.bundle = {
+      meeting: {
+        meeting_key: 1272,
+        meeting_name: "Mexico City Grand Prix",
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        date_start: "2025-10-26T20:00:00.000Z",
+        year: 2025,
+      },
+      session: {
+        session_key: 9877,
+        meeting_key: 1272,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: "2025-10-26T20:00:00.000Z",
+        date_end: "2025-10-26T22:00:00.000Z",
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        year: 2025,
+      },
+      weekendSessions: [],
+      drivers,
+      laps: [],
+      intervals: [],
+      positions: [],
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [
+        [0, 0],
+        [120, 0],
+        [120, 80],
+        [0, 80],
+        [0, 0],
+      ],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+    } as SessionBundle;
+    const lead = [0.72, 0.7];
+    const lappedProg = [0.11, 0.24, 0.37, 0.51, 0.63, 0.88];
+    state.snap = {
+      now: Date.parse("2025-10-26T21:35:31.000Z"),
+      rows: [
+        row(drivers[0], 1, lead[0], { gap: 0, status: "ON TRACK" }),
+        row(drivers[1], 2, lead[1], { gap: 1.6, status: "ON TRACK" }),
+        row(drivers[2], 3, lappedProg[0], { gap: "+1 LAP", status: "ON TRACK" }),
+        row(drivers[3], 4, lappedProg[1], { gap: "+1 LAP", status: "ON TRACK" }),
+        row(drivers[4], 5, lappedProg[2], { gap: "+1 LAP", status: "ON TRACK" }),
+        row(drivers[5], 6, lappedProg[3], { gap: "+1 LAP", status: "ON TRACK" }),
+        row(drivers[6], 7, lappedProg[4], { gap: "+1 LAP", status: "ON TRACK" }),
+        row(drivers[7], 8, lappedProg[5], { gap: "+1 LAP", status: "ON TRACK" }),
+        row(drivers[8], 9, 0.4, { gap: 12, status: "OUT", retired: true }),
+      ],
+      leaderLap: 68,
+      medianGreenLap: 80,
+      weather: null,
+      bestSectors: { s1: null, s2: null, s3: null },
+      flagMode: "green",
+      scBands: [],
+      raceLaps: 71,
+    } as TimingSnapshot;
+
+    const root = document.createElement("div");
+    document.body.append(root);
+    const api = mountTrackMap(root);
+    const svg = root.querySelector("svg.track") as SVGSVGElement;
+    Object.defineProperty(svg, "clientWidth", { value: 800 });
+    Object.defineProperty(svg, "clientHeight", { value: 600 });
+    api.update();
+    const ids = [...svg.querySelectorAll("[data-driver]")].map((n) => n.getAttribute("data-driver"));
+    expect(ids).toEqual(["16", "1", "4", "10", "18", "23", "43", "6"]);
+    expect(svg.dataset.cars).toBe("8");
+    expect(svg.querySelector("[data-driver='55']")).toBeNull();
+    const xs = ids.map((id) => Number(svg.querySelector(`[data-driver='${id}']`)?.getAttribute("data-x")));
+    expect(new Set(xs.map((x) => x.toFixed(1))).size).toBe(ids.length);
+    expect(svg.querySelector("[data-driver='4'] .drv-label")?.textContent).toBe("NOR");
   });
 });
