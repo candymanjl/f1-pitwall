@@ -62,6 +62,7 @@ function snap(): TimingSnapshot {
       wind_direction: 210,
       humidity: 44,
       rainfall: 0,
+      pressure: 1013.1,
     },
     bestSectors: {
       s1: { time: 22.104, code: "VER" },
@@ -134,6 +135,8 @@ describe("mountStatusBar", () => {
     expect(root.textContent).toContain("VER");
     expect(root.textContent).toContain("Air 21.4°C");
     expect(root.textContent).toContain("Wind 3.6 m/s 210°");
+    expect(root.textContent).toContain("1013.1 mbar");
+    expect(root.querySelector(".wx-pressure")?.getAttribute("data-trend")).toBe("none");
     const strip = root.querySelector("canvas.gapline") as HTMLCanvasElement;
     expect(strip).toBeTruthy();
     expect(root.querySelector("svg.wind-map")).toBeTruthy();
@@ -215,5 +218,95 @@ describe("mountStatusBar", () => {
     const css = readFileSync("src/styles.css", "utf8");
     expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
     expect(css).toMatch(/@keyframes wind-chevrons/);
+  });
+
+  it("shows air pressure and a 10–15 minute trend that follows the playhead", () => {
+    const host = document.createElement("div");
+    const api = mountStatusBar(host);
+    const weather = [
+      {
+        date: "2025-10-26T20:07:30.000Z",
+        air_temperature: 21.1,
+        track_temperature: 37.8,
+        wind_speed: 3.2,
+        wind_direction: 200,
+        humidity: 45,
+        rainfall: 0,
+        pressure: 1010.2,
+      },
+      {
+        date: "2025-10-26T20:20:00.000Z",
+        air_temperature: 21.4,
+        track_temperature: 38.2,
+        wind_speed: 3.6,
+        wind_direction: 210,
+        humidity: 44,
+        rainfall: 0,
+        pressure: 1013.1,
+      },
+      {
+        date: "2025-10-26T20:32:00.000Z",
+        air_temperature: 21.0,
+        track_temperature: 37.5,
+        wind_speed: 3.1,
+        wind_direction: 205,
+        humidity: 46,
+        rainfall: 0,
+        pressure: 1012.8,
+      },
+    ];
+    state.bundle = {
+      meeting: {
+        meeting_key: 1,
+        meeting_name: "Test GP",
+        circuit_short_name: "Test",
+        country_name: "Test",
+        location: "Test",
+        date_start: "2025-10-26T20:00:00.000Z",
+        year: 2025,
+      },
+      session: {
+        session_key: 1,
+        meeting_key: 1,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: "2025-10-26T20:00:00.000Z",
+        date_end: "2025-10-26T22:00:00.000Z",
+        circuit_short_name: "Test",
+        country_name: "Test",
+        location: "Test",
+        year: 2025,
+      },
+      weekendSessions: [],
+      drivers: [driver(1, "VER")],
+      laps: [],
+      intervals: [],
+      positions: [],
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather,
+      raceControl: [],
+      track: [],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+    };
+    state.snap = { ...snap(), now: Date.parse("2025-10-26T20:20:00.000Z"), weather: weather[1] };
+    api.update();
+    const row = host.querySelector(".wx-pressure")!;
+    expect(row.textContent).toContain("1013.1 mbar");
+    expect(row.getAttribute("data-trend")).toBe("up");
+    expect(row.querySelector(".wx-trend")?.textContent).toBe("↑");
+
+    state.snap = { ...snap(), now: Date.parse("2025-10-26T20:32:00.000Z"), weather: weather[2] };
+    api.update();
+    expect(row.textContent).toContain("1012.8 mbar");
+    expect(row.getAttribute("data-trend")).toBe("steady");
+    expect(row.querySelector(".wx-trend")?.textContent).toBe("–");
+
+    state.snap = { ...snap(), now: Date.parse("2025-10-26T20:08:00.000Z"), weather: weather[0] };
+    api.update();
+    expect(row.textContent).toContain("1010.2 mbar");
+    expect(row.getAttribute("data-trend")).toBe("none");
   });
 });

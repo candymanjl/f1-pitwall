@@ -5,6 +5,7 @@ import { project, windArrowScreen } from "../data/track";
 import type { TimingSnapshot } from "../data/types";
 import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
+import { formatPressure, pressureTrendLabel, pressureTrendMark, weatherPressureAt } from "../data/weatherPressure";
 import { placeTrackCar } from "../lib/pitcircle";
 import { formatSector } from "../lib/time";
 import { nearestStripCar, stripX } from "../lib/trackStrip";
@@ -228,10 +229,11 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
   };
   canvas.addEventListener("pointerdown", pick);
   const air = el("div");
+  const pressure = el("div", { class: "wx-pressure" });
   const track = el("div");
-  const wind = el("div");
   const hum = el("div");
-  const wx = el("div", { class: "wx-text" }, [el("div", { class: "legend", text: "Conditions" }), air, track, wind, hum]);
+  const wind = el("div", { class: "wx-wind-line" });
+  const wx = el("div", { class: "wx-text" }, [el("div", { class: "legend", text: "Conditions" }), air, pressure, track, hum, wind]);
   const windSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   windSvg.classList.add("wind-map");
   windSvg.setAttribute("aria-label", "Wind direction on track");
@@ -255,6 +257,23 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
     wind.textContent = w
       ? `Wind ${w.wind_speed?.toFixed(1) ?? "—"} m/s${windDir != null ? ` ${Math.round(windDir)}°` : ""}`
       : "—";
+    const series = [...(state.bundle?.weather ?? [])];
+    if (w && !series.some((row) => row.date === w.date)) series.push(w);
+    const press = weatherPressureAt(series, snap.now);
+    const trend = press.trend;
+    pressure.replaceChildren();
+    pressure.dataset.trend = trend ?? "none";
+    if (press.value != null) pressure.dataset.mbar = String(press.value);
+    else delete pressure.dataset.mbar;
+    pressure.append(
+      document.createTextNode(`${formatPressure(press.value)} `),
+      el("span", {
+        class: `wx-trend ${trend ?? "none"}`,
+        text: pressureTrendMark(trend),
+        title: pressureTrendLabel(trend),
+        "aria-label": pressureTrendLabel(trend),
+      }),
+    );
     hum.textContent = w ? `Hum ${w.humidity?.toFixed(0) ?? "—"}% · ${w.rainfall ? "rain" : "dry"}` : "—";
     drawGap(canvas, snap);
     drawWind(windSvg);
