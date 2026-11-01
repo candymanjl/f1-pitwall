@@ -12,7 +12,9 @@ import {
   rejoinGapText,
   rejoinPreview,
   pointOnCircle,
+  placeCircleCars,
   placeTrackCar,
+  raceGapSec,
   racingFrac,
   trackCarFrac,
   wedgePath,
@@ -135,6 +137,52 @@ describe("pit circle geometry", () => {
     expect(placeTrackCar(timed, { ...opts, locations: [] })?.source).toBe("gap");
     expect(placeTrackCar(lapped, { ...opts, locations: [] })?.source).toBe("progress");
     expect(placeTrackCar(lapped, { ...opts, locations: [] })?.frac).toBeCloseTo(0.18, 5);
+  });
+
+  it("keeps the pit circle on race gap time even when GPS would move the map", () => {
+    const track: [number, number][] = [
+      [0, 0],
+      [100, 0],
+      [100, 80],
+      [0, 80],
+      [0, 0],
+    ];
+    const now = Date.parse("2025-10-26T21:10:00.000Z");
+    const rows = [
+      { pos: 1, gap: 0, interval: 0, progress: 0.4, pitOut: false, currentLap: 40, driver: { driver_number: 16 } },
+      { pos: 2, gap: 8, interval: 8, progress: 0.9, pitOut: false, currentLap: 40, driver: { driver_number: 1 } },
+      { pos: 3, gap: "+1 LAP", interval: "+1 LAP", progress: 0.22, pitOut: false, currentLap: 39, driver: { driver_number: 4 } },
+      { pos: 4, gap: "+1 LAP", interval: 1.5, progress: 0.11, pitOut: false, currentLap: 39, driver: { driver_number: 10 } },
+    ];
+    const opts = {
+      leaderProgress: 0.4,
+      lapSec: 80,
+      pitEntry: 0.96,
+      pitExit: 0.06,
+      now,
+      track,
+      useRaceGaps: true,
+      locations: [
+        { date: new Date(now).toISOString(), driver_number: 16, x: 10, y: 0 },
+        { date: new Date(now).toISOString(), driver_number: 1, x: 100, y: 40 },
+        { date: new Date(now).toISOString(), driver_number: 4, x: 40, y: 80 },
+      ],
+    };
+    const circle = placeCircleCars(rows, opts);
+    expect(circle[0]?.source).toBe("gap");
+    expect(circle[1]?.source).toBe("gap");
+    expect(circle[0]?.frac).toBeCloseTo(gapFrac(0.4, 0, 80), 5);
+    expect(circle[1]?.frac).toBeCloseTo(gapFrac(0.4, 8, 80), 5);
+    expect(circle[1]?.frac).not.toBeCloseTo(placeTrackCar(rows[1], opts)?.frac ?? -1, 2);
+    expect(raceGapSec(rows[2], 8, 80)).toBeCloseTo(88, 5);
+    expect(circle[2]?.source).toBe("gap");
+    expect(circle[2]?.frac).toBeCloseTo(gapFrac(0.4, 88, 80), 5);
+    expect(circle[2]?.frac).not.toBeCloseTo(circle[0]?.frac ?? -1, 2);
+    expect(circle[3]?.source).toBe("gap");
+    expect(circle[3]?.frac).toBeCloseTo(gapFrac(0.4, 89.5, 80), 5);
+    const later = placeCircleCars(rows, { ...opts, now: now + 2000, leaderProgress: 0.425 });
+    expect(later[1]?.frac).toBeCloseTo(gapFrac(0.425, 8, 80), 5);
+    expect(Math.abs((later[1]?.frac ?? 0) - (circle[1]?.frac ?? 0))).toBeLessThan(0.05);
   });
 
   it("keeps lapped cars on their own lap progress instead of stacking on the leader", () => {

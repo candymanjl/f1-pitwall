@@ -1,4 +1,3 @@
-import { indexLocations } from "../data/carLocation";
 import { isRaceOrSprint } from "../data/grid";
 import { DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT } from "../data/pitlane";
 import { bindDriverSelect } from "../lib/bindSelect";
@@ -11,7 +10,7 @@ import {
   pointOnCircle,
   rejoinGapText,
   rejoinPreview,
-  placeTrackCar,
+  placeCircleCars,
   wedgePath,
   wrap01,
   type CircleCar,
@@ -88,30 +87,29 @@ function carsOnCircle(): CircleCar[] {
   const leaderProg = snap.rows[0]?.progress ?? 0;
   const lap = Math.max(1, snap.medianGreenLap);
   const bundle = state.bundle;
-  const locIndex = indexLocations(bundle?.locations);
-  return snap.rows.flatMap((row) => {
-    const placed = placeTrackCar(row, {
-      leaderProgress: leaderProg,
-      lapSec: lap,
-      pitEntry,
-      pitExit,
-      now: snap.now,
-      track: bundle?.track ?? [],
-      locations: bundle?.locations,
-      locIndex,
-      useRaceGaps: bundle ? isRaceOrSprint(bundle.session) : false,
-    });
-    if (!placed) return [];
+  const placed = placeCircleCars(snap.rows, {
+    leaderProgress: leaderProg,
+    lapSec: lap,
+    pitEntry,
+    pitExit,
+    now: snap.now,
+    track: bundle?.track ?? [],
+    locations: bundle?.locations,
+    useRaceGaps: bundle ? isRaceOrSprint(bundle.session) : false,
+  });
+  return snap.rows.flatMap((row, i) => {
+    const hit = placed[i];
+    if (!hit) return [];
     return [
       {
         driver: row.driver.driver_number,
         code: row.driver.name_acronym,
-        frac: placed.frac,
+        frac: hit.frac,
         inPit: row.inPit,
         retired: row.retired,
         pace: typeof row.lastLap === "number" && row.lastLap > 0 ? row.lastLap : snap.medianGreenLap,
         color: teamColor(row.driver.team_colour),
-        place: placed.source,
+        place: hit.source,
       },
     ];
   });
