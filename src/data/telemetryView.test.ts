@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   brushFromPointer,
   cornerWindow,
+  applySeasonDrs,
   defaultTracePrefs,
   laneHeight,
   normalizeTrace,
@@ -79,6 +80,57 @@ describe("telemetry traces", () => {
     expect(normalizeTrace(7, 7, 7)).toBeCloseTo(0.5);
     const dashes = TRACE_IDS.map((id) => traceDash(id).join(","));
     expect(new Set(dashes).size).toBe(TRACE_IDS.length);
+  });
+
+  it("starts DRS off from 2026 and on before that, until the chip is toggled", () => {
+    expect(defaultTracePrefs().visible.drs).toBe(true);
+    expect(defaultTracePrefs(2025).visible.drs).toBe(true);
+    expect(defaultTracePrefs(2026).visible.drs).toBe(false);
+    expect(defaultTracePrefs(2027).visible.drs).toBe(false);
+
+    const fresh = defaultTracePrefs();
+    expect(applySeasonDrs(fresh, 2026).visible.drs).toBe(false);
+    expect(applySeasonDrs(fresh, 2025).visible.drs).toBe(true);
+
+    const chosen = applySeasonDrs(fresh, 2026);
+    chosen.drsChosen = true;
+    chosen.visible.drs = true;
+    expect(applySeasonDrs(chosen, 2026).visible.drs).toBe(true);
+    expect(applySeasonDrs(chosen, 2025).visible.drs).toBe(true);
+
+    const memory = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (key: string) => memory.get(key) ?? null,
+        setItem: (key: string, value: string) => void memory.set(key, value),
+        removeItem: (key: string) => void memory.delete(key),
+        clear: () => memory.clear(),
+        key: (index: number) => [...memory.keys()][index] ?? null,
+        get length() {
+          return memory.size;
+        },
+      },
+      configurable: true,
+    });
+    memory.set("f1pitwall.telemetryView", JSON.stringify({ visible: { drs: true, brake: false }, overlay: false }));
+    const legacyOn = readTracePrefs();
+    expect(legacyOn.drsChosen).toBe(false);
+    expect(legacyOn.visible.brake).toBe(false);
+    expect(applySeasonDrs(legacyOn, 2026).visible.drs).toBe(false);
+
+    memory.set("f1pitwall.telemetryView", JSON.stringify({ visible: { drs: false }, overlay: false }));
+    const legacyOff = readTracePrefs();
+    expect(legacyOff.drsChosen).toBe(true);
+    expect(applySeasonDrs(legacyOff, 2025).visible.drs).toBe(false);
+
+    const manual = defaultTracePrefs(2026);
+    manual.visible.drs = true;
+    manual.drsChosen = true;
+    writeTracePrefs(manual);
+    const stored = readTracePrefs();
+    expect(stored.drsChosen).toBe(true);
+    expect(stored.visible.drs).toBe(true);
+    expect(applySeasonDrs(stored, 2026).visible.drs).toBe(true);
   });
 
   it("remembers overlay mode and which channels are on", () => {

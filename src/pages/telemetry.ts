@@ -11,6 +11,7 @@ import { cumulativeDistance, detectCorners, lapWindow, pointAt, project } from "
 import type { CarSample, LocationSample } from "../data/types";
 import {
   TRACE_IDS,
+  applySeasonDrs,
   brushFromPointer,
   cornerWindow,
   laneHeight,
@@ -388,6 +389,7 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
     const chip = el("button", { class: "trace-chip", type: "button", text: traceLabel(id) }) as HTMLButtonElement;
     chip.onclick = () => {
       prefs.visible[id] = !prefs.visible[id];
+      if (id === "drs") prefs.drsChosen = true;
       writeTracePrefs(prefs);
       syncTools();
       paint();
@@ -560,6 +562,11 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
     }
   };
   repaintCharts = () => paint();
+  const applySeason = () => {
+    const year = state.bundle?.session?.year ?? state.year;
+    prefs = applySeasonDrs(prefs, year);
+  };
+  applySeason();
   syncTools();
   placeBrush();
 
@@ -746,6 +753,8 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
 
   return {
     update: () => {
+      applySeason();
+      syncTools();
       const bundle = state.bundle;
       if (bundle) {
         const padded = ensureMinDrivers(state.telemetry, bundle.drivers, bundle.laps, bundle.pits ?? []);

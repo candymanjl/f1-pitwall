@@ -86,4 +86,46 @@ describe("telemetry tools", () => {
       root.remove();
     }
   });
+
+  it("defaults DRS off for 2026 and keeps it on after the chip is pressed", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const previous = state.bundle;
+    const slots = state.telemetry;
+    const year = state.year;
+    state.telemetry = [];
+    state.year = 2026;
+    state.bundle = {
+      session: { year: 2026 },
+      drivers: [],
+      laps: [],
+      pits: [],
+      corners: [],
+      track: [],
+    } as unknown as SessionBundle;
+    try {
+      const api = mountTelemetry(root);
+      api.update();
+      const drs = [...root.querySelectorAll(".telem-tools .trace-chip")].find(
+        (node) => node.textContent === "DRS",
+      ) as HTMLButtonElement;
+      expect(drs.getAttribute("aria-pressed")).toBe("false");
+      expect(drs.classList.contains("off")).toBe(true);
+      drs.click();
+      expect(drs.getAttribute("aria-pressed")).toBe("true");
+      state.year = 2025;
+      (state.bundle.session as { year: number }).year = 2025;
+      api.update();
+      expect(drs.getAttribute("aria-pressed")).toBe("true");
+      state.year = 2026;
+      (state.bundle.session as { year: number }).year = 2026;
+      api.update();
+      expect(drs.getAttribute("aria-pressed")).toBe("true");
+    } finally {
+      state.bundle = previous;
+      state.telemetry = slots;
+      state.year = year;
+      root.remove();
+    }
+  });
 });
