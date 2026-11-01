@@ -217,12 +217,33 @@ for (const size of SIZES) {
       fullPage: true,
     });
 
-    const windBody = page.locator("svg.wind-map path.wind-arrow-body");
-    const windFlow = page.locator("svg.wind-map path.wind-arrow-flow");
-    await expect(windBody).toBeVisible();
-    await expect(windFlow).toBeVisible();
-    expect((await windBody.getAttribute("d"))?.endsWith("Z")).toBe(true);
-    expect((await windFlow.getAttribute("d"))?.startsWith("M")).toBe(true);
+    const windSvg = page.locator("svg.wind-map");
+    const windHead = page.locator("svg.wind-map path.wind-arrow-head");
+    const windChevrons = page.locator("svg.wind-map path.wind-arrow-chevrons");
+    await expect(windHead).toBeVisible();
+    await expect(windChevrons).toBeVisible();
+    await expect(windSvg).toHaveAttribute("data-wind", "chevrons");
+    expect((await windHead.getAttribute("d"))?.endsWith("Z")).toBe(true);
+    expect((await windChevrons.getAttribute("d"))?.startsWith("M")).toBe(true);
+    expect(((await windChevrons.getAttribute("d")) ?? "").match(/M/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    const windAnim = await windSvg.evaluate((el) => ({
+      period: Number.parseInt(getComputedStyle(el).getPropertyValue("--wind-flow-ms"), 10),
+      tx: getComputedStyle(el).getPropertyValue("--wind-tx"),
+      ty: getComputedStyle(el).getPropertyValue("--wind-ty"),
+      name: getComputedStyle(el.querySelector(".wind-arrow-chevrons") as Element).animationName,
+    }));
+    expect(windAnim.period).toBeGreaterThan(0);
+    expect(windAnim.tx).toMatch(/px/);
+    expect(windAnim.ty).toMatch(/px/);
+    expect(windAnim.name).toMatch(/wind-chevrons/);
+    await page.screenshot({
+      path: `/opt/cursor/artifacts/screenshots/mexico_wind_chevrons_${size.name}.png`,
+      fullPage: true,
+    });
+    const windClose = page.locator("svg.wind-map");
+    await windClose.screenshot({
+      path: `/opt/cursor/artifacts/screenshots/mexico_wind_chevrons_closeup_${size.name}.png`,
+    });
 
     await page.locator("nav button[data-page='racetrace']").click();
     await expect(page.locator("button[data-trace-mode='average']")).toBeVisible();

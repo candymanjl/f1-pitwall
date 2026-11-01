@@ -8,10 +8,9 @@ import { formatSector } from "../lib/time";
 import { nearestStripCar, stripX } from "../lib/trackStrip";
 import {
   prefersReducedMotion,
-  WIND_FLOW_CYCLE,
-  WIND_FLOW_DASH,
-  WIND_FLOW_WIDTH,
-  windArrowPaths,
+  WIND_CHEVRON_WIDTH,
+  fitWindArrow,
+  windChevronGeometry,
   windFlowPeriodMs,
 } from "../lib/windFlow";
 import { hasDriverSelection, isDriverSelected, selectDriver, state } from "../state";
@@ -133,34 +132,54 @@ function drawWind(svg: SVGSVGElement): void {
   path.setAttribute("d", d);
   const arrow = dir != null ? windArrowScreen(pts, dir, w, h) : null;
   if (!arrow) return;
-  const [x1, y1] = arrow.from;
-  const [x2, y2] = arrow.to;
+  const fitted = fitWindArrow(arrow.from[0], arrow.from[1], arrow.to[0], arrow.to[1], w, h);
+  const { x1, y1, x2, y2 } = fitted;
   const speed = state.snap?.weather?.wind_speed;
   const period = windFlowPeriodMs(speed);
   const reduce = prefersReducedMotion();
   svg.style.setProperty("--wind-flow-ms", `${period}ms`);
   svg.classList.toggle("wind-still", reduce || (speed ?? 0) < 0.15);
 
-  const { body, flow: flowD } = windArrowPaths(x1, y1, x2, y2);
-  let bodyEl = svg.querySelector<SVGPathElement>("path.wind-arrow-body");
-  let flow = svg.querySelector<SVGPathElement>("path.wind-arrow-flow");
-  if (!bodyEl || !flow) {
-    svg.querySelectorAll("line.wind-arrow-shaft, line.wind-arrow-flow, defs").forEach((n) => n.remove());
-    bodyEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    bodyEl.setAttribute("class", "wind-arrow-body");
-    flow = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    flow.setAttribute("class", "wind-arrow-flow");
-    flow.setAttribute("fill", "none");
-    flow.setAttribute("stroke", "#e0f2fe");
-    flow.setAttribute("stroke-width", String(WIND_FLOW_WIDTH));
-    flow.setAttribute("stroke-linecap", "round");
-    flow.setAttribute("stroke-linejoin", "round");
-    flow.setAttribute("stroke-dasharray", WIND_FLOW_DASH);
-    flow.dataset.cycle = String(WIND_FLOW_CYCLE);
-    svg.append(bodyEl, flow);
+  const geo = windChevronGeometry(x1, y1, x2, y2);
+  svg.style.setProperty("--wind-tx", `${geo.cycleX.toFixed(2)}px`);
+  svg.style.setProperty("--wind-ty", `${geo.cycleY.toFixed(2)}px`);
+  svg.dataset.wind = "chevrons";
+  svg.dataset.chevrons = String(geo.count);
+
+  let defs = svg.querySelector("defs");
+  let clip = svg.querySelector<SVGClipPathElement>("#wind-chevron-clip");
+  let clipPath = svg.querySelector<SVGPathElement>("#wind-chevron-clip path");
+  let chevrons = svg.querySelector<SVGPathElement>("path.wind-arrow-chevrons");
+  let head = svg.querySelector<SVGPathElement>("path.wind-arrow-head");
+  if (!defs || !clip || !clipPath || !chevrons || !head) {
+    svg.querySelectorAll("path.wind-arrow-body, path.wind-arrow-flow, line.wind-arrow-shaft, line.wind-arrow-flow, defs").forEach(
+      (n) => n.remove(),
+    );
+    defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+    clip.setAttribute("id", "wind-chevron-clip");
+    clipPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    clip.append(clipPath);
+    defs.append(clip);
+    const layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    layer.setAttribute("class", "wind-arrow-chevron-layer");
+    layer.setAttribute("clip-path", "url(#wind-chevron-clip)");
+    chevrons = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    chevrons.setAttribute("class", "wind-arrow-chevrons");
+    chevrons.setAttribute("fill", "none");
+    chevrons.setAttribute("stroke", "#7dd3fc");
+    chevrons.setAttribute("stroke-width", String(WIND_CHEVRON_WIDTH));
+    chevrons.setAttribute("stroke-linecap", "round");
+    chevrons.setAttribute("stroke-linejoin", "round");
+    layer.append(chevrons);
+    head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    head.setAttribute("class", "wind-arrow-head");
+    svg.append(defs, layer, head);
   }
-  bodyEl.setAttribute("d", body);
-  flow.setAttribute("d", flowD);
+  clipPath.setAttribute("d", geo.clip);
+  chevrons.setAttribute("d", geo.chevrons);
+  chevrons.dataset.cycle = String(geo.cycle);
+  head.setAttribute("d", geo.head);
 }
 
 export function mountStatusBar(parent: HTMLElement): { update: () => void } {

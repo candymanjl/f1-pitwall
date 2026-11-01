@@ -406,21 +406,25 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 .statusbar { min-height: 5.25rem; }
 .wx-wind { display: flex; align-items: center; gap: 0.625rem; }
 .wx-text { min-width: 6.875rem; }
-svg.wind-map { width: 6rem; height: 4.5rem; display: block; flex: 0 0 6rem; }
-.wind-arrow-body { fill: #38bdf8; stroke: #0c4a6e; stroke-width: 0.7; }
-.wind-arrow-shaft { stroke-linecap: round; }
-.wind-arrow-flow {
+svg.wind-map { width: 6rem; height: 4.5rem; display: block; flex: 0 0 6rem; overflow: visible; }
+.wind-arrow-chevron-layer, .wind-arrow-chevrons, .wind-arrow-head {
+  shape-rendering: geometricPrecision;
+}
+.wind-arrow-head { fill: #38bdf8; stroke: #0c4a6e; stroke-width: 0.7; }
+.wind-arrow-chevrons {
   fill: none;
+  stroke: #7dd3fc;
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
-  animation: wind-flow var(--wind-flow-ms, 2s) linear infinite;
+  animation: wind-chevrons var(--wind-flow-ms, 2s) linear infinite;
 }
-svg.wind-map.wind-still .wind-arrow-flow { animation: none; }
-@keyframes wind-flow {
-  to { stroke-dashoffset: -18; }
+svg.wind-map.wind-still .wind-arrow-chevrons { animation: none; }
+@keyframes wind-chevrons {
+  to { transform: translate(var(--wind-tx, 9px), var(--wind-ty, 0px)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .wind-arrow-flow { animation: none; }
+  .wind-arrow-chevrons { animation: none; }
 }
 .gapline { height: 2.25rem; width: 100%; cursor: pointer; }
 .legend { color: var(--muted); font-size: 0.6875rem; }
