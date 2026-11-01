@@ -38,40 +38,30 @@ async function loadMexico2025(page: Page): Promise<void> {
         { driver_number: 81, broadcast_name: "PIA", full_name: "Oscar Piastri", name_acronym: "PIA", team_name: "McLaren", team_colour: "FF8000", first_name: "Oscar", last_name: "Piastri" },
         { driver_number: 63, broadcast_name: "RUS", full_name: "George Russell", name_acronym: "RUS", team_name: "Mercedes", team_colour: "27F4D2", first_name: "George", last_name: "Russell" },
       ];
-      const laps = drivers.flatMap((d) => [
-        {
-          driver_number: d.driver_number,
-          lap_number: 1,
-          date_start: new Date(start + 12_000).toISOString(),
-          lap_duration: 80,
-          duration_sector_1: 22,
-          duration_sector_2: 29,
-          duration_sector_3: 29,
-          is_pit_out_lap: false,
-          segments_sector_1: null,
-          segments_sector_2: null,
-          segments_sector_3: null,
-          i1_speed: null,
-          i2_speed: null,
-          st_speed: null,
-        },
-        {
-          driver_number: d.driver_number,
-          lap_number: 18,
-          date_start: new Date(mid).toISOString(),
-          lap_duration: 80,
-          duration_sector_1: 22,
-          duration_sector_2: 29,
-          duration_sector_3: 29,
-          is_pit_out_lap: false,
-          segments_sector_1: null,
-          segments_sector_2: null,
-          segments_sector_3: null,
-          i1_speed: null,
-          i2_speed: null,
-          st_speed: null,
-        },
-      ]);
+      const lap = (n, t, duration) => ({
+        driver_number: 0,
+        lap_number: n,
+        date_start: new Date(t).toISOString(),
+        lap_duration: duration,
+        duration_sector_1: 22,
+        duration_sector_2: 29,
+        duration_sector_3: 29,
+        is_pit_out_lap: false,
+        segments_sector_1: null,
+        segments_sector_2: null,
+        segments_sector_3: null,
+        i1_speed: null,
+        i2_speed: null,
+        st_speed: null,
+      });
+      const laps = drivers.flatMap((d) =>
+        [
+          lap(1, start + 12_000, 80),
+          lap(16, mid - 170_000, 80.312),
+          lap(17, mid - 85_000, 80),
+          lap(18, mid, 80),
+        ].map((row) => ({ ...row, driver_number: d.driver_number })),
+      );
       const bundle = {
         meeting: {
           meeting_key: 1272,
@@ -171,6 +161,35 @@ async function ready(page: Page, hash: string, size: { width: number; height: nu
   await expect.poll(async () => (await hooks(page)).state.snap?.rows.length ?? 0).toBeGreaterThanOrEqual(4);
 }
 
+async function expectLapDeltaTower(page: Page, scope: string): Promise<void> {
+  const tower = page.locator(`${scope} table.tower`);
+  await expect(tower).toBeVisible();
+  const heads = await tower.locator("th").allTextContents();
+  const lastAt = heads.indexOf("Last");
+  expect(heads[lastAt + 1]).toBe("Δ");
+  expect(heads[lastAt + 2]).toBe("Best");
+  const first = tower.locator("tbody tr").first().locator("td.c-ldelta");
+  await expect(first).toHaveText("-0.312");
+  await expect(first.locator(".lap-delta.faster")).toBeVisible();
+  const color = await first.locator(".lap-delta.faster").evaluate((el) => getComputedStyle(el).color);
+  expect(color).toBe("rgb(34, 197, 94)");
+  const fit = await tower.evaluate((el) => {
+    const panel = el.closest(".panel-b") as HTMLElement | null;
+    const table = el.getBoundingClientRect();
+    const host = (panel ?? el).getBoundingClientRect();
+    const delta = el.querySelector("th.c-ldelta")?.getBoundingClientRect();
+    return {
+      tableRight: table.right,
+      hostRight: host.right,
+      deltaWidth: delta?.width ?? 0,
+      overflowX: panel ? panel.scrollWidth - panel.clientWidth : el.scrollWidth - el.clientWidth,
+    };
+  });
+  expect(fit.deltaWidth).toBeGreaterThan(12);
+  expect(fit.overflowX).toBeLessThan(8);
+  expect(fit.tableRight).toBeLessThanOrEqual(fit.hostRight + 8);
+}
+
 const SIZES = [
   { name: "1920", width: 1920, height: 1080 },
   { name: "1366", width: 1366, height: 768 },
@@ -179,6 +198,11 @@ const SIZES = [
 for (const size of SIZES) {
   test(`Mexico 2025 layout at ${size.width}x${size.height}`, async ({ page }) => {
     await ready(page, "trackmap", size);
+    await expectLapDeltaTower(page, ".page.trackmap");
+    await page.screenshot({
+      path: `/opt/cursor/artifacts/screenshots/mexico_trackmap_lapdelta_${size.name}.png`,
+      fullPage: true,
+    });
 
     const zoom = page.locator("button.map-zoom");
     await expect(zoom).toBeVisible();
@@ -336,6 +360,11 @@ for (const size of SIZES) {
     await page.evaluate(() => (window as unknown as { __f1pw: Hooks }).__f1pw.setPlaying(false));
     await page.locator("nav button[data-page='pitcircle']").click();
     await expect(page.locator("svg.circle")).toBeVisible();
+    await expectLapDeltaTower(page, ".page.pitcircle");
+    await page.screenshot({
+      path: `/opt/cursor/artifacts/screenshots/mexico_pitcircle_lapdelta_${size.name}.png`,
+      fullPage: true,
+    });
     const labelSize = await page.locator("svg.circle text.car-label").first().evaluate((el) => {
       return Number.parseFloat(getComputedStyle(el).fontSize);
     });

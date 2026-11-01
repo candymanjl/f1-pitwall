@@ -38,7 +38,7 @@ function row(d: Driver, pos: number, progress: number, extra: Partial<TowerRow> 
     compound: "MEDIUM",
     tyreAge: 8,
     lastLap: 78.4,
-    lastLapDelta: null,
+    lastLapDelta: pos === 1 ? -0.312 : pos === 2 ? 0.184 : null,
     bestLap: 77.9,
     interval: pos === 1 ? null : 0.4,
     gap: pos === 1 ? 0 : pos * 1.1,
@@ -183,7 +183,14 @@ describe("pit circle page", () => {
     const aheadVer = [...svg.querySelectorAll(".gap-wedge")].find((w) => w.getAttribute("data-ahead") === "1");
     expect(aheadVer?.getAttribute("fill")).toMatch(/rgba\(54,\s*113,\s*198/);
     expect(svg.querySelectorAll(".gap-leader").length).toBeGreaterThanOrEqual(6);
-    expect(root.querySelector("table.tower")).toBeTruthy();
+    const tower = root.querySelector("table.tower")!;
+    expect(tower).toBeTruthy();
+    const heads = [...tower.querySelectorAll("th")].map((th) => th.textContent);
+    const lastAt = heads.indexOf("Last");
+    expect(heads[lastAt + 1]).toBe("Δ");
+    expect(heads[lastAt + 2]).toBe("Best");
+    expect(tower.querySelector("tr[data-driver='1'] td.c-ldelta")?.textContent).toBe("-0.312");
+    expect(tower.querySelector("tr[data-driver='1'] .lap-delta.faster")).toBeTruthy();
     expect(root.querySelector(".splitter")).toBeTruthy();
     expect((root.querySelector(".page.pitcircle") as HTMLElement | null)?.style.getPropertyValue("--tower-split")).toMatch(/rem/);
     expect(svg.querySelector("[data-driver='1']")?.classList.contains("on")).toBe(true);
