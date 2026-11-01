@@ -50,7 +50,7 @@ export function openSettings(): void {
   relay.value = readRelayUrl();
   const mode = el("select") as HTMLSelectElement;
   mode.append(el("option", { value: "historical", text: "Historical replay (REST)" }));
-  mode.append(el("option", { value: "live", text: "Live (MQTT, or 4s REST poll when a relay is set)" }));
+  mode.append(el("option", { value: "live", text: "Live (MQTT stream, REST poll fallback)" }));
   mode.value = state.mode;
   const scale = el("select") as HTMLSelectElement;
   for (const opt of UI_SCALE_OPTIONS) {
@@ -124,15 +124,15 @@ export function openSettings(): void {
       el("label", { text: "OpenF1 relay URL" }),
       relay,
       el("p", {
-        text: "Optional. Leave blank to call OpenF1 directly. Paste the Function App origin only (no /v1), e.g. https://f1-pitwall-relay-11686.azurewebsites.net. Sign-in and every OpenF1 REST call then go through it so the browser can send your bearer token. Live mode uses 4s REST polling through the relay (MQTT is skipped).",
+        text: "Optional. Leave blank to call OpenF1 directly. Paste the Function App origin only (no /v1), e.g. https://f1-pitwall-relay-11686.azurewebsites.net. Sign-in and every OpenF1 REST call then go through it so the browser can send your bearer token. Live mode still opens OpenF1 MQTT in this browser (wss://mqtt.openf1.org:8084/mqtt) even when a relay is set, and falls back to staggered REST polling if the stream is silent.",
       }),
       el("label", { text: "Data mode" }),
       mode,
       el("label", { text: "UI scale" }),
       scale,
-      el("label", { class: "check" }, [liveDebug, " Show live poll debug"]),
+      el("label", { class: "check" }, [liveDebug, " Show live stream debug"]),
       el("p", {
-        text: "When on, a status line under the toolbar shows last poll time, rows added per endpoint, and the last error.",
+        text: "When on, a status line under the toolbar shows STREAM or POLLING, messages per second per topic, and last message age.",
       }),
       el("p", {
         text: "Auto grows the pitwall to fill 1440p / 4K without browser zoom. Manual 100–200% locks the rem root size. Driver hit targets stay at least 14 CSS px.",

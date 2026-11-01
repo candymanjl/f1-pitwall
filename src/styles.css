@@ -124,6 +124,13 @@ button { cursor: pointer; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.live-tab-warn {
+  font: 0.75rem/1.4 var(--font);
+  color: #fde68a;
+  background: #2a2208;
+  border-bottom: 1px solid #7a5b12;
+  padding: 0.35rem 1rem;
+}
 .modal label.check {
   display: flex;
   align-items: center;

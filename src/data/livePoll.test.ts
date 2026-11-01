@@ -5,15 +5,26 @@ import {
   fallbackSinceIso,
   FAST_POLL_MS,
   formatLiveDebug,
+  INTERVALS_POLL_MS,
+  LAPS_POLL_MS,
   lastSeenIso,
   livePollParams,
   LIVE_POLL_SPECS,
+  LOCATION_POLL_MS,
+  mqttTopicsForPage,
   nextDueInMs,
   nextPollDelayMs,
+  PIT_POLL_MS,
   pollSpecsForPage,
+  POSITION_POLL_MS,
+  RACE_CONTROL_POLL_MS,
+  recordTopicHit,
   seedLastRan,
   seedLiveCursors,
-  SLOW_POLL_MS,
+  STINTS_POLL_MS,
+  topicRates,
+  WEATHER_POLL_MS,
+  emptyRateState,
 } from "./livePoll";
 import type { SessionBundle } from "./types";
 
@@ -41,15 +52,30 @@ describe("live incremental poll helpers", () => {
     expect(livePollParams(stintSpec, 99, cursors, "x")).toEqual({ session_key: 99 });
   });
 
-  it("only polls the fast trio on the first tick", () => {
+  it("uses staggered REST cadences and only the fast trio on the first tick", () => {
+    expect(LOCATION_POLL_MS).toBeGreaterThanOrEqual(2000);
+    expect(LOCATION_POLL_MS).toBeLessThanOrEqual(3000);
+    expect(POSITION_POLL_MS).toBeGreaterThanOrEqual(4000);
+    expect(POSITION_POLL_MS).toBeLessThanOrEqual(5000);
+    expect(INTERVALS_POLL_MS).toBeGreaterThanOrEqual(4000);
+    expect(INTERVALS_POLL_MS).toBeLessThanOrEqual(5000);
+    expect(RACE_CONTROL_POLL_MS).toBeGreaterThanOrEqual(5000);
+    expect(RACE_CONTROL_POLL_MS).toBeLessThanOrEqual(10_000);
+    expect(LAPS_POLL_MS).toBe(10_000);
+    expect(STINTS_POLL_MS).toBe(30_000);
+    expect(PIT_POLL_MS).toBe(30_000);
+    expect(WEATHER_POLL_MS).toBe(60_000);
+
     const now = 1_700_000_000_000;
     const last = seedLastRan(now, pollSpecsForPage("trackmap"));
     const due = duePollSpecs("trackmap", last, now).map((s) => s.path);
     expect(due).toEqual(["location", "position", "intervals"]);
-    expect(duePollSpecs("trackmap", last, now + 999).some((s) => s.path === "laps")).toBe(false);
-    expect(duePollSpecs("trackmap", last, now + 1000).some((s) => s.path === "laps")).toBe(true);
-    expect(nextDueInMs("trackmap", last, now)).toBe(1000);
-    expect(SLOW_POLL_MS).toBeGreaterThan(FAST_POLL_MS);
+    expect(duePollSpecs("trackmap", last, now + LAPS_POLL_MS - 1).some((s) => s.path === "laps")).toBe(false);
+    expect(duePollSpecs("trackmap", last, now + LAPS_POLL_MS).some((s) => s.path === "laps")).toBe(true);
+    expect(nextDueInMs("trackmap", last, now)).toBe(FAST_POLL_MS);
+    const afterFastTick = { ...last, location: now, position: now, intervals: now };
+    expect(nextDueInMs("trackmap", afterFastTick, now)).toBe(LOCATION_POLL_MS);
+    expect(FAST_POLL_MS).toBe(LOCATION_POLL_MS);
   });
 
   it("backs off on errors without going past 30s", () => {
@@ -58,9 +84,11 @@ describe("live incremental poll helpers", () => {
     expect(nextPollDelayMs(8)).toBe(30_000);
   });
 
-  it("only polls car_data on the Telemetry page", () => {
+  it("only polls car_data on the Telemetry page and formats STREAM/POLLING debug", () => {
     expect(pollSpecsForPage("trackmap").some((s) => s.path === "car_data")).toBe(false);
     expect(pollSpecsForPage("telemetry").some((s) => s.path === "car_data")).toBe(true);
+    expect(mqttTopicsForPage("trackmap")).not.toContain("v1/car_data");
+    expect(mqttTopicsForPage("telemetry")).toContain("v1/car_data");
     expect(
       lastSeenIso([{ date: "2025-10-26T20:10:01.000Z" }, { date: "2025-10-26T20:10:04.000Z" }], "date"),
     ).toBe("2025-10-26T20:10:04.000Z");
@@ -73,11 +101,25 @@ describe("live incremental poll helpers", () => {
     );
     expect(
       formatLiveDebug({
+        mode: "POLLING",
         lastPollAt: Date.parse("2026-11-01T20:57:04.000Z"),
         lastCycleMs: 880,
         added: { location: 12, position: 4 },
         lastError: "ok",
       }),
-    ).toBe("poll 20:57:04 UTC · location +12 · position +4 · 880ms · ok");
+    ).toBe("POLLING · location +12 · position +4 · 880ms · 20:57:04 UTC · ok");
+    expect(
+      formatLiveDebug({
+        mode: "STREAM",
+        topicRates: { "v1/location": 12.4, "v1/position": 2 },
+        lastMessageAgeMs: 400,
+        lastError: "ok",
+      }),
+    ).toBe("STREAM · v1/location 12.4/s · v1/position 2.0/s · last 0.4s · ok");
+    const hits = emptyRateState();
+    recordTopicHit(hits, "v1/laps", 1000);
+    recordTopicHit(hits, "v1/laps", 2000);
+    recordTopicHit(hits, "v1/laps", 3000);
+    expect(topicRates(hits, 3000, 5000)["v1/laps"]).toBeCloseTo(0.6, 5);
   });
 });
