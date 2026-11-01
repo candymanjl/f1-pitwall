@@ -8,6 +8,7 @@ import { formatLiveDebug } from "../data/livePoll";
 import { formatReplayBadge, formatSessionHeadline } from "../lib/sessionHeadline";
 import { applyLoadingOverlay, shouldShowLoadingOverlay } from "./overlays";
 import { openSettings } from "./settings";
+import { mountFlagSheet } from "./flagIcon";
 import { mountStatusBar } from "./statusbar";
 import { mountPitCircle } from "../pages/pitcircle";
 import { mountRaceTrace } from "../pages/racetrace";
@@ -250,6 +251,10 @@ export function boot(root: HTMLElement): void {
   if (new URLSearchParams(location.search).has("settings")) {
     queueMicrotask(() => openSettings());
   }
+  const showFlagSheet = () => {
+    document.querySelector("[data-flagsheet]")?.remove();
+    mountFlagSheet(document.body);
+  };
   (window as unknown as { __f1pw: unknown }).__f1pw = {
     state,
     setClock,
@@ -265,8 +270,11 @@ export function boot(root: HTMLElement): void {
     loadSelectedSession,
     sessionPickerDirty,
     setShowLiveDebug,
+    showFlagSheet,
   };
-  const e2e = new URLSearchParams(location.search).has("e2e") || location.hash.includes("e2e");
+  const params = new URLSearchParams(location.search);
+  if (params.has("flagsheet")) queueMicrotask(() => showFlagSheet());
+  const e2e = params.has("e2e") || location.hash.includes("e2e");
   if (!e2e) void reloadAll();
 }
 

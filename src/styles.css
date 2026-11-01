@@ -441,13 +441,120 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 
 .statusbar-host { flex: 0 0 auto; }
 .strip, .statusbar {
-  display: grid; grid-template-columns: 12.5rem 1fr minmax(18.5rem, 22rem);
-  gap: 1rem; align-items: center; padding: 0.5rem 0.75rem;
+  display: grid; grid-template-columns: minmax(16.5rem, 18.75rem) 1fr minmax(17.5rem, 21.5rem);
+  gap: 0.85rem; align-items: center; padding: 0.5rem 0.75rem;
   background: #0c0f17; border: 1px solid var(--line); border-radius: 0.375rem;
   font-family: var(--cond); font-size: 0.9375rem; font-variant-numeric: tabular-nums;
   flex: 0 0 auto; margin: 0.5rem 0.625rem 0.625rem;
 }
 .statusbar { min-height: 5.25rem; }
+.strip-best {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.strip-sectors { min-width: 0; line-height: 1.2; }
+.flag-slot { flex: 0 0 auto; min-width: 0; }
+.flag-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.flag-icon-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+.flag-indicator .flag-badge {
+  position: absolute;
+  top: -0.28rem;
+  right: -0.42rem;
+  background: #f5d000;
+  color: #111827;
+  border: 1px solid #111827;
+  border-radius: 0.2rem;
+  font-weight: 800;
+  font-size: 0.58rem;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  padding: 0.04rem 0.22rem;
+  white-space: nowrap;
+}
+.flag-svg {
+  width: 3.15rem;
+  height: 1.85rem;
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.flag-indicator[data-kind="doubleYellow"] .flag-svg {
+  width: 5.15rem;
+}
+.flag-name {
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  font-size: 0.68rem;
+  line-height: 1.05;
+  max-width: 4.85rem;
+  color: #e8edf7;
+}
+.flag-indicator[data-kind="green"] .flag-name { color: #4ade80; }
+.flag-indicator[data-kind="yellow"] .flag-name,
+.flag-indicator[data-kind="doubleYellow"] .flag-name,
+.flag-indicator[data-kind="sc"] .flag-name,
+.flag-indicator[data-kind="vsc"] .flag-name,
+.flag-indicator[data-kind="slippery"] .flag-name { color: #f5d000; }
+.flag-indicator[data-kind="red"] .flag-name { color: #f87171; }
+.flag-indicator[data-kind="blue"] .flag-name { color: #60a5fa; }
+.flag-indicator[data-kind="chequered"] .flag-name { color: #e5e7eb; }
+.flag-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: #07080d;
+  overflow: auto;
+  padding: 1.25rem 1.75rem 1.75rem;
+}
+.flag-sheet-title {
+  font-family: var(--cond);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  font-size: 1.15rem;
+  color: #e8edf7;
+  margin-bottom: 1rem;
+}
+.flag-sheet {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+.flag-sheet-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 8.5rem;
+  background: #0c0f17;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.85rem 0.6rem;
+}
+.flag-sheet-cell .flag-svg {
+  width: 7.4rem;
+  height: 4.3rem;
+}
+.flag-sheet-cell[data-kind="doubleYellow"] .flag-svg {
+  width: 11.2rem;
+}
+.flag-sheet-label {
+  font-family: var(--cond);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
 .wx-wind { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
 .wx-text {
   display: grid;
@@ -488,11 +595,15 @@ svg.wind-map.wind-still .wind-arrow-chevrons { animation: none; }
 }
 @media (max-width: 1400px) {
   .strip, .statusbar {
-    grid-template-columns: 11rem 1fr minmax(17.5rem, 20rem);
-    gap: 0.75rem;
+    grid-template-columns: minmax(14.35rem, 16.25rem) 1fr minmax(16rem, 18.75rem);
+    gap: 0.65rem;
   }
   .wx-text { font-size: 0.75rem; column-gap: 0.55rem; }
   svg.wind-map { width: 5rem; height: 3.75rem; flex: 0 0 5rem; }
+  .flag-svg { width: 2.75rem; height: 1.6rem; }
+  .flag-indicator[data-kind="doubleYellow"] .flag-svg { width: 4.45rem; }
+  .flag-name { font-size: 0.62rem; max-width: 4.35rem; }
+  .flag-sheet { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .gapline { height: 2.25rem; width: 100%; cursor: pointer; }
 .legend { color: var(--muted); font-size: 0.6875rem; }

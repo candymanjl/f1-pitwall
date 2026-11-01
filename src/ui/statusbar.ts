@@ -1,10 +1,12 @@
 import { indexLocations, type LocHit } from "../data/carLocation";
+import { emptyTrackFlag } from "../data/trackFlag";
 import { isRaceOrSprint } from "../data/grid";
 import { pitLaneFracs } from "../data/pitlane";
 import { project, windArrowScreen } from "../data/track";
 import type { TimingSnapshot } from "../data/types";
 import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
+import { renderFlagIndicator } from "./flagIcon";
 import { formatPressure, pressureTrendLabel, pressureTrendMark, weatherPressureAt } from "../data/weatherPressure";
 import { placeTrackCar } from "../lib/pitcircle";
 import { formatSector } from "../lib/time";
@@ -215,7 +217,9 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
   const s1 = el("div", { class: "sec-purple" });
   const s2 = el("div", { class: "sec-purple" });
   const s3 = el("div", { class: "sec-purple" });
-  const best = el("div", { class: "strip-best" }, [el("div", { class: "legend", text: "Best sectors" }), s1, s2, s3]);
+  const flagSlot = el("div", { class: "flag-slot" });
+  const sectors = el("div", { class: "strip-sectors" }, [el("div", { class: "legend", text: "Best sectors" }), s1, s2, s3]);
+  const best = el("div", { class: "strip-best" }, [flagSlot, sectors]);
   const canvas = el("canvas", { class: "gapline" }) as HTMLCanvasElement;
   canvas.setAttribute("aria-label", "Track strip, start/finish at center");
   const pick = (ev: PointerEvent) => {
@@ -247,6 +251,12 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
       return;
     }
     if (root.firstChild !== best) root.replaceChildren(best, canvas, wxWrap);
+    const flag = snap.trackFlag ?? emptyTrackFlag();
+    const flagKey = `${flag.kind}|${flag.badge ?? ""}|${flag.label}`;
+    if (flagSlot.dataset.key !== flagKey) {
+      flagSlot.replaceChildren(renderFlagIndicator(flag));
+      flagSlot.dataset.key = flagKey;
+    }
     s1.textContent = `S1 ${snap.bestSectors.s1 ? `${snap.bestSectors.s1.code} ${formatSector(snap.bestSectors.s1.time)}` : "—"}`;
     s2.textContent = `S2 ${snap.bestSectors.s2 ? `${snap.bestSectors.s2.code} ${formatSector(snap.bestSectors.s2.time)}` : "—"}`;
     s3.textContent = `S3 ${snap.bestSectors.s3 ? `${snap.bestSectors.s3.code} ${formatSector(snap.bestSectors.s3.time)}` : "—"}`;

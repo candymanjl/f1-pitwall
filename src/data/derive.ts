@@ -1,6 +1,7 @@
 import { asNumber, latestBefore, median, parseTs } from "../lib/time";
 import { gridByDriver, isRaceOrSprint, positionChange } from "./grid";
 import { scheduledRaceLaps } from "./raceDistance";
+import { trackFlagAt } from "./trackFlag";
 import type {
   FlagMode,
   Lap,
@@ -450,6 +451,7 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
     weather: weatherNow,
     bestSectors,
     flagMode: flagAt(now, bands),
+    trackFlag: trackFlagAt(bundle.raceControl, now),
     scBands: bands,
     raceLaps,
     scheduledLaps: scheduled,

@@ -126,8 +126,30 @@ describe("safetyCarBands", () => {
       parseTs("2025-10-26T20:20:00.000Z"),
     );
     expect(snap.flagMode).toBe("green");
+    expect(snap.trackFlag?.kind).toBe("green");
     expect(snap.scBands).toHaveLength(1);
     expect(snap.scBands[0].end).toBe(parseTs(T_GREEN));
+  });
+
+  it("puts the current race-control flag on the snapshot at the playhead", () => {
+    const snap = snapshotAt(
+      bundle({
+        raceControl: [
+          rc({
+            date: T_DEPLOY,
+            category: "Flag",
+            flag: "YELLOW",
+            scope: "Sector",
+            sector: 2,
+            message: "YELLOW FLAG IN SECTOR 2",
+          }),
+        ],
+      }),
+      parseTs("2025-10-26T20:11:00.000Z"),
+    );
+    expect(snap.trackFlag?.kind).toBe("yellow");
+    expect(snap.trackFlag?.badge).toBe("S2");
+    expect(snap.trackFlag?.label).toBe("YELLOW");
   });
 });
 

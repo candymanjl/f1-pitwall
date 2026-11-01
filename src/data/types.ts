@@ -1,3 +1,5 @@
+import type { TrackFlagState } from "./trackFlag";
+
 export type Meeting = {
   meeting_key: number;
   meeting_name: string;
@@ -112,6 +114,8 @@ export type RaceControl = {
   message: string | null;
   lap_number: number | null;
   driver_number: number | null;
+  /** OpenF1 sector index: 1–3 racing sectors, or 1–24 mini-sectors. */
+  sector?: number | null;
 };
 
 export type LocationSample = {
@@ -211,6 +215,8 @@ export type TimingSnapshot = {
     s3: { time: number; code: string } | null;
   };
   flagMode: FlagMode;
+  /** Current race-control flag at `now` (track + uncleared sector yellows). */
+  trackFlag?: TrackFlagState;
   scBands: { start: number; end: number; kind: "SC" | "VSC" }[];
   raceLaps: number;
   /** Official scheduled distance; null when unknown so the headline never shows Lap X / X. */
