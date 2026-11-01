@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatSessionHeadline } from "./sessionHeadline";
+import { formatReplayBadge, formatSessionHeadline } from "./sessionHeadline";
 
 describe("formatSessionHeadline", () => {
   it("shows race laps as current/total next to the session clock", () => {
@@ -35,5 +35,37 @@ describe("formatSessionHeadline", () => {
         race: false,
       }),
     ).toBe("PRACTICE 1 / 00:00:01");
+  });
+});
+
+describe("formatReplayBadge", () => {
+  it("shows catch-up while playing off the live edge and live polling once pinned", () => {
+    expect(
+      formatReplayBadge({
+        mode: "live",
+        followLive: false,
+        playing: true,
+        speed: 4,
+        liveSource: "poll",
+      }),
+    ).toBe("catch-up 4×");
+    expect(
+      formatReplayBadge({
+        mode: "live",
+        followLive: true,
+        playing: true,
+        speed: 4,
+        liveSource: "poll",
+      }),
+    ).toBe("live polling");
+    expect(
+      formatReplayBadge({
+        mode: "historical",
+        followLive: false,
+        playing: true,
+        speed: 8,
+        liveSource: "off",
+      }),
+    ).toBe("replay 8×");
   });
 });

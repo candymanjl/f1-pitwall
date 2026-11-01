@@ -23,6 +23,8 @@ export function latestSampleMs(bundle: SessionBundle | null | undefined): number
   for (const row of bundle.pits) max = consider(max, row.date);
   for (const row of bundle.weather) max = consider(max, row.date);
   for (const row of bundle.raceControl) max = consider(max, row.date);
+  for (const row of bundle.locations ?? []) max = consider(max, row.date);
+  for (const row of bundle.carData ?? []) max = consider(max, row.date);
   return Number.isFinite(max) && max > 0 ? max : NaN;
 }
 

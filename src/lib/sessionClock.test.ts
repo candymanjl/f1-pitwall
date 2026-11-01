@@ -78,6 +78,20 @@ describe("latestSampleMs / playableEndMs", () => {
     expect(playableEndMs(start, b)).toBe(lap66);
     expect(playableEndMs(start, b)).toBeLessThan(Date.parse(b.session.date_end));
   });
+
+  it("advances the playable end when GPS or car_data arrives after the last lap", () => {
+    const start = Date.parse("2026-10-31T20:00:00.000Z");
+    const gps = "2026-10-31T21:28:04.400Z";
+    const car = "2026-10-31T21:28:05.200Z";
+    const b = bundle({
+      intervals: [{ date: "2026-10-31T21:28:00.000Z", driver_number: 1, gap_to_leader: 0, interval: 0 }],
+      locations: [{ date: gps, driver_number: 1, x: 1, y: 2 }],
+    });
+    expect(latestSampleMs(b)).toBe(Date.parse(gps));
+    expect(playableEndMs(start, b)).toBe(Date.parse(gps));
+    b.carData = [{ date: car, driver_number: 1, speed: 280, throttle: 99, brake: 0, n_gear: 7, rpm: 11000, drs: 0 }];
+    expect(latestSampleMs(b)).toBe(Date.parse(car));
+  });
 });
 
 function lap(n: number, date: string) {

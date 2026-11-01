@@ -29,10 +29,11 @@ describe("startLiveFeed with a relay URL", () => {
 
     expect(statuses[0]).toMatch(/^poll:Relay: REST poll every 4s/);
     await vi.waitFor(() => {
-      expect(fetchMock).toHaveBeenCalled();
+      const urls = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL]>).map((c) => String(c[0]));
+      expect(urls.some((u) => u.includes("/v1/laps"))).toBe(true);
+      expect(urls.some((u) => u.includes("/v1/location"))).toBe(true);
+      expect(urls.every((u) => u.includes("date%3E") || u.includes("stints"))).toBe(true);
     });
-    const firstUrl = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL]>)[0]?.[0];
-    expect(String(firstUrl)).toMatch(/^https:\/\/f1-pitwall-relay-11686\.azurewebsites\.net\/v1\//);
     handle.stop();
     expect(statuses.at(-1)).toMatch(/^off:/);
   });

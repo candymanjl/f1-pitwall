@@ -124,4 +124,33 @@ describe("deferred session load", () => {
     expect(state.bundle).toBe(loadedBundle);
     expect(loadBundle).not.toHaveBeenCalled();
   });
+
+  it("arms live follow when Load finishes an in-progress session", async () => {
+    const now = Date.now();
+    const latest = new Date(now - 2000).toISOString();
+    const liveBundle = {
+      ...loadedBundle,
+      session: {
+        ...loadedBundle.session,
+        session_key: 20,
+        date_start: new Date(now - 30 * 60 * 1000).toISOString(),
+        date_end: new Date(now + 90 * 60 * 1000).toISOString(),
+      },
+      intervals: [{ date: latest, driver_number: 1, gap_to_leader: 0, interval: 0 }],
+    };
+    state.mode = "live";
+    state.sessionKey = 20;
+    state.bundle = null;
+    state.followLive = false;
+    state.playing = false;
+    loadBundle.mockResolvedValue(liveBundle);
+    await loadSelectedSession();
+    expect(state.followLive).toBe(true);
+    expect(state.playing).toBe(true);
+    expect(state.t).toBe(state.end);
+    expect(state.t).toBe(Date.parse(latest));
+    state.mode = "historical";
+    state.followLive = false;
+    state.playing = false;
+  });
 });

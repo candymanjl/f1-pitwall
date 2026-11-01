@@ -1,5 +1,6 @@
 /** @vitest-environment happy-dom */
 import { afterEach, describe, expect, it } from "vitest";
+import { stepPlayback } from "./lib/playback";
 import { applyLoadedClock, ingestLive, pinToLive, setClock, setPlaying, setScrubbing, state } from "./state";
 import type { SessionBundle } from "./data/types";
 
@@ -164,5 +165,63 @@ describe("scrub vs live ingest", () => {
       { date: "2026-10-31T21:29:00.000Z", driver_number: 1, gap_to_leader: 0, interval: 0 },
     ]);
     expect(state.t).toBe(Date.parse("2026-10-31T21:29:00.000Z"));
+  });
+
+  it("ingests against the loaded session key, not the picker", () => {
+    state.mode = "live";
+    state.bundle = fixture();
+    state.sessionKey = 5555;
+    state.start = Date.parse(START);
+    state.end = Date.parse(LAP66);
+    state.t = Date.parse(LAP1);
+    state.followLive = false;
+    state.playing = false;
+
+    ingestLive("v1/intervals", [
+      { date: "2026-10-31T21:28:04.000Z", driver_number: 1, gap_to_leader: 0, interval: 0, session_key: 99 },
+    ]);
+    expect(state.bundle?.intervals.some((row) => row.date === "2026-10-31T21:28:04.000Z")).toBe(true);
+
+    ingestLive("v1/intervals", [
+      { date: "2026-10-31T21:28:05.000Z", driver_number: 1, gap_to_leader: 0, interval: 0, session_key: 5555 },
+    ]);
+    expect(state.bundle?.intervals.some((row) => row.date === "2026-10-31T21:28:05.000Z")).toBe(false);
+  });
+
+  it("4× catch-up latches followLive and keeps playing as new rows extend the live edge", () => {
+    state.mode = "live";
+    state.bundle = fixture();
+    state.sessionKey = 5555;
+    state.start = Date.parse(START);
+    state.end = Date.parse(LAP66);
+    state.t = Date.parse(LAP66) - 80;
+    state.followLive = false;
+    state.playing = true;
+    state.speed = 4;
+
+    const next = stepPlayback({
+      t: state.t,
+      start: state.start,
+      end: state.end,
+      playing: true,
+      speed: 4,
+      dt: 25,
+      mode: "live",
+      followLive: false,
+      now: Date.now(),
+    });
+    state.t = next.t;
+    state.playing = next.playing;
+    state.followLive = next.followLive;
+    expect(state.followLive).toBe(true);
+    expect(state.playing).toBe(true);
+    expect(state.t).toBe(Date.parse(LAP66));
+
+    const later = "2026-10-31T21:28:08.000Z";
+    ingestLive("v1/location", [{ date: later, driver_number: 1, x: 10, y: 20, session_key: 99 }]);
+    expect(state.end).toBe(Date.parse(later));
+    expect(state.t).toBe(Date.parse(later));
+    expect(state.followLive).toBe(true);
+    expect(state.playing).toBe(true);
   });
 });

@@ -4,7 +4,7 @@ import { shouldShowLiveLockBanner } from "../data/errors";
 import { isRaceOrSprint } from "../data/grid";
 import { PAGES } from "../data/types";
 import { el } from "../lib/dom";
-import { formatSessionHeadline } from "../lib/sessionHeadline";
+import { formatReplayBadge, formatSessionHeadline } from "../lib/sessionHeadline";
 import { applyLoadingOverlay, shouldShowLoadingOverlay } from "./overlays";
 import { openSettings } from "./settings";
 import { mountStatusBar } from "./statusbar";
@@ -125,14 +125,13 @@ export function boot(root: HTMLElement): void {
     if (!state.scrubbing) {
       scrub.value = String(Math.round(((state.t - state.start) / span) * 1000));
     }
-    elapsed.textContent =
-      state.mode === "live"
-        ? state.liveSource === "mqtt"
-          ? "live mqtt"
-          : state.liveSource === "poll"
-            ? "live polling"
-            : "live"
-        : `replay ${state.speed}×`;
+    elapsed.textContent = formatReplayBadge({
+      mode: state.mode,
+      followLive: state.followLive,
+      playing: state.playing,
+      speed: state.speed,
+      liveSource: state.liveSource,
+    });
     for (const btn of nav.querySelectorAll("button")) {
       btn.classList.toggle("active", btn.getAttribute("data-page") === state.page);
     }
@@ -252,6 +251,7 @@ export function boot(root: HTMLElement): void {
     setScrubbing,
     pinToLive,
     ingestLive,
+    setSpeed,
     applyLoadedClock,
     changeYear,
     changeMeeting,

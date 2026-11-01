@@ -1,10 +1,20 @@
-import { LIVE_LOCK_RETRY_MS, LIVE_POLL_MS, readMode, readPitLoss, SPEEDS, writeMode, writePitLoss } from "./config";
+import {
+  LIVE_LOCK_RETRY_MS,
+  LIVE_POLL_MS,
+  readMode,
+  readPitLoss,
+  readRelayUrl,
+  SPEEDS,
+  writeMode,
+  writePitLoss,
+} from "./config";
 import { hasUsableAuth, peekAccessToken, peekAuth } from "./data/auth";
 import { applyUiScale, readUiScale, writeUiScale, type UiScalePref } from "./lib/scale";
 import { snapshotAt } from "./data/derive";
 import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
 import { applyLiveMessage } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
+import { seedLiveCursors } from "./data/livePoll";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
 import { historicalStartMs, isFinishedSession, playableEndMs } from "./lib/sessionClock";
@@ -164,6 +174,7 @@ export function pinToLive(): void {
   if (state.mode !== "live") return;
   syncPlayableRange();
   state.followLive = true;
+  state.playing = true;
   state.t = state.end;
   refreshSnap();
   emit(true);
@@ -220,6 +231,12 @@ export function setPitMode(mode: AppState["pitMode"]): void {
 export function setDataMode(mode: DataMode): void {
   state.mode = mode;
   writeMode(mode);
+  if (mode === "live" && state.bundle && !isFinishedSession(state.bundle)) {
+    syncPlayableRange();
+    state.followLive = true;
+    state.playing = true;
+    state.t = state.end;
+  }
   syncLiveFeed();
   emit();
 }
@@ -340,6 +357,11 @@ export function sessionPickerDirty(): boolean {
   return !state.bundle || state.bundle.session.session_key !== state.sessionKey;
 }
 
+/** Session the feed is actually showing — never the Year/Meeting/Session picker. */
+export function loadedSessionKey(): number {
+  return state.bundle?.session.session_key ?? 0;
+}
+
 export async function changeYear(year: number): Promise<void> {
   state.year = year;
   state.listsBusy = true;
@@ -429,8 +451,13 @@ function applyPartialBundle(bundle: SessionBundle, first: boolean): void {
   if (firstApply) {
     state.start = parseTs(bundle.session.date_start);
     applyLoadedClock();
-    state.followLive = false;
-    state.playing = false;
+    if (state.mode === "live" && !isFinishedSession(bundle)) {
+      state.followLive = true;
+      state.playing = true;
+    } else {
+      state.followLive = false;
+      state.playing = false;
+    }
     state.selectedDriver = null;
     state.selectedDrivers = [];
     const firstFour = bundle.drivers.slice(0, 2).map((d, i) => {
@@ -488,7 +515,7 @@ export function applyLiveClock(_source: "poll" | "mqtt" | "ingest" = "ingest"): 
   if (state.mode !== "live" || !state.bundle) return;
   const held = state.t;
   syncPlayableRange();
-  if (state.scrubbing || !state.followLive || !state.playing) {
+  if (state.scrubbing || !state.followLive) {
     state.t = Math.min(state.end, Math.max(state.start, held));
     return;
   }
@@ -500,7 +527,7 @@ export function applyLiveClock(_source: "poll" | "mqtt" | "ingest" = "ingest"): 
 /** Merge an MQTT/poll payload and keep a scrubbed cursor put. */
 export function ingestLive(topic: string, payload: unknown, mode: "merge" | "replace" = "merge"): void {
   if (!state.bundle) return;
-  state.bundle = applyLiveMessage(state.bundle, topic, payload, state.sessionKey, mode);
+  state.bundle = applyLiveMessage(state.bundle, topic, payload, loadedSessionKey() || undefined, mode);
   applyLiveClock("mqtt");
   if (!(state.followLive && state.playing) || state.scrubbing) {
     refreshSnap();
@@ -515,11 +542,15 @@ export function syncLiveFeed(): void {
   liveHandle = null;
   state.liveSource = "off";
   const auth = peekAuth();
-  if (state.mode !== "live" || !state.bundle || !state.sessionKey) return;
-  if (!auth.signedIn && auth.source !== "manual") return;
+  const sessionKey = loadedSessionKey();
+  if (state.mode !== "live" || !state.bundle || !sessionKey) return;
+  const relay = Boolean(readRelayUrl());
+  if (!relay && !auth.signedIn && auth.source !== "manual") return;
   liveHandle = startLiveFeed({
     username: auth.username || "openf1",
-    sessionKey: state.sessionKey,
+    sessionKey: loadedSessionKey,
+    cursors: seedLiveCursors(state.bundle),
+    page: () => state.page,
     onMessage: (topic, payload, mode) => {
       ingestLive(topic, payload, mode);
     },

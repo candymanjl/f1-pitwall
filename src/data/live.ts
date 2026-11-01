@@ -1,48 +1,100 @@
 import { LIVE_POLL_MS, MQTT_URL, readRelayUrl } from "../config";
+import type { PageId } from "./types";
 import { getAccessToken, peekAuth } from "./auth";
 import { apiGet } from "./client";
 import { LIVE_TOPICS } from "./liveMerge";
+import { fallbackSinceIso, lastSeenIso, livePollParams, nextPollDelayMs, pollSpecsForPage } from "./livePoll";
 
 export type LiveSource = "mqtt" | "poll" | "off";
 
 export type LiveHandle = { stop: () => void };
 
-const POLL_PATHS = ["laps", "position", "intervals", "race_control", "weather", "pit", "stints"] as const;
-
 export function startLiveFeed(opts: {
   username: string;
-  sessionKey: number;
+  /** Loaded session key — a getter so picker changes never redirect the poll. */
+  sessionKey: number | (() => number);
+  cursors?: Record<string, string>;
+  page?: () => PageId | undefined;
   onMessage: (topic: string, payload: unknown, mode: "merge" | "replace") => void;
   onStatus: (source: LiveSource, detail?: string) => void;
 }): LiveHandle {
   let stopped = false;
   let client: { end: (force?: boolean) => void } | null = null;
   let pollTimer = 0;
-  let pollIndex = 0;
+  let polling = false;
   let tokenTimer = 0;
   let mqttAttempt: Promise<void> | null = null;
+  const cursors: Record<string, string> = { ...(opts.cursors ?? {}) };
+  let failures = 0;
+
+  const loadedKey = (): number => {
+    const key = typeof opts.sessionKey === "function" ? opts.sessionKey() : opts.sessionKey;
+    return Number(key) || 0;
+  };
 
   const stopPoll = () => {
-    if (pollTimer) window.clearInterval(pollTimer);
+    if (pollTimer) window.clearTimeout(pollTimer);
     pollTimer = 0;
+    polling = false;
   };
 
   const startPoll = (detail?: string) => {
-    if (stopped || pollTimer) return;
+    if (stopped || polling) return;
+    polling = true;
     opts.onStatus("poll", detail);
     const tick = async () => {
       if (stopped) return;
-      const path = POLL_PATHS[pollIndex++ % POLL_PATHS.length];
-      try {
-        const rows = await apiGet<unknown[]>(path, { session_key: opts.sessionKey }, { ttlMs: 0, force: true });
-        const topic = path === "position" ? "v1/position" : `v1/${path}`;
-        opts.onMessage(topic, rows, "replace");
-      } catch {
-        /* keep rotating */
+      const sessionKey = loadedKey();
+      if (!sessionKey) {
+        polling = false;
+        pollTimer = window.setTimeout(() => {
+          pollTimer = 0;
+          if (!stopped) startPoll("Relay live");
+        }, LIVE_POLL_MS);
+        return;
       }
+      const specs = pollSpecsForPage(opts.page?.());
+      const since = fallbackSinceIso();
+      let hadError = false;
+      await Promise.all(
+        specs.map(async (spec) => {
+          try {
+            const rows = await apiGet<unknown[]>(spec.path, livePollParams(spec, sessionKey, cursors, since), {
+              ttlMs: 0,
+              force: true,
+            });
+            if (!Array.isArray(rows) || !rows.length) return;
+            if (spec.dateField) {
+              const last = lastSeenIso(rows, spec.dateField);
+              if (last && last > (cursors[spec.path] || "")) cursors[spec.path] = last;
+            }
+            opts.onMessage(spec.topic, rows, "merge");
+          } catch {
+            hadError = true;
+          }
+        }),
+      );
+      if (stopped) return;
+      if (hadError) {
+        failures += 1;
+        const wait = nextPollDelayMs(failures);
+        opts.onStatus("poll", `Relay retry in ${Math.round(wait / 1000)}s`);
+        polling = false;
+        pollTimer = window.setTimeout(() => {
+          pollTimer = 0;
+          if (!stopped) startPoll(`Relay live (backoff ${failures})`);
+        }, wait);
+        return;
+      }
+      failures = 0;
+      opts.onStatus("poll", "Relay live");
+      polling = false;
+      pollTimer = window.setTimeout(() => {
+        pollTimer = 0;
+        if (!stopped) startPoll("Relay live");
+      }, LIVE_POLL_MS);
     };
     void tick();
-    pollTimer = window.setInterval(() => void tick(), LIVE_POLL_MS);
   };
 
   const disconnectMqtt = () => {
