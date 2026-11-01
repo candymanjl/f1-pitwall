@@ -14,41 +14,36 @@ function nextId(prefix: string): string {
   return `f1flag-${prefix}-${flagUid}`;
 }
 
+/** Mostly rectangular cloth; long edges only dip a couple of units. */
 const CLOTH =
-  "M2.2,9.2 C13.6,-2.4 24.2,16.6 36.2,4.6 C48.6,-6.8 58.8,15.4 70.8,1.8 L71.6,32.8 C59.4,46.6 48.8,25.2 36.4,38.2 C24.2,50.4 13.0,31.2 3.0,41.6 Z";
+  "M3.2,6.4 C16,5.4 28.5,7.5 40.5,6.3 C53,5.1 62,7.2 69.2,5.8 L69.6,35.4 C62,36.8 53,34.8 40.5,36 C28.5,37.2 16,35.2 3.4,36.4 Z";
 
 function foldStops(shade: "light" | "dark"): Array<[number, string]> {
   if (shade === "dark") {
     return [
-      [0, "#00000088"],
-      [12, "#ffffff18"],
-      [26, "#00000077"],
-      [40, "#ffffff14"],
-      [55, "#00000080"],
-      [70, "#ffffff10"],
-      [84, "#00000070"],
-      [100, "#00000055"],
+      [0, "#0000001c"],
+      [28, "#ffffff0c"],
+      [52, "#00000018"],
+      [78, "#ffffff0a"],
+      [100, "#00000012"],
     ];
   }
   return [
-    [0, "#ffffff55"],
-    [14, "#00000030"],
-    [30, "#ffffff66"],
-    [46, "#00000028"],
-    [62, "#ffffff50"],
-    [78, "#00000033"],
-    [92, "#ffffff3d"],
-    [100, "#ffffff22"],
+    [0, "#ffffff20"],
+    [30, "#0000000c"],
+    [58, "#ffffff18"],
+    [82, "#0000000a"],
+    [100, "#ffffff10"],
   ];
 }
 
 function addFolds(defs: SVGDefsElement, id: string, shade: "light" | "dark"): void {
   const grad = svgEl("linearGradient", {
     id,
-    x1: "8%",
-    y1: "0%",
-    x2: "92%",
-    y2: "100%",
+    x1: "0%",
+    y1: "12%",
+    x2: "100%",
+    y2: "20%",
   });
   for (const [offset, color] of foldStops(shade)) {
     grad.append(svgEl("stop", { offset: `${offset}%`, "stop-color": color }));
@@ -128,8 +123,8 @@ function drawOneFlag(kind: TrackFlagKind, flipped: boolean): SVGGElement {
   defs.append(clip);
   addFolds(defs, foldId, "dark");
   addFolds(defs, shineId, "light");
-  const filter = svgEl("filter", { id: shadowId, x: "-8%", y: "-10%", width: "120%", height: "130%" });
-  filter.append(svgEl("feDropShadow", { dx: "0.4", dy: "1.1", stdDeviation: "0.9", "flood-color": "#000", "flood-opacity": "0.55" }));
+  const filter = svgEl("filter", { id: shadowId, x: "-6%", y: "-8%", width: "114%", height: "120%" });
+  filter.append(svgEl("feDropShadow", { dx: "0.2", dy: "0.6", stdDeviation: "0.45", "flood-color": "#000", "flood-opacity": "0.28" }));
   defs.append(filter);
   g.append(defs);
 
@@ -142,10 +137,10 @@ function drawOneFlag(kind: TrackFlagKind, flipped: boolean): SVGGElement {
   body.append(svgEl("path", { d: CLOTH, fill: `url(#${shineId})` }));
   body.append(
     svgEl("path", {
-      d: "M3.4,7.4 C5.8,16.6 5.6,27.4 3.2,38.2",
+      d: "M3.6,6.8 L3.6,36.2",
       fill: "none",
-      stroke: "#00000055",
-      "stroke-width": "3.4",
+      stroke: "#00000028",
+      "stroke-width": "2.2",
       "stroke-linecap": "round",
       "clip-path": `url(#${clipId})`,
     }),

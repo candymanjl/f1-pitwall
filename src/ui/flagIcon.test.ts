@@ -4,12 +4,18 @@ import { FLAG_LABEL, FLAG_SHEET_KINDS, sheetFlagState } from "../data/trackFlag"
 import { buildFlagSvg, mountFlagSheet, renderFlagIndicator } from "./flagIcon";
 
 describe("flag icons", () => {
-  it("draws a waving cloth with fold shading and no pole", () => {
+  it("draws a mostly rectangular cloth with subtle fold shading and no pole", () => {
     const svg = buildFlagSvg(sheetFlagState("yellow"));
     expect(svg.getAttribute("viewBox")).toBe("0 0 72 42");
     expect(svg.querySelectorAll("linearGradient").length).toBeGreaterThanOrEqual(2);
     expect(svg.querySelector("line")).toBeNull();
     expect(svg.querySelector(".flag-badge")?.textContent).toBe("S2");
+    const cloth = [...svg.querySelectorAll("path")].find((p) => (p.getAttribute("d") ?? "").startsWith("M3.2,6.4"));
+    expect(cloth).toBeTruthy();
+    const nums = [...(cloth!.getAttribute("d") ?? "").matchAll(/-?\d+(?:\.\d+)?/g)].map(Number);
+    const ys = nums.filter((_, i) => i % 2 === 1);
+    expect(Math.min(...ys)).toBeGreaterThan(4);
+    expect(Math.max(...ys)).toBeLessThan(39);
   });
 
   it("draws double yellow as two mirrored flags waving away from each other", () => {
