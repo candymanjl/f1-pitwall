@@ -100,6 +100,8 @@ export type Weather = {
   wind_direction: number | null;
   humidity: number | null;
   rainfall: number | null;
+  /** OpenF1 air pressure, millibar. */
+  pressure?: number | null;
 };
 
 export type RaceControl = {
