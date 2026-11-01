@@ -34,6 +34,8 @@ export type AppState = {
   mode: DataMode;
   pitLoss: { green: number; vsc: number; sc: number };
   loading: string;
+  /** True while Year/Meeting list fetches run — does not replace the loaded session. */
+  listsBusy: boolean;
   error: string;
   lock: "live" | null;
   retryAt: number;
@@ -72,6 +74,7 @@ export const state: AppState = {
   mode: readMode(),
   pitLoss: readPitLoss(),
   loading: "",
+  listsBusy: false,
   error: "",
   lock: null,
   retryAt: 0,
@@ -287,7 +290,8 @@ export async function reloadAll(opts: { force?: boolean } = {}): Promise<void> {
   if (reloadInFlight && !opts.force) return reloadInFlight;
   const gen = ++reloadGen;
   const work = (async () => {
-    state.loading = state.lock ? "Retrying OpenF1…" : "Loading meetings…";
+    state.listsBusy = true;
+    if (!state.bundle) state.loading = state.lock ? "Retrying OpenF1…" : "Loading meetings…";
     state.error = "";
     emit(true);
     try {
@@ -295,13 +299,15 @@ export async function reloadAll(opts: { force?: boolean } = {}): Promise<void> {
       if (gen !== reloadGen) return;
       state.sessions = await loadSessions(state.meetingKey);
       if (gen !== reloadGen) return;
-      if (state.sessionKey) await changeSession(state.sessionKey);
+      state.listsBusy = false;
+      if (state.sessionKey) await loadSelectedSession();
       else {
         state.loading = "";
         emit(true);
       }
     } catch (err) {
       if (gen !== reloadGen) return;
+      state.listsBusy = false;
       applyFetchError(err);
     }
   })().finally(() => {
@@ -330,50 +336,101 @@ function stopLockRetry(): void {
   state.retryAt = 0;
 }
 
+export function sessionPickerDirty(): boolean {
+  return !state.bundle || state.bundle.session.session_key !== state.sessionKey;
+}
+
 export async function changeYear(year: number): Promise<void> {
   state.year = year;
-  state.loading = "Loading meetings…";
-  emit();
+  state.listsBusy = true;
+  emit(true);
   try {
     state.meetings = await loadMeetings(year);
     state.meetingKey = state.meetings[0]?.meeting_key ?? 0;
     await changeMeeting(state.meetingKey);
   } catch (err) {
+    state.listsBusy = false;
     applyFetchError(err);
   }
 }
 
 export async function changeMeeting(meetingKey: number): Promise<void> {
   state.meetingKey = meetingKey;
-  state.loading = "Loading sessions…";
-  emit();
+  state.listsBusy = true;
+  emit(true);
   try {
     state.sessions = await loadSessions(meetingKey);
     const race = state.sessions.find((s) => s.session_name === "Race") ?? state.sessions[state.sessions.length - 1];
     state.sessionKey = race?.session_key ?? 0;
-    if (state.sessionKey) await changeSession(state.sessionKey);
-    else {
-      state.loading = "";
-      emit();
-    }
+    state.listsBusy = false;
+    emit(true);
   } catch (err) {
+    state.listsBusy = false;
     applyFetchError(err);
   }
 }
 
-export async function changeSession(sessionKey: number): Promise<void> {
+/** Update the Session picker only — heavy data waits for Load. */
+export function changeSession(sessionKey: number): void {
   state.sessionKey = sessionKey;
-  state.loading = "Loading session data from OpenF1…";
+  emit(true);
+}
+
+const LOAD_LABEL: Record<string, string> = {
+  timing: "Loading timing…",
+  map: "Loading map…",
+  weekend: "Loading weekend…",
+};
+
+let loadGen = 0;
+
+export async function loadSelectedSession(): Promise<void> {
+  const sessionKey = state.sessionKey;
+  if (!sessionKey) return;
+  const gen = ++loadGen;
+  state.loading = "Loading session…";
   state.error = "";
-  state.playing = false;
-  state.followLive = false;
-  emit();
+  emit(true);
   try {
-    const bundle = await loadBundle(sessionKey);
-    state.bundle = bundle;
+    const meeting = state.meetings.find((m) => m.meeting_key === state.meetingKey) ?? null;
+    const bundle = await loadBundle(sessionKey, {
+      meeting,
+      weekendSessions: state.sessions,
+      page: state.page,
+      onProgress: (phase, partial) => {
+        if (gen !== loadGen) return;
+        applyPartialBundle(partial, phase === "timing");
+        state.loading = LOAD_LABEL[phase] ?? "Loading session…";
+        emit(true);
+      },
+    });
+    if (gen !== loadGen) return;
+    applyPartialBundle(bundle, false);
+    state.loading = "";
+    state.lock = null;
+    state.error = "";
+    state.panelErrors = {
+      track: bundle.track.length ? "" : "Track outline could not be loaded from OpenF1 /location.",
+      telemetry: "",
+    };
+    stopLockRetry();
+    syncLiveFeed();
+  } catch (err) {
+    if (gen !== loadGen) return;
+    applyFetchError(err);
+    return;
+  }
+  emit(true);
+}
+
+function applyPartialBundle(bundle: SessionBundle, first: boolean): void {
+  const firstApply = first || !state.bundle || state.bundle.session.session_key !== bundle.session.session_key;
+  state.bundle = bundle;
+  if (firstApply) {
     state.start = parseTs(bundle.session.date_start);
     applyLoadedClock();
     state.followLive = false;
+    state.playing = false;
     state.selectedDriver = null;
     state.selectedDrivers = [];
     const firstFour = bundle.drivers.slice(0, 2).map((d, i) => {
@@ -384,18 +441,8 @@ export async function changeSession(sessionKey: number): Promise<void> {
     });
     state.telemetry = firstFour;
     state.traceDriver = bundle.drivers[0]?.driver_number ?? null;
-    refreshSnap();
-    state.loading = "";
-    state.lock = null;
-    state.error = "";
-    state.panelErrors = { track: bundle.track.length ? "" : "Track outline could not be loaded from OpenF1 /location.", telemetry: "" };
-    stopLockRetry();
-    syncLiveFeed();
-  } catch (err) {
-    applyFetchError(err);
-    return;
   }
-  emit();
+  refreshSnap();
 }
 
 let lastTick = performance.now();

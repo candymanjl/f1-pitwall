@@ -22,9 +22,11 @@ import {
   changeYear,
   applyLoadedClock,
   ingestLive,
+  loadSelectedSession,
   pinToLive,
   reloadAll,
   retryNow,
+  sessionPickerDirty,
   setClock,
   setPlaying,
   setScrubbing,
@@ -62,6 +64,8 @@ export function boot(root: HTMLElement): void {
   const yearSel = el("select", { id: "year" }) as HTMLSelectElement;
   const meetSel = el("select", { id: "meeting" }) as HTMLSelectElement;
   const sessSel = el("select", { id: "session" }) as HTMLSelectElement;
+  const loadBtn = el("button", { class: "load-session", text: "Load", id: "load-session" }) as HTMLButtonElement;
+  loadBtn.type = "button";
   const play = el("button", { class: "primary", text: "Play" });
   const liveBtn = el("button", { class: "ghost live-btn", text: "LIVE" });
   const speedSel = el("select") as HTMLSelectElement;
@@ -71,12 +75,15 @@ export function boot(root: HTMLElement): void {
   const elapsed = el("span", { class: "badge", text: "replay" });
   const settingsBtn = el("button", { class: "ghost", text: "Settings" });
   const toolbar = el("div", { class: "toolbar" }, [
-    el("label", { text: "Year" }),
-    yearSel,
-    el("label", { text: "Meeting" }),
-    meetSel,
-    el("label", { text: "Session" }),
-    sessSel,
+    el("div", { class: "session-pickers" }, [
+      el("label", { text: "Year" }),
+      yearSel,
+      el("label", { text: "Meeting" }),
+      meetSel,
+      el("label", { text: "Session" }),
+      sessSel,
+      loadBtn,
+    ]),
     el("div", { class: "replay" }, [play, liveBtn, speedSel, scrub, elapsed, settingsBtn]),
   ]);
 
@@ -129,7 +136,11 @@ export function boot(root: HTMLElement): void {
     for (const btn of nav.querySelectorAll("button")) {
       btn.classList.toggle("active", btn.getAttribute("data-page") === state.page);
     }
-    applyLoadingOverlay(overlay, shouldShowLoadingOverlay(state.loading, state.lock), state.loading);
+    applyLoadingOverlay(
+      overlay,
+      shouldShowLoadingOverlay(state.loading, state.lock) && !state.bundle,
+      state.loading,
+    );
     toast.hidden = !state.error || !!state.lock;
     toast.textContent = state.error;
     syncBanner(banner);
@@ -150,6 +161,14 @@ export function boot(root: HTMLElement): void {
       sessSel.append(el("option", { value: String(s.session_key), text: s.session_name }));
     }
     sessSel.value = String(state.sessionKey);
+    yearSel.disabled = state.listsBusy;
+    meetSel.disabled = state.listsBusy;
+    sessSel.disabled = state.listsBusy;
+    const loading = Boolean(state.loading);
+    loadBtn.disabled = loading || !state.sessionKey;
+    loadBtn.setAttribute("aria-busy", loading ? "true" : "false");
+    loadBtn.classList.toggle("pending", sessionPickerDirty() && !loading);
+    loadBtn.textContent = loading ? state.loading.replace(/OpenF1…$/, "…") || "Loading…" : "Load";
   };
 
   const renderPage = () => {
@@ -168,7 +187,8 @@ export function boot(root: HTMLElement): void {
 
   yearSel.onchange = () => void changeYear(Number(yearSel.value));
   meetSel.onchange = () => void changeMeeting(Number(meetSel.value));
-  sessSel.onchange = () => void changeSession(Number(sessSel.value));
+  sessSel.onchange = () => changeSession(Number(sessSel.value));
+  loadBtn.onclick = () => void loadSelectedSession();
   play.onclick = () => setPlaying(!state.playing);
   liveBtn.onclick = () => pinToLive();
   speedSel.onchange = () => setSpeed(Number(speedSel.value));
@@ -233,6 +253,11 @@ export function boot(root: HTMLElement): void {
     pinToLive,
     ingestLive,
     applyLoadedClock,
+    changeYear,
+    changeMeeting,
+    changeSession,
+    loadSelectedSession,
+    sessionPickerDirty,
   };
   const e2e = new URLSearchParams(location.search).has("e2e") || location.hash.includes("e2e");
   if (!e2e) void reloadAll();
