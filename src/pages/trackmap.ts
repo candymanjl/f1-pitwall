@@ -8,6 +8,7 @@ import { asNumber } from "../lib/time";
 import { panel } from "../ui/panel";
 import { mountTowerSplitter } from "../ui/splitter";
 import { renderTower } from "../ui/tower";
+import { bindDriverSelect } from "../lib/bindSelect";
 import { appendDriverDot } from "../lib/svgcar";
 import { hasDriverSelection, isDriverSelected, state } from "../state";
 
@@ -117,6 +118,8 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
   };
 
   mountTowerSplitter(page, { onResize: draw });
+  bindDriverSelect(left.body);
+  bindDriverSelect(svg);
   if (typeof ResizeObserver !== "undefined") {
     new ResizeObserver(() => draw()).observe(wrap);
   }

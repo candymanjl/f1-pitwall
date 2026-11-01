@@ -1,3 +1,5 @@
+import { teamColor, teamFill } from "./colors";
+
 /** One revolution, clockwise from S/F at 12 o'clock (SVG y-down). */
 
 export function wrap01(frac: number): number {
@@ -38,6 +40,8 @@ export type CircleCar = {
   inPit: boolean;
   retired: boolean;
   pace: number | null;
+  /** Team hex — used so the gap slice behind this car keeps a stable color. */
+  color?: string;
 };
 
 /** Place a car from leader progress + gap (seconds), matching the track map. */
@@ -62,18 +66,11 @@ export type TrackGap = {
   to: number;
   mid: number;
   gap: number;
+  /** Translucent fill of the car this slice sits behind (the leading/`ahead` driver). */
+  fill: string;
+  /** Opaque team color of that same leading driver. */
+  color: string;
 };
-
-export const GAP_WEDGE_FILLS = [
-  "rgba(225, 6, 0, 0.18)",
-  "rgba(56, 189, 248, 0.16)",
-  "rgba(250, 204, 21, 0.15)",
-  "rgba(163, 230, 53, 0.14)",
-  "rgba(192, 132, 252, 0.16)",
-  "rgba(244, 114, 182, 0.14)",
-  "rgba(45, 212, 191, 0.14)",
-  "rgba(249, 115, 22, 0.15)",
-];
 
 /** Filled clockwise pie slice from `from` to `to` (S/F = 0 at 12 o'clock). */
 export function wedgePath(cx: number, cy: number, r: number, from: number, to: number): string {
@@ -109,6 +106,8 @@ export function onTrackGaps(cars: CircleCar[], fallbackPace: number): TrackGap[]
       to: wrap01(ahead.frac),
       mid: midFracClockwise(behind.frac, ahead.frac),
       gap: dfrac * pace,
+      fill: teamFill(ahead.color),
+      color: teamColor(ahead.color),
     });
   }
   return out;

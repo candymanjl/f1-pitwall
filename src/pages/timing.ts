@@ -1,5 +1,6 @@
 import "./timing.css";
 import type { SectorKind } from "../data/types";
+import { bindDriverSelect } from "../lib/bindSelect";
 import { el } from "../lib/dom";
 import { formatSector } from "../lib/time";
 import { panel } from "../ui/panel";
@@ -51,6 +52,7 @@ export function mountTiming(parent: HTMLElement): { update: () => void } {
   const tablePanel = panel("Live timing  ·  2025-style sectors  ·  no team radio", "", legend);
   const page = el("div", { class: "page timing" }, [tablePanel.root]);
   parent.append(page);
+  bindDriverSelect(tablePanel.body);
 
   const update = () => {
     const snap = state.snap;

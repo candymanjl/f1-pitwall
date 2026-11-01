@@ -130,5 +130,8 @@ describe("timing page", () => {
     expect(done.querySelector(".mini-group[data-sector='S1'] .seg-overall")).not.toBeNull();
     expect(done.querySelector(".mini-group[data-sector='S1'] .seg-pit")).not.toBeNull();
     expect(done.querySelector(".mini-group[data-sector='S3'] .seg-overall")).not.toBeNull();
+
+    done.querySelector(".seg")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    expect(state.selectedDrivers).toEqual([1]);
   });
 });

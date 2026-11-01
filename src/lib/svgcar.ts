@@ -1,4 +1,3 @@
-import { selectDriver } from "../state";
 import { driverHitRadius } from "./hit";
 
 export function appendDriverDot(
@@ -20,6 +19,8 @@ export function appendDriverDot(
   const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
   g.setAttribute("class", `car-hit${opts.selected ? " on" : opts.dim ? " dim" : ""}`);
   g.setAttribute("data-driver", String(opts.n));
+  g.setAttribute("data-x", String(px));
+  g.setAttribute("data-y", String(py));
   g.style.cursor = "pointer";
   const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
   hit.setAttribute("cx", String(px));
@@ -41,14 +42,12 @@ export function appendDriverDot(
     const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
     lab.setAttribute("x", String(opts.labelX ?? px + 10));
     lab.setAttribute("y", String(opts.labelY ?? py - 6));
-    lab.setAttribute("class", "car-label");
+    lab.setAttribute("class", "car-label drv-label");
+    lab.setAttribute("fill", opts.color);
+    lab.setAttribute("pointer-events", "none");
     lab.textContent = opts.label;
     g.append(lab);
   }
-  g.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    selectDriver(opts.n, ev);
-  });
   svg.append(g);
   return g;
 }

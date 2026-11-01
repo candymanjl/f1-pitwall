@@ -1,6 +1,7 @@
 /** @vitest-environment happy-dom */
 import { afterEach, describe, expect, it } from "vitest";
 import type { Driver, TowerRow } from "../data/types";
+import { bindDriverSelect } from "../lib/bindSelect";
 import { state } from "../state";
 import { renderTower } from "./tower";
 
@@ -78,17 +79,18 @@ describe("renderTower", () => {
     expect(table.querySelector("td.c-pits")?.textContent).toBe("1");
   });
 
-  it("selects a driver on click, clears on a second click, and shift-click adds", () => {
+  it("selects a driver on pointerdown, clears on a second press, and shift-add works", () => {
     const table = renderTower([row(1, "VER", 1), row(44, "HAM", 2)], { cols: "basic" });
+    bindDriverSelect(table);
     const ver = table.querySelector<HTMLTableRowElement>("tr[data-driver='1']")!;
     const ham = table.querySelector<HTMLTableRowElement>("tr[data-driver='44']")!;
-    ver.click();
+    ver.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(state.selectedDrivers).toEqual([1]);
-    ham.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    ham.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, shiftKey: true }));
     expect(state.selectedDrivers).toEqual([1, 44]);
-    ver.click();
+    ver.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(state.selectedDrivers).toEqual([1]);
-    ver.click();
+    ver.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(state.selectedDrivers).toEqual([]);
   });
 });
