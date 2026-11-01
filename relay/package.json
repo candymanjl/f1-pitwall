@@ -1,0 +1,17 @@
+{
+  "name": "f1-pitwall-openf1-relay",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Azure Functions v4 proxy so the GitHub Pages pitwall can call OpenF1 with a bearer token.",
+  "main": "src/functions/*.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node local.js",
+    "test": "node test-local.js"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.6.0"
+  }
+}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AUTH_ACCESS_KEY, AUTH_EXPIRY_KEY, AUTH_USER_KEY } from "../config";
+import { AUTH_ACCESS_KEY, AUTH_EXPIRY_KEY, AUTH_USER_KEY, writeRelayUrl } from "../config";
 import { configureAuth, memoryStore, resetAuthForTests } from "./auth";
 import { apiGet, isRetryableAuthFailure, resetClientForTests, shouldRetryWithoutAuth } from "./client";
 import { OpenF1Error } from "./errors";
@@ -26,6 +26,12 @@ function signedInStore(): ReturnType<typeof memoryStore> {
 afterEach(() => {
   resetClientForTests();
   resetAuthForTests();
+  writeRelayUrl("");
+  try {
+    Reflect.deleteProperty(globalThis, "localStorage");
+  } catch {
+    /* ignore */
+  }
   vi.unstubAllGlobals();
 });
 
@@ -40,6 +46,28 @@ describe("shouldRetryWithoutAuth", () => {
 });
 
 describe("apiGet bearer + historical 401 fallback", () => {
+  it("sends REST through the saved relay URL", async () => {
+    const memory = new Map<string, string>([["f1pitwall.openf1Relay", "https://f1-pitwall-relay-11686.azurewebsites.net"]]);
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (k: string) => memory.get(k) ?? null,
+        setItem: (k: string, v: string) => void memory.set(k, v),
+        removeItem: (k: string) => void memory.delete(k),
+      },
+      configurable: true,
+    });
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: RequestInfo | URL) => {
+        seen.push(String(url));
+        return jsonRes(200, []);
+      }),
+    );
+    await apiGet("sessions", { session_key: 9877 });
+    expect(seen[0]).toMatch(/^https:\/\/f1-pitwall-relay-11686\.azurewebsites\.net\/v1\/sessions\?session_key=9877/);
+  });
+
   it("attaches Authorization: Bearer on the first REST request", async () => {
     configureAuth({ store: signedInStore() });
     const seen: Array<string | null> = [];

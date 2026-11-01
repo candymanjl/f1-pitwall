@@ -3,6 +3,7 @@
 export const API_BASE = "https://api.openf1.org/v1";
 export const TOKEN_URL = "https://api.openf1.org/token";
 export const MQTT_URL = "wss://mqtt.openf1.org:8084/mqtt";
+export const RELAY_STORAGE_KEY = "f1pitwall.openf1Relay";
 /** Refresh the OAuth token this long before expiry (OpenF1 tokens last 3600s). */
 export const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
 
@@ -86,4 +87,46 @@ export function readPitLoss(): typeof DEFAULT_PIT_LOSS {
 
 export function writePitLoss(loss: typeof DEFAULT_PIT_LOSS): void {
   localStorage.setItem(PIT_LOSS_STORAGE_KEY, JSON.stringify(loss));
+}
+
+export function normalizeRelayUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return "";
+    return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return "";
+  }
+}
+
+export function readRelayUrl(): string {
+  try {
+    return normalizeRelayUrl(localStorage.getItem(RELAY_STORAGE_KEY) ?? "");
+  } catch {
+    return "";
+  }
+}
+
+export function writeRelayUrl(url: string): void {
+  const clean = normalizeRelayUrl(url);
+  try {
+    if (clean) localStorage.setItem(RELAY_STORAGE_KEY, clean);
+    else localStorage.removeItem(RELAY_STORAGE_KEY);
+  } catch {
+    /* quota / private mode / node tests */
+  }
+}
+
+/** REST base: `{relay}/v1` when a relay is set, otherwise OpenF1. */
+export function restBase(): string {
+  const relay = readRelayUrl();
+  return relay ? `${relay}/v1` : API_BASE;
+}
+
+/** Token URL: `{relay}/token` when a relay is set, otherwise OpenF1. */
+export function tokenUrl(): string {
+  const relay = readRelayUrl();
+  return relay ? `${relay}/token` : TOKEN_URL;
 }
