@@ -13,6 +13,7 @@ import {
   rejoinPreview,
   pointOnCircle,
   racingFrac,
+  trackCarFrac,
   wedgePath,
   wrap01,
 } from "./pitcircle";
@@ -37,6 +38,21 @@ describe("pit circle geometry", () => {
     expect(a).toBeCloseTo(wrap01(leader), 5);
     expect(b).not.toBeCloseTo(a, 2);
     expect(c).not.toBeCloseTo(b, 2);
+  });
+
+  it("keeps lapped cars on their own lap progress instead of stacking on the leader", () => {
+    const leader = { pos: 1, gap: 0, progress: 0.72, pitOut: false };
+    const timed = { pos: 2, gap: 4, progress: 0.67, pitOut: false };
+    const lapped = { pos: 12, gap: "+1 LAP", progress: 0.18, pitOut: false };
+    const missing = { pos: 14, gap: null, progress: 0.41, pitOut: false };
+    const pits = { leaderProgress: 0.72, lapSec: 80, pitEntry: 0.96, pitExit: 0.06 };
+    const leadFrac = trackCarFrac(leader, pits);
+    expect(leadFrac).toBeCloseTo(0.72, 5);
+    expect(trackCarFrac(timed, pits)).toBeCloseTo(gapFrac(0.72, 4, 80), 5);
+    expect(trackCarFrac(lapped, pits)).toBeCloseTo(0.18, 5);
+    expect(trackCarFrac(lapped, pits)).not.toBeCloseTo(leadFrac, 2);
+    expect(trackCarFrac(missing, pits)).toBeCloseTo(0.41, 5);
+    expect(trackCarFrac({ ...lapped, inPit: true }, pits)).toBeCloseTo(0.96, 5);
   });
 
   it("maps pit-out laps from pit exit toward S/F", () => {

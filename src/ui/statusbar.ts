@@ -3,7 +3,7 @@ import { project, windArrowScreen } from "../data/track";
 import type { TimingSnapshot } from "../data/types";
 import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
-import { racingFrac, wrap01 } from "../lib/pitcircle";
+import { trackCarFrac } from "../lib/pitcircle";
 import { formatSector } from "../lib/time";
 import { nearestStripCar, stripX } from "../lib/trackStrip";
 import {
@@ -19,12 +19,17 @@ type StripCar = { n: number; x: number };
 
 let lastStrip: { w: number; cars: StripCar[] } = { w: 0, cars: [] };
 
-function lapFrac(row: TimingSnapshot["rows"][number], pitEntry: number, pitExit: number): number {
-  if (row.inPit) return wrap01(pitEntry);
-  return racingFrac(row.progress, row.pitOut, pitExit);
+function lapFrac(row: TimingSnapshot["rows"][number], pitEntry: number, pitExit: number, snap: TimingSnapshot): number {
+  return trackCarFrac(row, {
+    leaderProgress: snap.rows[0]?.progress ?? 0,
+    lapSec: snap.medianGreenLap,
+    pitEntry,
+    pitExit,
+  });
 }
 
-function drawGap(canvas: HTMLCanvasElement, rows: TimingSnapshot["rows"]): void {
+function drawGap(canvas: HTMLCanvasElement, snap: TimingSnapshot): void {
+  const rows = snap.rows;
   const w = canvas.clientWidth || 400;
   const h = 36;
   const pad = 8;
@@ -43,8 +48,9 @@ function drawGap(canvas: HTMLCanvasElement, rows: TimingSnapshot["rows"]): void 
       w,
       cars: rows
         .filter((row) => !row.retired)
-        .map((row) => ({ n: row.driver.driver_number, x: stripX(lapFrac(row, pitEntry, pitExit), w, pad) })),
+        .map((row) => ({ n: row.driver.driver_number, x: stripX(lapFrac(row, pitEntry, pitExit, snap), w, pad) })),
     };
+    canvas.dataset.cars = String(lastStrip.cars.length);
     return;
   }
   canvas.width = w * devicePixelRatio;
@@ -79,7 +85,7 @@ function drawGap(canvas: HTMLCanvasElement, rows: TimingSnapshot["rows"]): void 
   const cars: StripCar[] = [];
   for (const row of rows) {
     if (row.retired) continue;
-    const frac = lapFrac(row, pitEntry, pitExit);
+    const frac = lapFrac(row, pitEntry, pitExit, snap);
     const x = stripX(frac, w, pad);
     const on = isDriverSelected(row.driver.driver_number);
     ctx.globalAlpha = dim && !on ? 0.28 : 1;
@@ -91,6 +97,7 @@ function drawGap(canvas: HTMLCanvasElement, rows: TimingSnapshot["rows"]): void 
     cars.push({ n: row.driver.driver_number, x });
   }
   lastStrip = { w, cars };
+  canvas.dataset.cars = String(cars.length);
 }
 
 function drawWind(svg: SVGSVGElement): void {
@@ -232,7 +239,7 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
       ? `Wind ${w.wind_speed?.toFixed(1) ?? "—"} m/s${windDir != null ? ` ${Math.round(windDir)}°` : ""}`
       : "—";
     hum.textContent = w ? `Hum ${w.humidity?.toFixed(0) ?? "—"}% · ${w.rainfall ? "rain" : "dry"}` : "—";
-    drawGap(canvas, snap.rows);
+    drawGap(canvas, snap);
     drawWind(windSvg);
   };
   return { update };
