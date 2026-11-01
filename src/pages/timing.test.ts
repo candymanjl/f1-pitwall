@@ -117,7 +117,9 @@ describe("timing page", () => {
     const groups = [...root.querySelectorAll(".mini-group")];
     expect(groups.map((group) => group.getAttribute("data-sector"))).toEqual(["S1", "S2", "S3"]);
     expect(groups[0].querySelectorAll(".seg").length).toBe(8);
-    expect(groups[0].querySelector(".seg-yellow, .seg-overall, .seg-personal, .seg-pit")).toBeNull();
+    expect(groups[0].querySelector(".seg-yellow")).not.toBeNull();
+    expect(groups[0].querySelector(".seg-pit")).not.toBeNull();
+    expect(groups[2].querySelector(".seg-overall")).not.toBeNull();
     expect(groups[2].querySelectorAll(".seg").length).toBe(6);
     expect(root.querySelector(".mini-head")?.textContent).toBe("S1S2S3");
     const heads = [...root.querySelectorAll("thead th")];

@@ -60,15 +60,20 @@ describe("driverTimingAt", () => {
     expect(slots).toEqual({ s1: 3, s2: 2, s3: 2 });
   });
 
-  it("resets mini-sectors at the new lap and keeps the previous sector times", () => {
+  it("keeps the finished mini-sector row until the next S1 block completes", () => {
     const view = driverTimingAt(laps, 1, lap2 + 1000, slots);
     expect(view.s1).toMatchObject({ time: 29.153, held: true });
     expect(view.s2).toMatchObject({ time: 31.804, held: true });
     expect(view.s3).toMatchObject({ time: 19.22, held: true, kind: "overall" });
-    expect(view.minis.s1.every((code) => code == null)).toBe(true);
-    expect(view.minis.s2.every((code) => code == null)).toBe(true);
-    expect(view.minis.s3.every((code) => code == null)).toBe(true);
+    expect(view.minis.s1).toEqual([null, SEG_YELLOW, SEG_PERSONAL]);
+    expect(view.minis.s2).toEqual([SEG_YELLOW, SEG_OVERALL]);
+    expect(view.minis.s3).toEqual([SEG_PIT, SEG_YELLOW]);
     expect(visibleLapTiming(laps[1], lap2 + 1000).s1).toBeNull();
+
+    const opened = driverTimingAt(laps, 1, lap2 + 9_500, slots);
+    expect(opened.minis.s1).toEqual([SEG_OVERALL, null, null]);
+    expect(opened.minis.s2.every((code) => code == null)).toBe(true);
+    expect(opened.minis.s3.every((code) => code == null)).toBe(true);
   });
 
   it("fills S1, then S3, from the current lap and colours the new best purple", () => {
@@ -111,6 +116,35 @@ describe("driverTimingAt", () => {
     expect(midS3.minis.s3).toEqual([SEG_YELLOW, null]);
     expect(midS3.s3.held).toBe(true);
     expect(midS3.s1.delta).toBeCloseTo(28.5 - 29.153, 3);
+  });
+
+  it("holds every block, including the last S3 segment, across the lap boundary", () => {
+    const lap3Start = lap2 + 80_000;
+    const withNext = [
+      ...laps,
+      lap({
+        driver_number: 1,
+        lap_number: 3,
+        date_start: new Date(lap3Start).toISOString(),
+        duration_sector_1: 30,
+        duration_sector_2: 32,
+        duration_sector_3: 18,
+        lap_duration: 80,
+        segments_sector_1: [SEG_PERSONAL, SEG_YELLOW, SEG_YELLOW],
+        segments_sector_2: [SEG_YELLOW, SEG_YELLOW],
+        segments_sector_3: [SEG_OVERALL, SEG_YELLOW],
+      }),
+    ];
+    const wide = sessionMiniSlots(withNext);
+    const held = driverTimingAt(withNext, 1, lap3Start + 500, wide);
+    expect(held.minis.s1).toEqual([SEG_OVERALL, SEG_YELLOW, SEG_YELLOW]);
+    expect(held.minis.s2).toEqual([SEG_PERSONAL, SEG_YELLOW]);
+    expect(held.minis.s3).toEqual([SEG_YELLOW, SEG_YELLOW]);
+
+    const fresh = driverTimingAt(withNext, 1, lap3Start + 10_000, wide);
+    expect(fresh.minis.s1).toEqual([SEG_PERSONAL, null, null]);
+    expect(fresh.minis.s2.every((code) => code == null)).toBe(true);
+    expect(fresh.minis.s3.every((code) => code == null)).toBe(true);
   });
 
   it("maps OpenF1 segment codes to overall, personal, yellow, pit, and empty", () => {
