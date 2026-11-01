@@ -6,6 +6,8 @@ export type TraceId = (typeof TRACE_IDS)[number];
 export type TracePrefs = {
   visible: Record<TraceId, boolean>;
   overlay: boolean;
+  /** True after the DRS chip is toggled. Until then DRS follows the season. */
+  drsChosen: boolean;
 };
 
 const STORAGE_KEY = "f1pitwall.telemetryView";
@@ -43,10 +45,24 @@ export function traceDash(id: TraceId): number[] {
   return DASH[id];
 }
 
-export function defaultTracePrefs(): TracePrefs {
+/** DRS was removed from the regulations in 2026. Earlier seasons still have it. */
+export function drsDefaultOn(year: number): boolean {
+  return year < 2026;
+}
+
+export function defaultTracePrefs(year?: number): TracePrefs {
   const visible = {} as Record<TraceId, boolean>;
   for (const id of TRACE_IDS) visible[id] = true;
-  return { visible, overlay: false };
+  if (year != null && !drsDefaultOn(year)) visible.drs = false;
+  return { visible, overlay: false, drsChosen: false };
+}
+
+/** Season default for DRS, unless the user has toggled that chip. */
+export function applySeasonDrs(prefs: TracePrefs, year: number): TracePrefs {
+  if (prefs.drsChosen) return prefs;
+  const drs = drsDefaultOn(year);
+  if (prefs.visible.drs === drs) return prefs;
+  return { ...prefs, visible: { ...prefs.visible, drs } };
 }
 
 export function visibleTraces(prefs: TracePrefs): TraceId[] {
@@ -155,9 +171,18 @@ function sanitizePrefs(raw: Partial<TracePrefs> | null | undefined): TracePrefs 
   const base = defaultTracePrefs();
   if (!raw || typeof raw !== "object") return base;
   for (const id of TRACE_IDS) {
+    if (id === "drs") continue;
     if (typeof raw.visible?.[id] === "boolean") base.visible[id] = raw.visible[id];
   }
   base.overlay = !!raw.overlay;
+  if (raw.drsChosen === true && typeof raw.visible?.drs === "boolean") {
+    base.drsChosen = true;
+    base.visible.drs = raw.visible.drs;
+  } else if (raw.visible?.drs === false) {
+    // Saved before the season default existed: hiding DRS was a real toggle.
+    base.drsChosen = true;
+    base.visible.drs = false;
+  }
   return base;
 }
 
