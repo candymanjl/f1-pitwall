@@ -304,6 +304,11 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
       now - parseTs(lastPit.date) < (lastPit.lane_duration ?? 28) * 1000 + 4000;
     const stale = Number.isFinite(lastStart) && now - lastStart > medianGreenLap * 2500;
     const retired = isRace && stale && !inPit && (cur?.lap_number ?? 0) + 2 < leaderLap;
+    const lapActive =
+      !!cur &&
+      Number.isFinite(lastStart) &&
+      (cur.lap_duration == null || lastStart + cur.lap_duration * 1000 > now);
+    const inGarage = !inPit && !retired && !cur && !last;
 
     let gap: number | string | null = driverIv?.gap_to_leader ?? null;
     let interval: number | string | null = driverIv?.interval ?? null;
@@ -330,8 +335,10 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
       bestLap,
       interval,
       gap,
-      status: retired ? "OUT" : inPit ? "IN PIT" : "ON TRACK",
+      status: retired ? "OUT" : inPit ? "IN PIT" : inGarage ? "GARAGE" : "ON TRACK",
       currentLap: cur?.lap_number ?? last?.lap_number ?? null,
+      lapActive,
+      inGarage,
       s1: live.s1,
       s2: live.s2,
       s3: live.s3,
@@ -412,6 +419,12 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
       if (!bestSectors.s3 && lap.duration_sector_3 === overallBest.s3)
         bestSectors.s3 = { time: lap.duration_sector_3!, code: d.name_acronym };
     }
+  }
+
+  for (const row of drafts) {
+    if (!row.inGarage) continue;
+    row.gap = null;
+    row.interval = null;
   }
 
   if (isRaceOrSprint(bundle.session)) {

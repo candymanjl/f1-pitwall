@@ -12,6 +12,7 @@ import {
   rejoinGapText,
   rejoinPreview,
   pointOnCircle,
+  placeTrackCar,
   racingFrac,
   trackCarFrac,
   wedgePath,
@@ -38,6 +39,102 @@ describe("pit circle geometry", () => {
     expect(a).toBeCloseTo(wrap01(leader), 5);
     expect(b).not.toBeCloseTo(a, 2);
     expect(c).not.toBeCloseTo(b, 2);
+  });
+
+  it("never uses practice best-lap gaps and prefers /location when the car is on track", () => {
+    const track: [number, number][] = [
+      [0, 0],
+      [100, 0],
+      [100, 80],
+      [0, 80],
+      [0, 0],
+    ];
+    const now = Date.parse("2026-01-16T20:06:47.000Z");
+    const leader = {
+      pos: 1,
+      gap: 0,
+      progress: 0.72,
+      pitOut: false,
+      currentLap: 4,
+      driver: { driver_number: 12 },
+    };
+    const clustered = {
+      pos: 4,
+      gap: 1.2,
+      progress: 0.71,
+      pitOut: false,
+      currentLap: 3,
+      driver: { driver_number: 16 },
+    };
+    const locOpts = {
+      leaderProgress: 0.72,
+      lapSec: 80,
+      pitEntry: 0.96,
+      pitExit: 0.06,
+      now,
+      track,
+      useRaceGaps: false,
+      locations: [
+        { date: new Date(now).toISOString(), driver_number: 12, x: 10, y: 0 },
+        { date: new Date(now).toISOString(), driver_number: 16, x: 100, y: 40 },
+      ],
+    };
+    const a = placeTrackCar(leader, locOpts);
+    const b = placeTrackCar(clustered, locOpts);
+    expect(a?.source).toBe("location");
+    expect(b?.source).toBe("location");
+    expect(a?.frac).not.toBeCloseTo(b?.frac ?? -1, 2);
+    expect(placeTrackCar(clustered, { ...locOpts, locations: [] })?.source).toBe("progress");
+    expect(placeTrackCar(clustered, { ...locOpts, locations: [], useRaceGaps: false })?.frac).toBeCloseTo(0.71, 5);
+    expect(
+      placeTrackCar(
+        { pos: 18, gap: 9876, progress: 0, pitOut: false, inGarage: true, status: "GARAGE", driver: { driver_number: 14 } },
+        locOpts,
+      ),
+    ).toBeNull();
+  });
+
+  it("prefers a race /location sample over interval gaps, then keeps #28 when GPS is missing", () => {
+    const track: [number, number][] = [
+      [0, 0],
+      [100, 0],
+      [100, 80],
+      [0, 80],
+      [0, 0],
+    ];
+    const now = Date.parse("2025-10-26T21:35:31.000Z");
+    const lapped = {
+      pos: 12,
+      gap: "+1 LAP",
+      progress: 0.18,
+      pitOut: false,
+      currentLap: 67,
+      driver: { driver_number: 4 },
+    };
+    const timed = {
+      pos: 2,
+      gap: 4,
+      progress: 0.67,
+      pitOut: false,
+      currentLap: 68,
+      driver: { driver_number: 1 },
+    };
+    const opts = {
+      leaderProgress: 0.72,
+      lapSec: 80,
+      pitEntry: 0.96,
+      pitExit: 0.06,
+      now,
+      track,
+      useRaceGaps: true,
+      locations: [{ date: new Date(now).toISOString(), driver_number: 1, x: 50, y: 80 }],
+    };
+    const fromGps = placeTrackCar(timed, opts);
+    expect(fromGps?.source).toBe("location");
+    expect(fromGps?.frac).not.toBeCloseTo(gapFrac(0.72, 4, 80), 2);
+    expect(placeTrackCar(timed, { ...opts, locations: [] })?.source).toBe("gap");
+    expect(placeTrackCar(lapped, { ...opts, locations: [] })?.source).toBe("progress");
+    expect(placeTrackCar(lapped, { ...opts, locations: [] })?.frac).toBeCloseTo(0.18, 5);
   });
 
   it("keeps lapped cars on their own lap progress instead of stacking on the leader", () => {

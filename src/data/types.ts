@@ -152,6 +152,8 @@ export type SessionBundle = {
   pitEntry?: number;
   /** Racing-line fraction of pit-lane exit, 0 = S/F. */
   pitExit?: number;
+  /** Downsampled /location samples for on-track playback. */
+  locations?: LocationSample[];
 };
 
 export type FlagMode = "green" | "vsc" | "sc";
@@ -169,8 +171,12 @@ export type TowerRow = {
   bestLap: number | null;
   interval: number | string | null;
   gap: number | string | null;
-  status: "ON TRACK" | "IN PIT" | "OUT" | "PIT";
+  status: "ON TRACK" | "IN PIT" | "OUT" | "PIT" | "GARAGE";
   currentLap: number | null;
+  /** True while the current lap has started and has not yet finished. */
+  lapActive?: boolean;
+  /** Never left the garage (no laps / no live location). */
+  inGarage?: boolean;
   s1: number | null;
   s2: number | null;
   s3: number | null;

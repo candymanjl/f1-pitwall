@@ -343,6 +343,7 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 .tower tr.sel td { background: var(--select); }
 .tower tr.dim td { opacity: 0.42; }
 .tower .pos { color: var(--muted); font-weight: 700; }
+.tower .status.garage { color: #64748b; }
 .tower col.c-pos { width: 1.75rem; }
 .tower col.c-drv { width: 5.5rem; }
 .tower col.c-tyre { width: 3rem; }

@@ -1,3 +1,6 @@
+import { indexLocations, isRecentLocation, locationOnTrack, nearestIndexed, type LocHit } from "../data/carLocation";
+import { nearestFrac } from "../data/pitlane";
+import type { LocationSample } from "../data/types";
 import { teamColor, teamFill } from "./colors";
 import { asNumber } from "./time";
 
@@ -43,6 +46,7 @@ export type CircleCar = {
   pace: number | null;
   /** Team hex — used so the gap slice behind this car keeps a stable color. */
   color?: string;
+  place?: "location" | "progress" | "gap" | "pit";
 };
 
 /** Place a car from leader progress + gap (seconds), matching the track map. */
@@ -64,21 +68,80 @@ export type TrackCarRow = {
   progress: number;
   pitOut: boolean;
   inPit?: boolean;
+  retired?: boolean;
+  inGarage?: boolean;
+  status?: string;
+  currentLap?: number | null;
+  lapActive?: boolean;
+  driver?: { driver_number: number };
 };
+
+export type PlaceCarOpts = {
+  leaderProgress: number;
+  lapSec: number;
+  pitEntry: number;
+  pitExit: number;
+  now?: number;
+  track?: [number, number][];
+  locations?: LocationSample[] | null;
+  locIndex?: Map<number, LocHit[]>;
+  /** Race / sprint only. Practice and quali never use tower Gap/Int. */
+  useRaceGaps?: boolean;
+};
+
+export type PlacedCar = { frac: number; source: "location" | "progress" | "gap" | "pit" };
+
+const RACE_GAP_MAX_SEC = 180;
+
+function canUseProgress(row: TrackCarRow): boolean {
+  if (row.lapActive === false) return false;
+  if (row.lapActive === true) return true;
+  return row.currentLap != null;
+}
+
+/**
+ * Map / strip / circle placement.
+ * Prefer a live /location sample when the car is on the racing line.
+ * Races then keep interval-gap placement (#28); practice/quali never use
+ * tower Gap/Int (those are best-lap deltas, not on-track gaps).
+ */
+export function placeTrackCar(row: TrackCarRow, opts: PlaceCarOpts): PlacedCar | null {
+  if (row.retired || row.inGarage || row.status === "GARAGE") return null;
+  if (row.inPit) return { frac: wrap01(opts.pitEntry), source: "pit" };
+
+  const now = opts.now ?? 0;
+  const track = opts.track ?? [];
+  const n = row.driver?.driver_number;
+  const index = opts.locIndex ?? indexLocations(opts.locations);
+  const hit = n != null ? nearestIndexed(index.get(n), now) : null;
+  if (isRecentLocation(hit, now) && hit) {
+    if (locationOnTrack(track, hit.x, hit.y)) {
+      return { frac: nearestFrac(track, hit.x, hit.y), source: "location" };
+    }
+    return null;
+  }
+
+  if (opts.useRaceGaps) {
+    const gapSec = row.pos === 1 ? 0 : asNumber(row.gap);
+    if (gapSec != null && Math.abs(gapSec) <= RACE_GAP_MAX_SEC) {
+      return { frac: gapFrac(opts.leaderProgress, gapSec, opts.lapSec), source: "gap" };
+    }
+  }
+
+  if (canUseProgress(row)) {
+    return { frac: racingFrac(row.progress, row.pitOut, opts.pitExit), source: "progress" };
+  }
+
+  return null;
+}
 
 /**
  * On-track fraction for map, footer strip, and pit circle.
- * Lead-lap cars with a numeric gap sit relative to the leader.
+ * Lead-lap cars with a numeric race gap sit relative to the leader.
  * Lapped / "+1 LAP" / missing-gap cars use their own lap progress so they stay visible.
  */
-export function trackCarFrac(
-  row: TrackCarRow,
-  opts: { leaderProgress: number; lapSec: number; pitEntry: number; pitExit: number },
-): number {
-  if (row.inPit) return wrap01(opts.pitEntry);
-  const gapSec = row.pos === 1 ? 0 : asNumber(row.gap);
-  if (gapSec != null) return gapFrac(opts.leaderProgress, gapSec, opts.lapSec);
-  return racingFrac(row.progress, row.pitOut, opts.pitExit);
+export function trackCarFrac(row: TrackCarRow, opts: PlaceCarOpts): number {
+  return placeTrackCar(row, { ...opts, useRaceGaps: opts.useRaceGaps ?? true })?.frac ?? racingFrac(row.progress, row.pitOut, opts.pitExit);
 }
 
 export type TrackGap = {

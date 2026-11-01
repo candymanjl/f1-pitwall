@@ -4,6 +4,7 @@ import { apiGet } from "./client";
 import { isLiveLock } from "./errors";
 import { snapshotAt } from "./derive";
 import { isRaceOrSprint } from "./grid";
+import { loadDriverLocations } from "./carLocation";
 import { detectPitLane, DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT, pickPitForTrace } from "./pitlane";
 import { buildOutline, detectCorners, lapWindow, pickOutlineLap, sectorFractions } from "./track";
 import type {
@@ -108,6 +109,13 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
   const corners = detectCorners(track);
   const sectorFracs = sectorFractions(laps);
   const pitMarks = await loadPitMarks(sessionKey, track, pits);
+  let locations: LocationSample[] = [];
+  try {
+    locations = await loadDriverLocations(sessionKey, drivers, session.date_start, session.date_end);
+  } catch (err) {
+    if (isLiveLock(err)) throw err;
+    locations = [];
+  }
 
   return {
     meeting,
@@ -128,6 +136,7 @@ export async function loadBundle(sessionKey: number): Promise<SessionBundle> {
     sectorFracs,
     pitEntry: pitMarks.entry,
     pitExit: pitMarks.exit,
+    locations,
   };
 }
 

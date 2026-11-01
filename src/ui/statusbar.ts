@@ -1,9 +1,11 @@
+import { indexLocations, type LocHit } from "../data/carLocation";
+import { isRaceOrSprint } from "../data/grid";
 import { pitLaneFracs } from "../data/pitlane";
 import { project, windArrowScreen } from "../data/track";
 import type { TimingSnapshot } from "../data/types";
 import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
-import { trackCarFrac } from "../lib/pitcircle";
+import { placeTrackCar } from "../lib/pitcircle";
 import { formatSector } from "../lib/time";
 import { nearestStripCar, stripX } from "../lib/trackStrip";
 import {
@@ -19,12 +21,24 @@ type StripCar = { n: number; x: number };
 
 let lastStrip: { w: number; cars: StripCar[] } = { w: 0, cars: [] };
 
-function lapFrac(row: TimingSnapshot["rows"][number], pitEntry: number, pitExit: number, snap: TimingSnapshot): number {
-  return trackCarFrac(row, {
+function placeStripCar(
+  row: TimingSnapshot["rows"][number],
+  pitEntry: number,
+  pitExit: number,
+  snap: TimingSnapshot,
+  locIndex: Map<number, LocHit[]>,
+) {
+  const bundle = state.bundle;
+  return placeTrackCar(row, {
     leaderProgress: snap.rows[0]?.progress ?? 0,
     lapSec: snap.medianGreenLap,
     pitEntry,
     pitExit,
+    now: snap.now,
+    track: bundle?.track ?? [],
+    locations: bundle?.locations,
+    locIndex,
+    useRaceGaps: bundle ? isRaceOrSprint(bundle.session) : false,
   });
 }
 
@@ -34,6 +48,7 @@ function drawGap(canvas: HTMLCanvasElement, snap: TimingSnapshot): void {
   const h = 36;
   const pad = 8;
   const { entry: pitEntry, exit: pitExit } = pitLaneFracs(state.bundle);
+  const locIndex = indexLocations(state.bundle?.locations);
   const midY = h / 2;
   const sfX = stripX(0, w, pad);
   const pitInX = stripX(pitEntry, w, pad);
@@ -46,9 +61,11 @@ function drawGap(canvas: HTMLCanvasElement, snap: TimingSnapshot): void {
   if (!ctx) {
     lastStrip = {
       w,
-      cars: rows
-        .filter((row) => !row.retired)
-        .map((row) => ({ n: row.driver.driver_number, x: stripX(lapFrac(row, pitEntry, pitExit, snap), w, pad) })),
+      cars: rows.flatMap((row) => {
+        const placed = placeStripCar(row, pitEntry, pitExit, snap, locIndex);
+        if (!placed) return [];
+        return [{ n: row.driver.driver_number, x: stripX(placed.frac, w, pad) }];
+      }),
     };
     canvas.dataset.cars = String(lastStrip.cars.length);
     return;
@@ -84,9 +101,9 @@ function drawGap(canvas: HTMLCanvasElement, snap: TimingSnapshot): void {
   const dim = hasDriverSelection();
   const cars: StripCar[] = [];
   for (const row of rows) {
-    if (row.retired) continue;
-    const frac = lapFrac(row, pitEntry, pitExit, snap);
-    const x = stripX(frac, w, pad);
+    const placed = placeStripCar(row, pitEntry, pitExit, snap, locIndex);
+    if (!placed) continue;
+    const x = stripX(placed.frac, w, pad);
     const on = isDriverSelected(row.driver.driver_number);
     ctx.globalAlpha = dim && !on ? 0.28 : 1;
     ctx.fillStyle = teamColor(row.driver.team_colour);
