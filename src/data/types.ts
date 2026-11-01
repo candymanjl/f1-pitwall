@@ -156,6 +156,8 @@ export type SessionBundle = {
   pitExit?: number;
   /** Downsampled /location samples for on-track playback. */
   locations?: LocationSample[];
+  /** Incremental live /car_data (Telemetry page). */
+  carData?: CarSample[];
 };
 
 export type FlagMode = "green" | "vsc" | "sc";

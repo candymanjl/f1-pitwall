@@ -1,4 +1,5 @@
-import type { SessionBundle } from "./types";
+import { downsampleLocations } from "./carLocation";
+import type { LocationSample, SessionBundle } from "./types";
 
 export type LiveRow = Record<string, unknown> & { _id?: number; _key?: string };
 
@@ -11,6 +12,8 @@ const TOPIC_FIELD: Record<string, keyof SessionBundle> = {
   "v1/weather": "weather",
   "v1/race_control": "raceControl",
   "v1/drivers": "drivers",
+  "v1/location": "locations",
+  "v1/car_data": "carData",
 };
 
 export const LIVE_TOPICS = Object.keys(TOPIC_FIELD);
@@ -43,15 +46,24 @@ function incomingId(row: LiveRow): number {
  * Same `_key` replaces the previous row when `_id` is greater or equal (sector updates).
  * Rows without `_key` are appended (time series like position / intervals).
  */
+export function liveRowKey(row: LiveRow): string {
+  if (typeof row._key === "string" && row._key) return row._key;
+  const driver = row.driver_number;
+  if (row.stint_number != null && driver != null) return `stint-${driver}-${row.stint_number}`;
+  if (row.date_start && row.lap_number != null && driver != null) return `lap-${driver}-${row.lap_number}`;
+  if (typeof row.date === "string" && driver != null) return `${driver}|${row.date}`;
+  return "";
+}
+
 export function mergeLiveRows<T extends LiveRow>(existing: T[], incoming: unknown): T[] {
   const next = existing.slice();
   for (const row of asRows(incoming) as T[]) {
-    const key = typeof row._key === "string" ? row._key : "";
+    const key = liveRowKey(row);
     if (!key) {
       next.push(row);
       continue;
     }
-    const idx = next.findIndex((r) => r._key === key);
+    const idx = next.findIndex((r) => liveRowKey(r) === key);
     if (idx < 0) {
       next.push(row);
       continue;
@@ -72,7 +84,7 @@ export function applyLiveMessage(
 ): SessionBundle {
   const field = TOPIC_FIELD[normalizeTopic(topic)];
   if (!field) return bundle;
-  const current = bundle[field];
+  const current = bundle[field] ?? [];
   if (!Array.isArray(current)) return bundle;
   const incoming = asRows(payload).filter((row) => {
     if (sessionKey == null) return true;
@@ -80,8 +92,12 @@ export function applyLiveMessage(
     return Number(row.session_key) === sessionKey;
   });
   if (mode === "replace") {
-    return { ...bundle, [field]: incoming };
+    return { ...bundle, [field]: field === "locations" ? downsampleLocations(incoming as LocationSample[]) : incoming };
   }
   if (!incoming.length) return bundle;
-  return { ...bundle, [field]: mergeLiveRows(current as LiveRow[], incoming) };
+  const merged = mergeLiveRows(current as LiveRow[], incoming);
+  return {
+    ...bundle,
+    [field]: field === "locations" ? downsampleLocations(merged as LocationSample[]) : merged,
+  };
 }
