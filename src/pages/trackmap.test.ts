@@ -24,6 +24,7 @@ function row(d: Driver, pos: number, progress: number): TowerRow {
     compound: "MEDIUM",
     tyreAge: 4,
     lastLap: 79,
+    lastLapDelta: null,
     bestLap: 78,
     interval: pos === 1 ? null : 0.4,
     gap: pos === 1 ? 0 : pos * 0.4,

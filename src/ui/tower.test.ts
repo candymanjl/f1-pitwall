@@ -25,6 +25,7 @@ function row(n: number, code: string, pos: number, extra: Partial<TowerRow> = {}
     compound: "SOFT",
     tyreAge: 8,
     lastLap: 78.123,
+    lastLapDelta: 0.222,
     bestLap: 77.901,
     interval: pos === 1 ? null : 0.412,
     gap: pos === 1 ? 0 : 1.234,
@@ -65,6 +66,7 @@ describe("renderTower", () => {
       "c-tyre",
       "c-pits",
       "c-lap",
+      "c-ldelta",
       "c-lap",
       "c-gap",
       "c-gap",
@@ -75,7 +77,14 @@ describe("renderTower", () => {
       "c-mini",
     ]);
     expect(table.querySelectorAll("th").length).toBe(cols.length);
-    expect([...table.querySelectorAll("th")].map((th) => th.textContent)).toContain("Pits");
+    const heads = [...table.querySelectorAll("th")].map((th) => th.textContent);
+    expect(heads).toContain("Pits");
+    const lastAt = heads.indexOf("Last");
+    expect(heads[lastAt + 1]).toBe("Δ");
+    expect(heads[lastAt + 2]).toBe("Best");
+    const delta = table.querySelector("td.c-ldelta");
+    expect(delta?.textContent).toBe("+0.222");
+    expect(delta?.querySelector(".slower")).not.toBeNull();
     expect(table.querySelector("td.c-pits")?.textContent).toBe("1");
   });
 

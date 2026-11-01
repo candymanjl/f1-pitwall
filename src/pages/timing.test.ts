@@ -123,6 +123,11 @@ describe("timing page", () => {
     expect(groups[2].querySelectorAll(".seg").length).toBe(6);
     expect(root.querySelector(".mini-head")?.textContent).toBe("S1S2S3");
     const heads = [...root.querySelectorAll("thead th")];
+    const labels = heads.map((th) => th.textContent);
+    const lastAt = labels.indexOf("Last");
+    expect(labels[lastAt + 1]).toBe("Δ");
+    expect(labels[lastAt + 2]).toBe("Best");
+    expect(root.querySelector("td.c-ldelta")?.textContent).toBe("");
     const miniAt = heads.findIndex((th) => th.classList.contains("c-mini"));
     const secAt = heads.findIndex((th) => th.classList.contains("c-sec"));
     expect(miniAt).toBeGreaterThanOrEqual(0);
@@ -138,6 +143,9 @@ describe("timing page", () => {
     const done = [...root.querySelectorAll("tbody tr")].at(-1)!;
     const doneSecs = [...done.querySelectorAll("td.c-sec .sec-time")].map((cell) => cell.textContent);
     expect(doneSecs).toEqual(["28.400", "31.200", "18.900"]);
+    const lapDelta = done.querySelector("td.c-ldelta");
+    expect(lapDelta?.textContent).toBe("0.000");
+    expect(lapDelta?.querySelector(".faster, .slower")).toBeNull();
     const deltas = [...done.querySelectorAll("td.c-sec .sec-delta")].map((cell) => ({
       text: cell.textContent,
       faster: cell.classList.contains("faster"),

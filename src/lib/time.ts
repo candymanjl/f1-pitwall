@@ -21,6 +21,14 @@ export function formatSector(seconds: number | null | undefined): string {
   return formatLap(seconds);
 }
 
+/** Lap-time gap versus the previous lap. Positive is slower. */
+export function formatLapDelta(seconds: number): string {
+  const abs = Math.abs(seconds).toFixed(3);
+  if (seconds > 0.0005) return `+${abs}`;
+  if (seconds < -0.0005) return `-${abs}`;
+  return abs;
+}
+
 export function formatDelta(seconds: number | string | null | undefined, leader = false): string {
   if (leader) return "LEADER";
   if (seconds == null) return "—";

@@ -164,6 +164,8 @@ export type TowerRow = {
   compound: string | null;
   tyreAge: number | null;
   lastLap: number | null;
+  /** Last lap minus the previous lap. Null when those two laps cannot be compared. */
+  lastLapDelta: number | null;
   bestLap: number | null;
   interval: number | string | null;
   gap: number | string | null;

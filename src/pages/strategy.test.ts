@@ -26,6 +26,7 @@ function row(n: number, code: string): TowerRow {
     compound: "MEDIUM",
     tyreAge: 8,
     lastLap: 80,
+    lastLapDelta: null,
     bestLap: 79,
     interval: 1.2,
     gap: n,

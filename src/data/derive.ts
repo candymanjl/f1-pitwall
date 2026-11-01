@@ -58,6 +58,32 @@ export function visibleLapTiming(lap: Lap | null, now: number): {
   };
 }
 
+function racingLap(lap: Lap, pitIn: Set<number>): boolean {
+  return lap.lap_duration != null && Number.isFinite(lap.lap_duration) && lap.lap_duration > 0 && !lap.is_pit_out_lap && !pitIn.has(lap.lap_number);
+}
+
+/** Last completed lap minus the lap before it. Blank for lap 1, pit in/out, or a missing time. */
+export function previousLapDelta(completed: Lap[], pitIn: Set<number>): number | null {
+  let last: Lap | null = null;
+  for (const lap of completed) {
+    if (!last || lap.lap_number >= last.lap_number) last = lap;
+  }
+  if (!last || last.lap_number <= 1 || !racingLap(last, pitIn) || last.lap_duration == null) return null;
+  const prev = completed.find((lap) => lap.lap_number === last.lap_number - 1) ?? null;
+  if (!prev || !racingLap(prev, pitIn) || prev.lap_duration == null) return null;
+  return last.lap_duration - prev.lap_duration;
+}
+
+function pitInLaps(pits: Pit[], driver: number, now: number): Set<number> {
+  const laps = new Set<number>();
+  for (const pit of pits) {
+    if (pit.driver_number !== driver || pit.lap_number == null) continue;
+    const t = parseTs(pit.date);
+    if (Number.isFinite(t) && t <= now) laps.add(pit.lap_number);
+  }
+  return laps;
+}
+
 function completedBefore(laps: Lap[], t: number): Lap[] {
   return laps.filter((l) => {
     const start = parseTs(l.date_start);
@@ -300,6 +326,7 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
       compound: stint?.compound ?? null,
       tyreAge,
       lastLap: last?.lap_duration ?? null,
+      lastLapDelta: previousLapDelta(completedBefore(dlaps, now), pitInLaps(driverPits, driver.driver_number, now)),
       bestLap,
       interval,
       gap,

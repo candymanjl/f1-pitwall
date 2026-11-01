@@ -40,6 +40,7 @@ function row(n: number, code: string, compound: string, age: number): TowerRow {
     compound,
     tyreAge: age,
     lastLap: 80,
+    lastLapDelta: null,
     bestLap: 79,
     interval: n === 1 ? 0 : 1.2,
     gap: n === 1 ? 0 : 2,

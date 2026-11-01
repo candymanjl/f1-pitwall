@@ -23,6 +23,7 @@ function row(partial: Partial<TowerRow> & { driver: Driver; pos: number; posChan
     compound: "MEDIUM",
     tyreAge: 8,
     lastLap: 79.4,
+    lastLapDelta: null,
     bestLap: 78.9,
     interval: partial.pos === 1 ? null : 0.412,
     gap: partial.pos === 1 ? null : 0.412,
