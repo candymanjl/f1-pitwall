@@ -47,7 +47,7 @@ describe("shouldRetryWithoutAuth", () => {
 
 describe("apiGet bearer + historical 401 fallback", () => {
   it("sends REST through the saved relay URL", async () => {
-    const memory = new Map<string, string>([["f1pitwall.openf1Relay", "https://f1pw.azurewebsites.net/api"]]);
+    const memory = new Map<string, string>([["f1pitwall.openf1Relay", "https://f1-pitwall-relay-11686.azurewebsites.net"]]);
     Object.defineProperty(globalThis, "localStorage", {
       value: {
         getItem: (k: string) => memory.get(k) ?? null,
@@ -65,7 +65,7 @@ describe("apiGet bearer + historical 401 fallback", () => {
       }),
     );
     await apiGet("sessions", { session_key: 9877 });
-    expect(seen[0]).toMatch(/^https:\/\/f1pw\.azurewebsites\.net\/api\/v1\/sessions\?session_key=9877/);
+    expect(seen[0]).toMatch(/^https:\/\/f1-pitwall-relay-11686\.azurewebsites\.net\/v1\/sessions\?session_key=9877/);
   });
 
   it("attaches Authorization: Bearer on the first REST request", async () => {

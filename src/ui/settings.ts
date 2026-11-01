@@ -36,7 +36,7 @@ export function openSettings(): void {
   token.value = readToken();
   const relay = el("input", {
     type: "url",
-    placeholder: "https://your-app.azurewebsites.net/api",
+    placeholder: "https://f1-pitwall-relay-11686.azurewebsites.net",
   }) as HTMLInputElement;
   relay.value = readRelayUrl();
   const mode = el("select") as HTMLSelectElement;
@@ -113,7 +113,7 @@ export function openSettings(): void {
       el("label", { text: "OpenF1 relay URL" }),
       relay,
       el("p", {
-        text: "Paste your Azure Function URL (ends with /api). Sign-in and every OpenF1 REST call then go through it so the browser can send your bearer token. Leave blank to call OpenF1 directly. Live mode uses 4s REST polling through the relay (MQTT is skipped).",
+        text: "Optional. Leave blank to call OpenF1 directly. Paste the Function App origin only (no /v1), e.g. https://f1-pitwall-relay-11686.azurewebsites.net. Sign-in and every OpenF1 REST call then go through it so the browser can send your bearer token. Live mode uses 4s REST polling through the relay (MQTT is skipped).",
       }),
       el("label", { text: "Data mode" }),
       mode,

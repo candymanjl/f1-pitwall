@@ -1,0 +1,6 @@
+*.md
+*.test.js
+test-local.js
+local.js
+.gitignore
+.funcignore

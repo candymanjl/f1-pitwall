@@ -32,23 +32,25 @@ afterEach(() => {
 
 describe("OpenF1 relay URL", () => {
   it("strips trailing slashes and rejects non-http values", () => {
-    expect(normalizeRelayUrl("https://foo.azurewebsites.net/api/")).toBe("https://foo.azurewebsites.net/api");
+    expect(normalizeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net/")).toBe(
+      "https://f1-pitwall-relay-11686.azurewebsites.net",
+    );
     expect(normalizeRelayUrl("http://127.0.0.1:8799/")).toBe("http://127.0.0.1:8799");
     expect(normalizeRelayUrl("javascript:alert(1)")).toBe("");
     expect(normalizeRelayUrl("not a url")).toBe("");
     expect(normalizeRelayUrl("   ")).toBe("");
   });
 
-  it("routes REST and token through the saved relay", () => {
+  it("defaults to OpenF1 and only routes through a saved relay", () => {
     mockStorage();
     expect(readRelayUrl()).toBe("");
     expect(restBase()).toBe(API_BASE);
     expect(tokenUrl()).toBe(TOKEN_URL);
 
-    writeRelayUrl("https://f1pw-openf1-relay.azurewebsites.net/api/");
-    expect(readRelayUrl()).toBe("https://f1pw-openf1-relay.azurewebsites.net/api");
-    expect(restBase()).toBe("https://f1pw-openf1-relay.azurewebsites.net/api/v1");
-    expect(tokenUrl()).toBe("https://f1pw-openf1-relay.azurewebsites.net/api/token");
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net/");
+    expect(readRelayUrl()).toBe("https://f1-pitwall-relay-11686.azurewebsites.net");
+    expect(restBase()).toBe("https://f1-pitwall-relay-11686.azurewebsites.net/v1");
+    expect(tokenUrl()).toBe("https://f1-pitwall-relay-11686.azurewebsites.net/token");
 
     writeRelayUrl("");
     expect(localStorage.getItem(RELAY_STORAGE_KEY)).toBeNull();

@@ -10,18 +10,18 @@ afterEach(() => {
 });
 
 describe("Settings relay field", () => {
-  it("shows the saved relay URL and writes it on Save", () => {
-    writeRelayUrl("https://f1pw-openf1-relay.azurewebsites.net/api");
+  it("starts empty and only saves a pasted Function App origin", () => {
     openSettings();
-    expect(document.body.textContent).toMatch(/OpenF1 relay URL/);
     const input = document.querySelector("input[type=url]") as HTMLInputElement | null;
-    expect(input?.value).toBe("https://f1pw-openf1-relay.azurewebsites.net/api");
-    expect(input?.placeholder).toMatch(/azurewebsites\.net\/api/);
+    expect(input).toBeTruthy();
+    expect(input?.value).toBe("");
+    expect(input?.placeholder).toBe("https://f1-pitwall-relay-11686.azurewebsites.net");
+    expect(document.body.textContent).toMatch(/Leave blank to call OpenF1 directly/);
 
-    input!.value = "https://other.azurewebsites.net/api/";
+    input!.value = "https://f1-pitwall-relay-11686.azurewebsites.net/";
     const save = [...document.querySelectorAll("button")].find((b) => b.textContent === "Save");
     expect(save).toBeTruthy();
     save!.click();
-    expect(readRelayUrl()).toBe("https://other.azurewebsites.net/api");
+    expect(readRelayUrl()).toBe("https://f1-pitwall-relay-11686.azurewebsites.net");
   });
 });

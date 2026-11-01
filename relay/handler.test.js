@@ -60,6 +60,14 @@ describe("openf1 relay handler", () => {
     expect(seen[1].body).toBe("username=fake&password=fake");
   });
 
+  it("maps /v1 and /token at the site root (no /api prefix)", async () => {
+    expect(upstreamUrl("/v1/sessions", "?session_key=latest")).toBe(
+      "https://api.openf1.org/v1/sessions?session_key=latest",
+    );
+    expect(upstreamUrl("/token", "")).toBe("https://api.openf1.org/token");
+    expect(upstreamUrl("/api/v1/laps", "")).toBe("https://api.openf1.org/v1/laps");
+  });
+
   it("does not open-proxy other paths", async () => {
     expect(upstreamUrl("admin", "")).toBeNull();
     const res = await handleRelay(req({ path: "/secret" }));

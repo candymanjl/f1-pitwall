@@ -33,7 +33,7 @@ afterEach(() => {
 
 describe("requestToken", () => {
   it("POSTs the token request through the saved relay", async () => {
-    const memory = new Map<string, string>([["f1pitwall.openf1Relay", "https://f1pw.azurewebsites.net/api"]]);
+    const memory = new Map<string, string>([["f1pitwall.openf1Relay", "https://f1-pitwall-relay-11686.azurewebsites.net"]]);
     Object.defineProperty(globalThis, "localStorage", {
       value: {
         getItem: (k: string) => memory.get(k) ?? null,
@@ -43,7 +43,7 @@ describe("requestToken", () => {
       configurable: true,
     });
     const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
-      expect(String(url)).toBe("https://f1pw.azurewebsites.net/api/token");
+      expect(String(url)).toBe("https://f1-pitwall-relay-11686.azurewebsites.net/token");
       return jsonRes(200, { access_token: "tok-relay", expires_in: "3600" });
     });
     configureAuth({ fetch: fetchMock as unknown as typeof fetch, store: memoryStore() });

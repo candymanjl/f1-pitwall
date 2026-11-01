@@ -11,7 +11,7 @@ afterEach(() => {
 
 describe("startLiveFeed with a relay URL", () => {
   it("skips MQTT and starts 4s REST polling", async () => {
-    writeRelayUrl("https://f1pw-openf1-relay.azurewebsites.net/api");
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
     const fetchMock = vi.fn(async () => {
       return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
     });
@@ -32,7 +32,7 @@ describe("startLiveFeed with a relay URL", () => {
       expect(fetchMock).toHaveBeenCalled();
     });
     const firstUrl = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL]>)[0]?.[0];
-    expect(String(firstUrl)).toMatch(/^https:\/\/f1pw-openf1-relay\.azurewebsites\.net\/api\/v1\//);
+    expect(String(firstUrl)).toMatch(/^https:\/\/f1-pitwall-relay-11686\.azurewebsites\.net\/v1\//);
     handle.stop();
     expect(statuses.at(-1)).toMatch(/^off:/);
   });

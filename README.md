@@ -33,7 +33,7 @@ After that, every merge to `main` rebuilds and updates the site automatically.
 5. **Settings** (top right of the toolbar):
    - **Sign in** with your OpenF1 username and password. The site POSTs to `https://api.openf1.org/token` (or your relay `/token` when a relay URL is set), caches the `access_token` (1 hour), and refreshes it about 5 minutes before expiry or after a 401.
    - Credentials stay in **this browser** (`localStorage`). They are never committed. You accepted that risk for this static Pages app.
-   - **OpenF1 relay URL** (optional): paste an Azure Function base that ends with `/api` so the browser can send your bearer token. OpenF1’s own `/v1` OPTIONS preflight returns 401 with no CORS headers, which blocks in-browser auth. Click-only deploy steps: `relay/DEPLOY.md`.
+   - **OpenF1 relay URL** (optional, default empty): paste a Function App origin such as `https://f1-pitwall-relay-11686.azurewebsites.net` so the browser can send your bearer token. OpenF1’s own `/v1` OPTIONS preflight returns 401 with no CORS headers, which blocks in-browser auth. Zip-deploy steps: `relay/DEPLOY.md`.
    - **Live** mode uses MQTT over WebSockets (`wss://mqtt.openf1.org:8084/mqtt`) when signed in. If a relay URL is set, MQTT is skipped and the site polls REST through the relay every 4 seconds (the MQTT broker is also awkward from a browser).
    - **Advanced** still accepts a pasted bearer token (no auto-refresh).
    - **Pit loss** seconds for Green / VSC / SC.
