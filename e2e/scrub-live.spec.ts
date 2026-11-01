@@ -195,8 +195,8 @@ test("scrubbing off the live edge survives incoming poll/MQTT updates", async ({
   expect(afterLive.state.t).toBeLessThan(LAP66);
 
   const headline = await page.locator(".session-clock").textContent();
-  expect(headline).toMatch(/LAP 1\b/);
-  expect(headline).not.toMatch(/LAP 66/);
+  expect(headline).toMatch(/Lap 1\b/);
+  expect(headline).not.toMatch(/Lap 66/);
 
   await page.getByRole("button", { name: "LIVE" }).click();
   const pinned = await hooks(page);

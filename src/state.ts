@@ -1,10 +1,12 @@
 import {
   LIVE_LOCK_RETRY_MS,
   LIVE_POLL_MS,
+  readLiveDebug,
   readMode,
   readPitLoss,
   readRelayUrl,
   SPEEDS,
+  writeLiveDebug,
   writeMode,
   writePitLoss,
 } from "./config";
@@ -14,7 +16,7 @@ import { snapshotAt } from "./data/derive";
 import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
 import { applyLiveMessage } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
-import { seedLiveCursors } from "./data/livePoll";
+import { emptyLiveDebug, seedLiveCursors, type LivePollDebug } from "./data/livePoll";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
 import { historicalStartMs, isFinishedSession, playableEndMs } from "./lib/sessionClock";
@@ -59,6 +61,8 @@ export type AppState = {
   hiddenDrivers: number[];
   liveSource: LiveSource;
   uiScale: UiScalePref;
+  showLiveDebug: boolean;
+  liveDebug: LivePollDebug;
 };
 
 type Listener = () => void;
@@ -98,6 +102,8 @@ export const state: AppState = {
   hiddenDrivers: [],
   liveSource: "off",
   uiScale: readUiScale(),
+  showLiveDebug: readLiveDebug(),
+  liveDebug: emptyLiveDebug(),
 };
 
 export function subscribe(fn: Listener): () => void {
@@ -251,6 +257,12 @@ export function setUiScale(pref: UiScalePref): void {
   state.uiScale = pref;
   writeUiScale(pref);
   applyUiScale(pref);
+  emit(true);
+}
+
+export function setShowLiveDebug(on: boolean): void {
+  state.showLiveDebug = on;
+  writeLiveDebug(on);
   emit(true);
 }
 
@@ -556,6 +568,10 @@ export function syncLiveFeed(): void {
     },
     onStatus: (source) => {
       state.liveSource = source;
+      emit();
+    },
+    onDebug: (debug) => {
+      state.liveDebug = debug;
       emit();
     },
   });

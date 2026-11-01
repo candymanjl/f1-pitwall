@@ -21,6 +21,23 @@ const sentAt: number[] = [];
 let pumping = false;
 let inFlight = 0;
 const slotWaiters: Array<() => void> = [];
+let cooldownUntil = 0;
+
+/** Parse Retry-After (delta-seconds or HTTP-date). Caps at 60s. */
+export function parseRetryAfterMs(header: string | null | undefined, fallback = 2000): number {
+  if (!header) return fallback;
+  const trimmed = header.trim();
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    return Math.min(60_000, Math.max(500, Math.round(Number(trimmed) * 1000)));
+  }
+  const when = Date.parse(trimmed);
+  if (Number.isFinite(when)) return Math.min(60_000, Math.max(500, when - Date.now()));
+  return fallback;
+}
+
+export function noteRateLimit(retryAfterMs: number): void {
+  cooldownUntil = Math.max(cooldownUntil, Date.now() + Math.max(0, retryAfterMs));
+}
 
 export function activeRateLimits(): { minGapMs: number; perMinute: number; concurrency: number } {
   if (readRelayUrl()) {
@@ -49,6 +66,8 @@ async function pump(): Promise<void> {
     const { minGapMs, perMinute, concurrency } = activeRateLimits();
     const now = Date.now();
     while (sentAt.length && now - sentAt[0] > 60_000) sentAt.shift();
+    const cool = cooldownUntil - Date.now();
+    if (cool > 0) await wait(cool);
     if (inFlight >= concurrency) {
       await new Promise<void>((resolve) => {
         slotWaiters.push(resolve);
@@ -160,6 +179,7 @@ export function resetClientForTests(): void {
   pumping = false;
   inFlight = 0;
   slotWaiters.length = 0;
+  cooldownUntil = 0;
 }
 
 async function fetchJson(url: string, path: string, anonymous: boolean): Promise<unknown> {
@@ -171,9 +191,17 @@ async function fetchJson(url: string, path: string, anonymous: boolean): Promise
   };
   try {
     const res = await authorizedFetch(url, {}, { anonymous });
+    if (res.status === 404) return [];
     if (res.status === 429) {
-      await wait(1500);
+      const waitMs = parseRetryAfterMs(res.headers.get("Retry-After"), 2000);
+      noteRateLimit(waitMs);
+      await wait(waitMs);
       const retry = await authorizedFetch(url, {}, { anonymous });
+      if (retry.status === 404) return [];
+      if (retry.status === 429) {
+        noteRateLimit(parseRetryAfterMs(retry.headers.get("Retry-After"), 4000));
+        throw await httpError(retry, path, tokenAttached, classifyOpts.authenticated);
+      }
       if (!retry.ok) throw await httpError(retry, path, tokenAttached, classifyOpts.authenticated);
       return retry.json();
     }

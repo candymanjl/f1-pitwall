@@ -2,7 +2,16 @@ import { DEFAULT_PIT_LOSS, readRelayUrl, readToken, writeRelayUrl } from "../con
 import { peekAuth, signIn, signOut, writeManualToken } from "../data/auth";
 import { el } from "../lib/dom";
 import { UI_SCALE_OPTIONS, type UiScalePref } from "../lib/scale";
-import { clearLiveLock, retryNow, setDataMode, setPitLoss, setUiScale, state, syncLiveFeed } from "../state";
+import {
+  clearLiveLock,
+  retryNow,
+  setDataMode,
+  setPitLoss,
+  setShowLiveDebug,
+  setUiScale,
+  state,
+  syncLiveFeed,
+} from "../state";
 import { closeAllModals } from "./overlays";
 
 function labeled(label: string, input: HTMLElement): HTMLElement {
@@ -49,6 +58,8 @@ export function openSettings(): void {
     scale.append(el("option", { value: String(opt), text: label }));
   }
   scale.value = String(state.uiScale);
+  const liveDebug = el("input", { type: "checkbox" }) as HTMLInputElement;
+  liveDebug.checked = state.showLiveDebug;
   const g = el("input", { type: "number", step: "0.1" }) as HTMLInputElement;
   const v = el("input", { type: "number", step: "0.1" }) as HTMLInputElement;
   const s = el("input", { type: "number", step: "0.1" }) as HTMLInputElement;
@@ -119,6 +130,10 @@ export function openSettings(): void {
       mode,
       el("label", { text: "UI scale" }),
       scale,
+      el("label", { class: "check" }, [liveDebug, " Show live poll debug"]),
+      el("p", {
+        text: "When on, a status line under the toolbar shows last poll time, rows added per endpoint, and the last error.",
+      }),
       el("p", {
         text: "Auto grows the pitwall to fill 1440p / 4K without browser zoom. Manual 100–200% locks the rem root size. Driver hit targets stay at least 14 CSS px.",
       }),
@@ -142,6 +157,7 @@ export function openSettings(): void {
     setPitLoss({ green: Number(g.value), vsc: Number(v.value), sc: Number(s.value) });
     const pref = scale.value === "auto" ? "auto" : (Number(scale.value) as UiScalePref);
     setUiScale(pref);
+    setShowLiveDebug(liveDebug.checked);
     closeAllModals();
     if (state.lock === "live" || peekAuth().signedIn || token.value.trim()) void retryNow();
   };

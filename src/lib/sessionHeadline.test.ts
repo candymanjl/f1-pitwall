@@ -11,7 +11,7 @@ describe("formatSessionHeadline", () => {
         totalLaps: 71,
         race: true,
       }),
-    ).toBe("RACE / 00:12:34 / LAP 12/71");
+    ).toBe("RACE / 00:12:34 / Lap 12 / 71");
   });
 
   it("shows the leader lap for qualifying without a fake race distance", () => {
@@ -23,7 +23,7 @@ describe("formatSessionHeadline", () => {
         totalLaps: 20,
         race: false,
       }),
-    ).toBe("QUALIFYING / 01:39:28 / LAP 12");
+    ).toBe("QUALIFYING / 01:39:28 / Lap 12");
   });
 
   it("omits the lap clause before any lap has started", () => {

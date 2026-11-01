@@ -375,6 +375,39 @@ describe("previous lap delta", () => {
   });
 });
 
+describe("scheduled race distance", () => {
+  it("reports Mexico 71 even when the leader is only on lap 12", () => {
+    const snap = snapshotAt(
+      bundle({
+        session: { ...session("Race"), circuit_short_name: "Mexico City" },
+        laps: [
+          {
+            driver_number: 1,
+            lap_number: 12,
+            date_start: "2025-10-26T20:16:00.000Z",
+            lap_duration: null,
+            duration_sector_1: 28,
+            duration_sector_2: null,
+            duration_sector_3: null,
+            is_pit_out_lap: false,
+            segments_sector_1: null,
+            segments_sector_2: null,
+            segments_sector_3: null,
+            i1_speed: null,
+            i2_speed: null,
+            st_speed: null,
+          },
+        ],
+        positions: [{ date: "2025-10-26T20:16:00.000Z", driver_number: 1, position: 1 }],
+      }),
+      parseTs("2025-10-26T20:16:10.000Z"),
+    );
+    expect(snap.rows[0].currentLap).toBe(12);
+    expect(snap.scheduledLaps).toBe(71);
+    expect(snap.raceLaps).toBe(71);
+  });
+});
+
 describe("pit stop count at current time", () => {
   const pits: Pit[] = [
     { date: "2025-10-26T20:10:00.000Z", driver_number: 1, lap_number: 8, lane_duration: 24, pit_duration: 22, stop_duration: 2.4 },

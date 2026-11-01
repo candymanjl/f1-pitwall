@@ -192,6 +192,7 @@ test("4x catch-up latches to live polling and never stops as new rows arrive", a
   expect(live.state.bundle?.session.session_key).toBe(99);
   await expect(page.locator(".live-btn")).toHaveClass(/on/);
   await expect(page.locator(".replay .badge")).toHaveText("live polling");
+  await expect(page.locator(".session-clock")).toContainText("Lap 66 / 71");
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/live_poll_following_1920.png" });
 
   const scrub = page.locator(".replay input[type='range']");

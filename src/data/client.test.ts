@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AUTH_ACCESS_KEY, AUTH_EXPIRY_KEY, AUTH_USER_KEY, writeRelayUrl } from "../config";
 import { configureAuth, memoryStore, resetAuthForTests } from "./auth";
-import { activeRateLimits, apiGet, isRetryableAuthFailure, resetClientForTests, shouldRetryWithoutAuth } from "./client";
+import {
+  activeRateLimits,
+  apiGet,
+  isRetryableAuthFailure,
+  parseRetryAfterMs,
+  resetClientForTests,
+  shouldRetryWithoutAuth,
+} from "./client";
 import { OpenF1Error } from "./errors";
 
 function jsonRes(status: number, body: unknown): Response {
@@ -159,7 +166,9 @@ describe("relay rate limits", () => {
       configurable: true,
     });
     expect(activeRateLimits().concurrency).toBeGreaterThan(1);
-    expect(activeRateLimits().minGapMs).toBeLessThan(100);
+    expect(activeRateLimits().concurrency).toBeLessThanOrEqual(2);
+    expect(activeRateLimits().minGapMs).toBeGreaterThanOrEqual(200);
+    expect(activeRateLimits().perMinute).toBeLessThanOrEqual(50);
 
     let inflight = 0;
     let maxInflight = 0;
@@ -173,12 +182,40 @@ describe("relay rate limits", () => {
         return jsonRes(200, []);
       }),
     );
+    const started = Date.now();
     await Promise.all([
       apiGet("laps", { session_key: 1 }),
       apiGet("position", { session_key: 1 }),
       apiGet("weather", { session_key: 1 }),
     ]);
-    expect(maxInflight).toBeGreaterThan(1);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(activeRateLimits().minGapMs);
+    expect(maxInflight).toBeLessThanOrEqual(activeRateLimits().concurrency);
+  });
+});
+
+describe("OpenF1 empty and Retry-After", () => {
+  it("treats 404 as an empty list and honors Retry-After on 429", async () => {
+    expect(parseRetryAfterMs("2")).toBe(2000);
+    expect(parseRetryAfterMs(null)).toBe(2000);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("not found", { status: 404 })),
+    );
+    await expect(apiGet("laps", { session_key: 1 }, { force: true })).resolves.toEqual([]);
+
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) {
+          return new Response("slow down", { status: 429, headers: { "Retry-After": "0" } });
+        }
+        return jsonRes(200, [{ driver_number: 1 }]);
+      }),
+    );
+    await expect(apiGet("position", { session_key: 1 }, { force: true })).resolves.toEqual([{ driver_number: 1 }]);
+    expect(calls).toBe(2);
   });
 });
 

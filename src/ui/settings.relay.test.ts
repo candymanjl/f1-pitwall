@@ -1,6 +1,7 @@
 /** @vitest-environment happy-dom */
 import { afterEach, describe, expect, it } from "vitest";
 import { readRelayUrl, writeRelayUrl } from "../config";
+import { state } from "../state";
 import { closeAllModals } from "./overlays";
 import { openSettings } from "./settings";
 
@@ -23,5 +24,17 @@ describe("Settings relay field", () => {
     expect(save).toBeTruthy();
     save!.click();
     expect(readRelayUrl()).toBe("https://f1-pitwall-relay-11686.azurewebsites.net");
+  });
+
+  it("saves the live poll debug toggle", () => {
+    openSettings();
+    const box = document.querySelector("label.check input[type=checkbox]") as HTMLInputElement | null;
+    expect(box).toBeTruthy();
+    expect(box?.checked).toBe(false);
+    box!.checked = true;
+    const save = [...document.querySelectorAll("button")].find((b) => b.textContent === "Save");
+    save!.click();
+    expect(state.showLiveDebug).toBe(true);
+    state.showLiveDebug = false;
   });
 });

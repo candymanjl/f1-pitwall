@@ -79,4 +79,30 @@ describe("relay incremental live poll", () => {
     handle.stop();
     expect(statuses.at(-1)).toMatch(/^off:/);
   });
+
+  it("treats 404 as no new rows and keeps polling at 4s", async () => {
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
+    vi.useFakeTimers();
+    const { OpenF1Error } = await import("./errors");
+    let calls = 0;
+    apiGet.mockImplementation(async (path: string) => {
+      calls += 1;
+      if (path === "laps") throw new OpenF1Error("http", "missing", 404);
+      return [];
+    });
+    const statuses: string[] = [];
+    const handle = startLiveFeed({
+      username: "ada",
+      sessionKey: 1,
+      onMessage: () => {},
+      onStatus: (source, detail) => statuses.push(`${source}:${detail ?? ""}`),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(statuses.some((s) => /retry/i.test(s))).toBe(false);
+    const before = calls;
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(calls).toBeGreaterThan(before);
+    handle.stop();
+  });
 });

@@ -193,7 +193,7 @@ test("late-race Mexico keeps every running car on the map, strip, and pit circle
 
   for (const lap of CHECKS) {
     await seekLap(page, lap);
-    await expect(page.locator(".session-clock")).toContainText(`LAP ${lap}/`);
+    await expect(page.locator(".session-clock")).toContainText(`Lap ${lap} /`);
     const running = await runningFromTower(page);
     expect(running.length).toBe(17);
     for (const code of LAPPED) expect(running).toContain(code);

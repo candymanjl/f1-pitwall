@@ -1,5 +1,6 @@
 import { asNumber, latestBefore, median, parseTs } from "../lib/time";
 import { gridByDriver, isRaceOrSprint, positionChange } from "./grid";
+import { scheduledRaceLaps } from "./raceDistance";
 import type {
   FlagMode,
   Lap,
@@ -437,7 +438,9 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
   }
 
   const weatherNow = latestBefore(weather, now, (w) => parseTs(w.date));
-  const raceLaps = Math.max(leaderLap, ...bundle.laps.map((l) => l.lap_number), 1);
+  const scheduled = scheduledRaceLaps(bundle.session);
+  const seen = Math.max(leaderLap, ...bundle.laps.map((l) => l.lap_number), 1);
+  const raceLaps = scheduled && scheduled > 0 ? scheduled : seen;
 
   return {
     now,
@@ -449,6 +452,7 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
     flagMode: flagAt(now, bands),
     scBands: bands,
     raceLaps,
+    scheduledLaps: scheduled,
   };
 }
 

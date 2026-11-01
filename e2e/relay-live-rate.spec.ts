@@ -1,0 +1,154 @@
+import { expect, test, type Page } from "@playwright/test";
+
+type Hooks = {
+  state: {
+    t: number;
+    start: number;
+    end: number;
+    followLive: boolean;
+    playing: boolean;
+    showLiveDebug: boolean;
+    liveDebug: { lastPollAt: number | null; added: Record<string, number>; lastError: string };
+    snap: { leaderLap: number; scheduledLaps?: number | null; raceLaps: number } | null;
+  };
+  setClock: (t: number, source?: "scrub" | "code") => void;
+  ingestLive: (topic: string, payload: unknown, mode?: "merge" | "replace") => void;
+  setShowLiveDebug: (on: boolean) => void;
+};
+
+const START = Date.parse("2026-11-01T20:00:00.000Z");
+const LAP12 = Date.parse("2026-11-01T20:16:00.000Z");
+
+async function waitForApp(page: Page): Promise<void> {
+  await expect.poll(async () => page.evaluate(() => Boolean((window as unknown as { __f1pw?: unknown }).__f1pw))).toBe(
+    true,
+  );
+}
+
+async function loadMexicoLive(page: Page): Promise<void> {
+  await page.evaluate(
+    ({ start, lap12 }) => {
+      const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+      const bundle = {
+        meeting: {
+          meeting_key: 1,
+          meeting_name: "Mexico City Grand Prix",
+          circuit_short_name: "Mexico City",
+          country_name: "Mexico",
+          location: "Mexico City",
+          date_start: new Date(start).toISOString(),
+          year: 2026,
+        },
+        session: {
+          session_key: 99,
+          meeting_key: 1,
+          session_name: "Race",
+          session_type: "Race",
+          date_start: new Date(start).toISOString(),
+          date_end: new Date(Date.now() + 90 * 60 * 1000).toISOString(),
+          circuit_short_name: "Mexico City",
+          country_name: "Mexico",
+          location: "Mexico City",
+          year: 2026,
+        },
+        weekendSessions: [],
+        drivers: [
+          {
+            driver_number: 1,
+            broadcast_name: "VER",
+            full_name: "Max Verstappen",
+            name_acronym: "VER",
+            team_name: "Red Bull",
+            team_colour: "3671C6",
+            first_name: "Max",
+            last_name: "Verstappen",
+          },
+        ],
+        laps: [
+          {
+            driver_number: 1,
+            lap_number: 12,
+            date_start: new Date(lap12).toISOString(),
+            lap_duration: null,
+            duration_sector_1: 22,
+            duration_sector_2: null,
+            duration_sector_3: null,
+            is_pit_out_lap: false,
+            segments_sector_1: null,
+            segments_sector_2: null,
+            segments_sector_3: null,
+            i1_speed: null,
+            i2_speed: null,
+            st_speed: null,
+          },
+        ],
+        intervals: [{ date: new Date(lap12).toISOString(), driver_number: 1, gap_to_leader: 0, interval: 0 }],
+        positions: [{ date: new Date(lap12).toISOString(), driver_number: 1, position: 1 }],
+        stints: [],
+        weekendStints: [],
+        pits: [],
+        weather: [],
+        raceControl: [],
+        locations: [{ date: new Date(lap12).toISOString(), driver_number: 1, x: 40, y: 20 }],
+        track: [
+          [0, 0],
+          [100, 0],
+          [100, 80],
+          [0, 80],
+          [0, 0],
+        ],
+        corners: [],
+        sectorFracs: [0.3, 0.4, 0.3],
+      };
+      Object.assign(api.state, {
+        bundle,
+        start,
+        end: lap12,
+        t: lap12,
+        mode: "live",
+        playing: true,
+        followLive: true,
+        scrubbing: false,
+        sessionKey: 99,
+        liveSource: "poll",
+        liveDebug: {
+          lastPollAt: Date.parse("2026-11-01T20:57:04.000Z"),
+          lastCycleMs: 880,
+          added: { location: 12, position: 4, intervals: 4, laps: 0 },
+          lastError: "ok",
+        },
+      });
+      api.setClock(lap12, "code");
+    },
+    { start: START, lap12: LAP12 },
+  );
+}
+
+test("headline uses scheduled 71 laps and debug line reports poll rows", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/?e2e=1#trackmap");
+  await waitForApp(page);
+  await loadMexicoLive(page);
+
+  await expect(page.locator(".session-clock")).toContainText("Lap 12 / 71");
+  await expect(page.locator(".session-clock")).not.toContainText("Lap 12 / 12");
+
+  await page.evaluate(() => (window as unknown as { __f1pw: Hooks }).__f1pw.setShowLiveDebug(true));
+  await expect(page.locator(".live-debug")).toBeVisible();
+  await expect(page.locator(".live-debug")).toContainText("location +12");
+  await expect(page.locator(".live-debug")).toContainText("laps +0");
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/live_rate_debug_1920.png" });
+
+  const later = LAP12 + 4000;
+  await page.evaluate((iso) => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    api.ingestLive("v1/location", [{ date: iso, driver_number: 1, x: 55, y: 22, session_key: 99 }]);
+    api.ingestLive("v1/intervals", [{ date: iso, driver_number: 1, gap_to_leader: 0, interval: 0, session_key: 99 }]);
+  }, new Date(later).toISOString());
+
+  await expect.poll(async () => page.evaluate(() => (window as unknown as { __f1pw: Hooks }).__f1pw.state.t)).toBe(later);
+  await expect(page.locator(".session-clock")).toContainText("Lap 12 / 71");
+
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/live_rate_debug_1366.png" });
+});

@@ -252,7 +252,7 @@ test("Mexico 2025 race pit circle stays on gap time while the map uses GPS", asy
 
   for (const lap of CHECKS) {
     await page.evaluate((t) => (window as unknown as { __f1pw: Hooks }).__f1pw.setClock(t, "code"), nowAt(lap));
-    await expect(page.locator(".session-clock")).toContainText(`LAP ${lap}/`);
+    await expect(page.locator(".session-clock")).toContainText(`Lap ${lap} /`);
     const api = await hooks(page);
     const rows = (api.state.snap?.rows ?? []).filter((r) => !r.retired && r.status !== "OUT");
     expect(rows.length).toBe(17);

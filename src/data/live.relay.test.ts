@@ -27,13 +27,21 @@ describe("startLiveFeed with a relay URL", () => {
       },
     });
 
-    expect(statuses[0]).toMatch(/^poll:Relay: REST poll every 4s/);
+    expect(statuses[0]).toMatch(/^poll:Relay: staggered REST poll/);
     await vi.waitFor(() => {
       const urls = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL]>).map((c) => String(c[0]));
-      expect(urls.some((u) => u.includes("/v1/laps"))).toBe(true);
       expect(urls.some((u) => u.includes("/v1/location"))).toBe(true);
-      expect(urls.every((u) => u.includes("date%3E") || u.includes("stints"))).toBe(true);
+      expect(urls.some((u) => u.includes("/v1/position"))).toBe(true);
+      expect(urls.some((u) => u.includes("/v1/intervals"))).toBe(true);
+      expect(urls.every((u) => u.includes("date%3E"))).toBe(true);
     });
+    await vi.waitFor(
+      () => {
+        const urls = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL]>).map((c) => String(c[0]));
+        expect(urls.some((u) => u.includes("/v1/laps") && u.includes("date_start%3E"))).toBe(true);
+      },
+      { timeout: 2500 },
+    );
     handle.stop();
     expect(statuses.at(-1)).toMatch(/^off:/);
   });
