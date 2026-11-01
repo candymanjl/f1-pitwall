@@ -11,8 +11,9 @@ import {
   MAP_LABEL_DX,
   MAP_LABEL_DY,
   MAP_LINE_WIDTH,
-  MAP_PIT_R,
-  MAP_PIT_TICK,
+  MAP_MARK_FILL,
+  MAP_MARK_LABEL_DX,
+  MAP_MARK_LABEL_DY,
   MAP_SECTOR_R,
 } from "../lib/mapMarks";
 import { followViewBox, MAP_FOLLOW_ZOOM } from "../lib/mapZoom";
@@ -28,52 +29,31 @@ function carFrac(row: TimingSnapshot["rows"][number], leaderProg: number, lap: n
   return ((leaderProg - gap / Math.max(1, lap)) % 1 + 1) % 1;
 }
 
-function appendPitMark(
+function appendMapMark(
   svg: SVGSVGElement,
-  map: (x: number, y: number) => [number, number],
-  pts: [number, number][],
-  frac: number,
-  kind: "in" | "out",
+  px: number,
+  py: number,
   label: string,
-  color: string,
-): void {
-  const [x, y] = pointAt(pts, frac);
-  const [px, py] = map(x, y);
-  const [ax, ay] = pointAt(pts, frac + 0.012);
-  const [qx, qy] = map(ax, ay);
-  const dx = qx - px;
-  const dy = qy - py;
-  const len = Math.hypot(dx, dy) || 1;
-  const nx = (-dy / len) * MAP_PIT_TICK;
-  const ny = (dx / len) * MAP_PIT_TICK;
+  attrs: Record<string, string> = {},
+): SVGGElement {
   const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  g.setAttribute("class", "pit-mark");
-  g.setAttribute("data-pit", kind);
-  g.setAttribute("data-frac", frac.toFixed(4));
-  const tick = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  tick.setAttribute("class", "pit-mark-tick");
-  tick.setAttribute("x1", (px - nx).toFixed(1));
-  tick.setAttribute("y1", (py - ny).toFixed(1));
-  tick.setAttribute("x2", (px + nx).toFixed(1));
-  tick.setAttribute("y2", (py + ny).toFixed(1));
-  tick.setAttribute("stroke", color);
-  tick.setAttribute("stroke-width", "3");
-  tick.setAttribute("stroke-linecap", "round");
-  const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-  dot.setAttribute("class", "pit-mark-dot");
-  dot.setAttribute("cx", px.toFixed(1));
-  dot.setAttribute("cy", py.toFixed(1));
-  dot.setAttribute("r", String(MAP_PIT_R));
-  dot.setAttribute("fill", color);
+  g.setAttribute("class", "map-mark");
+  for (const [key, value] of Object.entries(attrs)) g.setAttribute(key, value);
+  const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  c.setAttribute("class", "map-mark-tick");
+  c.setAttribute("cx", String(px));
+  c.setAttribute("cy", String(py));
+  c.setAttribute("r", String(MAP_SECTOR_R));
+  c.setAttribute("fill", MAP_MARK_FILL);
   const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  lab.setAttribute("class", "car-label pit-mark-label");
-  lab.setAttribute("x", (px + nx * 1.35).toFixed(1));
-  lab.setAttribute("y", (py + ny * 1.35).toFixed(1));
-  lab.setAttribute("fill", color);
-  lab.setAttribute("text-anchor", nx > 2 ? "start" : nx < -2 ? "end" : "middle");
+  lab.setAttribute("class", "car-label map-mark-label");
+  lab.setAttribute("x", String(px + MAP_MARK_LABEL_DX));
+  lab.setAttribute("y", String(py + MAP_MARK_LABEL_DY));
+  lab.setAttribute("fill", MAP_MARK_FILL);
   lab.textContent = label;
-  g.append(tick, dot, lab);
+  g.append(c, lab);
   svg.append(g);
+  return g;
 }
 
 function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot, followZoom: boolean): void {
@@ -117,25 +97,17 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
   for (const m of marks) {
     const [x, y] = pointAt(pts, m.frac);
     const [px, py] = map(x, y);
-    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    c.setAttribute("cx", String(px));
-    c.setAttribute("cy", String(py));
-    c.setAttribute("r", String(MAP_SECTOR_R));
-    c.setAttribute("fill", "#94a3b8");
-    svg.append(c);
-    const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    lab.setAttribute("x", String(px + 8));
-    lab.setAttribute("y", String(py - 8));
-    lab.setAttribute("class", "car-label");
-    lab.setAttribute("fill", "#94a3b8");
-    lab.textContent = m.label;
-    svg.append(lab);
+    appendMapMark(svg, px, py, m.label, { "data-mark": m.label });
   }
   const pits = pitLaneFracs(bundle);
   svg.dataset.pitIn = pits.entry.toFixed(4);
   svg.dataset.pitOut = pits.exit.toFixed(4);
-  appendPitMark(svg, map, pts, pits.entry, "in", "PIT IN", "#fbbf24");
-  appendPitMark(svg, map, pts, pits.exit, "out", "PIT OUT", "#22c55e");
+  const [inX, inY] = pointAt(pts, pits.entry);
+  const [outX, outY] = pointAt(pts, pits.exit);
+  const [inPx, inPy] = map(inX, inY);
+  const [outPx, outPy] = map(outX, outY);
+  appendMapMark(svg, inPx, inPy, "PIT IN", { "data-pit": "in", "data-frac": pits.entry.toFixed(4) });
+  appendMapMark(svg, outPx, outPy, "PIT OUT", { "data-pit": "out", "data-frac": pits.exit.toFixed(4) });
   for (const corner of bundle.corners) {
     const [px, py] = map(corner.x, corner.y);
     const t = document.createElementNS("http://www.w3.org/2000/svg", "text");

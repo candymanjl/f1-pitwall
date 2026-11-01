@@ -130,8 +130,29 @@ describe("track map zoom", () => {
     api.update();
     expect(svg.dataset.pitIn).toBe("0.9600");
     expect(svg.dataset.pitOut).toBe("0.0600");
-    expect(svg.querySelector('[data-pit="in"] .pit-mark-label')?.getAttribute("fill")).toBe("#fbbf24");
-    expect(svg.querySelector('[data-pit="out"] .pit-mark-label')?.getAttribute("fill")).toBe("#22c55e");
+    const sf = svg.querySelector('[data-mark="S/F"]');
+    const pitIn = svg.querySelector('[data-pit="in"]');
+    const pitOut = svg.querySelector('[data-pit="out"]');
+    const markLook = (g: Element | null) => {
+      const tick = g?.querySelector("circle.map-mark-tick");
+      const lab = g?.querySelector("text.map-mark-label");
+      return {
+        r: tick?.getAttribute("r"),
+        fill: lab?.getAttribute("fill"),
+        tickFill: tick?.getAttribute("fill"),
+        className: lab?.getAttribute("class"),
+        dx: Number(lab?.getAttribute("x")) - Number(tick?.getAttribute("cx")),
+        dy: Number(lab?.getAttribute("y")) - Number(tick?.getAttribute("cy")),
+        ticks: g?.querySelectorAll("line").length ?? -1,
+      };
+    };
+    expect(markLook(pitIn)).toEqual(markLook(sf));
+    expect(markLook(pitOut)).toEqual(markLook(sf));
+    expect(markLook(sf).fill).toBe("#94a3b8");
+    expect(markLook(sf).r).toBe("5");
+    expect(markLook(sf).dx).toBe(8);
+    expect(markLook(sf).dy).toBe(-8);
+    expect(markLook(sf).ticks).toBe(0);
     const btn = root.querySelector<HTMLButtonElement>("button.map-zoom")!;
     btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(btn.getAttribute("aria-pressed")).toBe("true");

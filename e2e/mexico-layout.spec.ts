@@ -193,19 +193,31 @@ for (const size of SIZES) {
     await expect(svg).toHaveAttribute("data-pit-in", "0.9600");
     await expect(svg).toHaveAttribute("data-pit-out", "0.0600");
     const pitLook = await svg.evaluate((el) => {
-      const inn = el.querySelector('[data-pit="in"] .pit-mark-label');
-      const out = el.querySelector('[data-pit="out"] .pit-mark-label');
+      const look = (g: Element | null) => {
+        const tick = g?.querySelector("circle.map-mark-tick");
+        const lab = g?.querySelector("text.map-mark-label") as SVGTextElement | null;
+        return {
+          r: tick?.getAttribute("r"),
+          fill: lab?.getAttribute("fill"),
+          tickFill: tick?.getAttribute("fill"),
+          className: lab?.getAttribute("class"),
+          dx: Number(lab?.getAttribute("x")) - Number(tick?.getAttribute("cx")),
+          dy: Number(lab?.getAttribute("y")) - Number(tick?.getAttribute("cy")),
+          size: lab ? Number.parseFloat(getComputedStyle(lab).fontSize) : 0,
+          weight: lab ? getComputedStyle(lab).fontWeight : "",
+          ticks: g?.querySelectorAll("line").length ?? -1,
+        };
+      };
       return {
-        inFill: inn?.getAttribute("fill"),
-        outFill: out?.getAttribute("fill"),
-        inSize: inn ? Number.parseFloat(getComputedStyle(inn).fontSize) : 0,
-        outSize: out ? Number.parseFloat(getComputedStyle(out).fontSize) : 0,
+        sf: look(el.querySelector('[data-mark="S/F"]')),
+        inn: look(el.querySelector('[data-pit="in"]')),
+        out: look(el.querySelector('[data-pit="out"]')),
       };
     });
-    expect(pitLook.inFill).toBe("#fbbf24");
-    expect(pitLook.outFill).toBe("#22c55e");
-    expect(pitLook.inSize).toBeGreaterThanOrEqual(14);
-    expect(pitLook.outSize).toBeGreaterThanOrEqual(14);
+    expect(pitLook.inn).toEqual(pitLook.sf);
+    expect(pitLook.out).toEqual(pitLook.sf);
+    expect(pitLook.sf.fill).toBe("#94a3b8");
+    expect(pitLook.sf.ticks).toBe(0);
     await page.screenshot({
       path: `/opt/cursor/artifacts/screenshots/mexico_trackmap_pits_${size.name}.png`,
       fullPage: true,
