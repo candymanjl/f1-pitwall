@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { teamFill } from "./colors";
 import {
   clockwiseDelta,
   fracToAngle,
@@ -78,6 +79,28 @@ describe("pit circle geometry", () => {
     const n = neighborsAt(cars, 0.5);
     expect(n.ahead?.code).toBe("HAM");
     expect(n.behind?.code).toBe("VER");
+  });
+
+  it("keeps each gap slice colored by the leading driver across the S/F wrap", () => {
+    const cars = [
+      { driver: 1, code: "VER", frac: 0.95, inPit: false, retired: false, pace: 80, color: "3671C6" },
+      { driver: 44, code: "HAM", frac: 0.1, inPit: false, retired: false, pace: 80, color: "27F4D2" },
+      { driver: 16, code: "LEC", frac: 0.4, inPit: false, retired: false, pace: 80, color: "E8002D" },
+    ];
+    const before = onTrackGaps(cars, 80);
+    const after = onTrackGaps(
+      cars.map((c) => ({ ...c, frac: wrap01(c.frac + 0.2) })),
+      80,
+    );
+    expect(before.map((g) => g.ahead)).not.toEqual(after.map((g) => g.ahead));
+    const byPair = (gaps: typeof before) =>
+      Object.fromEntries(gaps.map((g) => [`${g.behind}-${g.ahead}`, { fill: g.fill, color: g.color }]));
+    expect(byPair(after)).toEqual(byPair(before));
+    const behindHam = before.find((g) => g.ahead === 44);
+    expect(behindHam?.fill).toBe(teamFill("27F4D2"));
+    expect(behindHam?.color).toBe("#27F4D2");
+    expect(before.find((g) => g.ahead === 1)?.fill).toBe(teamFill("3671C6"));
+    expect(before.find((g) => g.ahead === 16)?.fill).toBe(teamFill("E8002D"));
   });
 
   it("builds a clockwise pie wedge from 12 o'clock to 3 o'clock", () => {

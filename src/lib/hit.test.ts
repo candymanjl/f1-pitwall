@@ -1,6 +1,17 @@
+/** @vitest-environment happy-dom */
 import { describe, expect, it } from "vitest";
 import { applyUiScale } from "./scale";
-import { DRIVER_HIT_CSS, cssPoint, driverHitRadius, gapX, hitCircle, nearestPoint, setupCanvas } from "./hit";
+import {
+  DRIVER_HIT_CSS,
+  cssPoint,
+  driverFromTarget,
+  driverHitRadius,
+  gapX,
+  hitCircle,
+  nearestPoint,
+  pickDriverAt,
+  setupCanvas,
+} from "./hit";
 
 function fakeCanvas(clientW: number, clientH: number, dpr: number): HTMLCanvasElement {
   const canvas = {
@@ -52,14 +63,15 @@ describe("setupCanvas + cssPoint (DPR-safe)", () => {
 });
 
 describe("driver hit radius", () => {
-  it("stays ~14 CSS px at 1× and grows with UI scale, independent of drawn radius", () => {
+  it("stays ~22 CSS px at 1× and grows with UI scale, independent of drawn radius", () => {
     applyUiScale(100, { width: 1920, height: 1080 }, null);
     expect(driverHitRadius()).toBeCloseTo(DRIVER_HIT_CSS, 5);
+    expect(DRIVER_HIT_CSS).toBe(22);
     expect(hitCircle(0, 0, 0, 0, driverHitRadius())).toBe(true);
     expect(hitCircle(14.1, 0, 0, 0, 4.5)).toBe(false);
     expect(hitCircle(14, 0, 0, 0, driverHitRadius())).toBe(true);
     applyUiScale(200, { width: 1920, height: 1080 }, null);
-    expect(driverHitRadius()).toBeCloseTo(28, 5);
+    expect(driverHitRadius()).toBeCloseTo(44, 5);
   });
 });
 
@@ -77,5 +89,35 @@ describe("nearestPoint / gapX", () => {
     expect(hit?.n).toBe(1);
     expect(gapX(0, 8, 100, 8)).toBeCloseTo(8, 5);
     expect(gapX(8, 8, 100, 8)).toBeCloseTo(92, 5);
+  });
+});
+
+describe("pickDriverAt / driverFromTarget", () => {
+  it("reads data-driver from a rebuilt row and nearest-dot from SVG user space", () => {
+    const tr = document.createElement("tr");
+    tr.setAttribute("data-driver", "81");
+    const td = document.createElement("td");
+    td.textContent = "PIA";
+    tr.append(td);
+    expect(driverFromTarget(td)).toBe(81);
+    expect(driverFromTarget(document.createElement("div"))).toBeNull();
+
+    applyUiScale(100, { width: 1920, height: 1080 }, null);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    Object.defineProperty(svg, "getBoundingClientRect", {
+      value: () => ({ left: 0, top: 0, width: 200, height: 200, right: 200, bottom: 200, x: 0, y: 0, toJSON() {} }),
+    });
+    Object.defineProperty(svg, "getScreenCTM", { value: () => null });
+    const a = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    a.setAttribute("data-driver", "1");
+    a.setAttribute("data-x", "40");
+    a.setAttribute("data-y", "40");
+    const b = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    b.setAttribute("data-driver", "44");
+    b.setAttribute("data-x", "80");
+    b.setAttribute("data-y", "40");
+    svg.append(a, b);
+    expect(pickDriverAt(svg, { clientX: 48, clientY: 44 })).toBe(1);
+    expect(pickDriverAt(svg, { clientX: 180, clientY: 180 })).toBeNull();
   });
 });

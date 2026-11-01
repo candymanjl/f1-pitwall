@@ -2,7 +2,7 @@ import { teamColor, tyreColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { formatDelta, formatLap, formatSector } from "../lib/time";
 import type { TowerRow } from "../data/types";
-import { hasDriverSelection, isDriverSelected, selectDriver } from "../state";
+import { hasDriverSelection, isDriverSelected } from "../state";
 
 export type TowerCols = "basic" | "timing" | "strategy";
 
@@ -125,7 +125,6 @@ export function renderTower(
       class: on ? "sel" : hasDriverSelection() ? "dim" : "",
       "data-driver": String(n),
     });
-    tr.addEventListener("click", (ev) => selectDriver(n, ev));
     const cells: HTMLElement[] = [
       el("td", { class: "pos c-pos", text: String(row.pos) }),
       el("td", { class: "c-drv" }, [driverNameCell(row)]),
