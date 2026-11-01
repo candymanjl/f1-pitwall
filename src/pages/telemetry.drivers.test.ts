@@ -162,6 +162,11 @@ describe("telemetry drivers panel", () => {
     try {
       const api = mountTelemetry(root);
       api.update();
+      const shown = root.querySelector(".lap-times");
+      expect(shown?.textContent).toContain("Displayed lap time");
+      expect(shown?.textContent).toContain("NOR");
+      expect(shown?.textContent).toContain("1:10.000");
+      expect((shown?.querySelector(".lap-time") as HTMLElement | null)?.style.color).toBe("#ffffff");
       const fastest = root.querySelector(".telem-fast") as HTMLButtonElement;
       expect(fastest.disabled).toBe(true);
 
@@ -173,6 +178,7 @@ describe("telemetry drivers panel", () => {
       enabled.click();
       api.update();
       expect(state.telemetry[0]).toEqual({ driver: 1, lap: 6 });
+      expect(root.querySelector(".lap-times")?.textContent).toContain("1:20.000");
 
       laps.push(lap({ driver_number: 1, lap_number: 3, lap_duration: 79 }));
       const allFast = [...root.querySelectorAll(".telem-bulk-btn")].find((node) => node.textContent === "All to fastest") as HTMLButtonElement;

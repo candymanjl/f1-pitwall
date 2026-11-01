@@ -20,6 +20,8 @@ export type SectorReadout = {
   kind: SectorKind;
   /** True when this is the previous lap, still shown until the new sector finishes. */
   held: boolean;
+  /** Seconds versus the same sector on the lap before the one shown. Negative is faster. */
+  delta: number | null;
 };
 
 export type DriverTiming = {
@@ -119,15 +121,54 @@ export function sessionMiniSlots(laps: Lap[]): MiniSlots {
   return slots;
 }
 
-function pad(values: Array<number | null> | null, slots: number, revealed: boolean): MiniCode[] {
-  if (!revealed || slots <= 0) return Array.from({ length: slots }, () => null);
-  const src = values ?? [];
-  const out: MiniCode[] = [];
+/** Sector clock in seconds from the lap start. Missing times fall back to a typical split of the lap. */
+function sectorWindow(lap: Lap, which: Which): { start: number; dur: number } | null {
+  const s1 = durationOf(lap, "s1");
+  const s2 = durationOf(lap, "s2");
+  const s3 = durationOf(lap, "s3");
+  if (which === "s1" && s1) return { start: 0, dur: s1 };
+  if (which === "s2" && s1 && s2) return { start: s1, dur: s2 };
+  if (which === "s3" && s1 && s2 && s3) return { start: s1 + s2, dur: s3 };
+  const known = [s1, s2, s3].filter((n): n is number => n != null && n > 0);
+  const lapDur = lap.lap_duration && lap.lap_duration > 0 ? lap.lap_duration : known.length === 3 ? known.reduce((a, b) => a + b, 0) : null;
+  if (!lapDur) return null;
+  const fracs = [0.33, 0.39, 0.28];
+  const idx = which === "s1" ? 0 : which === "s2" ? 1 : 2;
+  let start = 0;
+  for (let i = 0; i < idx; i++) start += lapDur * fracs[i];
+  return { start, dur: lapDur * fracs[idx] };
+}
+
+/**
+ * One block per mini-sector. Each lights when that slice of the sector clock has elapsed,
+ * so a sector fills one by one — including S3, which ends as the next lap begins.
+ */
+function revealMinis(lap: Lap | null, which: Which, now: number, slots: number): MiniCode[] {
+  const out: MiniCode[] = Array.from({ length: slots }, () => null);
+  if (!lap || slots <= 0) return out;
+  const startMs = parseTs(lap.date_start);
+  if (!Number.isFinite(startMs) || now < startMs) return out;
+  const window = sectorWindow(lap, which);
+  if (!window || window.dur <= 0) return out;
+  const elapsed = (now - startMs) / 1000;
+  if (elapsed < window.start) return out;
+  const src = segmentsOf(lap, which) ?? [];
+  const count = Math.max(1, src.length || slots);
+  const lapDone = lap.lap_duration != null && startMs + lap.lap_duration * 1000 <= now;
   for (let i = 0; i < slots; i++) {
+    const doneAt = window.start + ((i + 1) / count) * window.dur;
+    if (!lapDone && elapsed + 1e-6 < doneAt) continue;
     const code = src[i];
-    out.push(typeof code === "number" ? code : null);
+    out[i] = typeof code === "number" ? code : null;
   }
   return out;
+}
+
+export function formatSectorDelta(delta: number): string {
+  const abs = Math.abs(delta).toFixed(3);
+  if (delta > 0.0005) return `(+${abs})`;
+  if (delta < -0.0005) return `(-${abs})`;
+  return `(${abs})`;
 }
 
 export function segmentClass(code: MiniCode): string {
@@ -159,14 +200,19 @@ export function driverTimingAt(laps: Lap[], driver: number, now: number, slots: 
   const personal = bests(mine, now);
   const overall = bests(laps, now);
 
+  const priorTime = (lap: Lap | null, which: Which): number | null => {
+    if (!lap || !sectorFlags(lap, now)[which]) return null;
+    return durationOf(lap, which);
+  };
+
   const readout = (which: Which): SectorReadout => {
-    if (cur && flags[which]) {
-      const time = durationOf(cur, which);
-      return { time, kind: classify(time, personal[which], overall[which]), held: false };
-    }
-    const prevFlags = prev ? sectorFlags(prev, now) : null;
-    const time = prev && prevFlags?.[which] ? durationOf(prev, which) : null;
-    return { time, kind: classify(time, personal[which], overall[which]), held: time != null };
+    const shown = cur && flags[which] ? cur : prev;
+    const held = !(cur && flags[which]);
+    const time = shown ? priorTime(shown, which) : null;
+    const before = shown ? previousLap(mine, shown) : null;
+    const earlier = priorTime(before, which);
+    const delta = time != null && earlier != null ? time - earlier : null;
+    return { time, kind: classify(time, personal[which], overall[which]), held: held && time != null, delta };
   };
 
   return {
@@ -174,9 +220,9 @@ export function driverTimingAt(laps: Lap[], driver: number, now: number, slots: 
     s2: readout("s2"),
     s3: readout("s3"),
     minis: {
-      s1: pad(cur ? segmentsOf(cur, "s1") : null, slots.s1, flags.s1),
-      s2: pad(cur ? segmentsOf(cur, "s2") : null, slots.s2, flags.s2),
-      s3: pad(cur ? segmentsOf(cur, "s3") : null, slots.s3, flags.s3),
+      s1: revealMinis(cur, "s1", now, slots.s1),
+      s2: revealMinis(cur, "s2", now, slots.s2),
+      s3: revealMinis(cur, "s3", now, slots.s3),
     },
   };
 }

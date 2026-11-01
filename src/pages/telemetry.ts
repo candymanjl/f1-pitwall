@@ -29,7 +29,7 @@ import {
 import { TRACE, teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { bindColumnSplitter, readSplitWidth, writeSplitWidth } from "../lib/splitter";
-import { clamp, parseTs } from "../lib/time";
+import { clamp, formatLap, parseTs } from "../lib/time";
 import { panel } from "../ui/panel";
 import { isLiveLock } from "../data/errors";
 import { applyFetchError, setPanelError, setTelemetrySlots, state } from "../state";
@@ -691,6 +691,19 @@ export function mountTelemetry(parent: HTMLElement): { update: () => void } {
       left.body.append(bulk);
     }
     left.body.append(el("div", { class: "help", text: "Up to 4 drivers, each with a distinct trace color. New drivers open on their fastest complete lap. Traces join /car_data to /location by date, then plot against cumulative distance. First driver is the Δ vs REF lane. Drag the bar beside this list to widen it." }));
+    const shown = el("div", { class: "lap-times" });
+    shown.append(el("div", { class: "legend", text: "Displayed lap time" }));
+    for (const slot of slots) {
+      const who = bundle.drivers.find((d) => d.driver_number === slot.driver);
+      const lapRow = bundle.laps.find((l) => l.driver_number === slot.driver && l.lap_number === slot.lap);
+      const line = el("div", {
+        class: "lap-time",
+        text: `${who?.name_acronym ?? slot.driver}  ${formatLap(lapRow?.lap_duration)}`,
+      });
+      line.style.color = teamColor(who?.team_colour);
+      shown.append(line);
+    }
+    left.body.append(shown);
   };
 
   const reload = async () => {

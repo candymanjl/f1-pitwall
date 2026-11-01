@@ -8,6 +8,7 @@ import { renderTower } from "../ui/tower";
 import { state } from "../state";
 import {
   driverTimingAt,
+  formatSectorDelta,
   segmentClass,
   segmentLabel,
   sessionMiniSlots,
@@ -19,7 +20,6 @@ function legendSwatch(kind: string, text: string): HTMLElement {
 }
 
 function paintSector(cell: HTMLElement, read: SectorReadout): void {
-  cell.textContent = formatSector(read.time);
   cell.classList.remove("sec-purple", "sec-green", "sec-yellow");
   const kind: SectorKind = read.kind;
   if (kind === "overall") cell.classList.add("sec-purple");
@@ -27,7 +27,15 @@ function paintSector(cell: HTMLElement, read: SectorReadout): void {
   else if (kind === "yellow") cell.classList.add("sec-yellow");
   if (read.held) cell.dataset.held = "1";
   else delete cell.dataset.held;
-  cell.title = read.time == null ? "" : formatSector(read.time);
+  const time = formatSector(read.time);
+  const delta = read.delta == null ? "" : formatSectorDelta(read.delta);
+  cell.replaceChildren(el("span", { class: "sec-time", text: time }));
+  if (delta) {
+    const faster = (read.delta ?? 0) < -0.0005;
+    const slower = (read.delta ?? 0) > 0.0005;
+    cell.append(el("span", { class: `sec-delta${faster ? " faster" : slower ? " slower" : ""}`, text: delta }));
+  }
+  cell.title = delta ? `${time} ${delta} vs previous lap` : time === "—" ? "" : time;
 }
 
 /** Mini-sectors sit ahead of the S1/S2/S3 clocks. The shared tower keeps Mini last. */
