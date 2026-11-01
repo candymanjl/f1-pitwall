@@ -1,4 +1,4 @@
-import { DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT } from "../data/pitlane";
+import { pitLaneFracs } from "../data/pitlane";
 import { project, windArrowScreen } from "../data/track";
 import type { TimingSnapshot } from "../data/types";
 import { teamColor } from "../lib/colors";
@@ -28,8 +28,7 @@ function drawGap(canvas: HTMLCanvasElement, rows: TimingSnapshot["rows"]): void 
   const w = canvas.clientWidth || 400;
   const h = 36;
   const pad = 8;
-  const pitEntry = state.bundle?.pitEntry ?? DEFAULT_PIT_ENTRY;
-  const pitExit = state.bundle?.pitExit ?? DEFAULT_PIT_EXIT;
+  const { entry: pitEntry, exit: pitExit } = pitLaneFracs(state.bundle);
   const midY = h / 2;
   const sfX = stripX(0, w, pad);
   const pitInX = stripX(pitEntry, w, pad);

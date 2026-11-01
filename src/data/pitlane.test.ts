@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectPitLane, nearestFrac } from "./pitlane";
+import { DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT, detectPitLane, nearestFrac, pitLaneFracs } from "./pitlane";
 import type { LocationSample } from "./types";
 
 const SQUARE: [number, number][] = [
@@ -18,6 +18,14 @@ function loc(i: number, x: number, y: number): LocationSample {
     y,
   };
 }
+
+describe("pitLaneFracs", () => {
+  it("uses bundle marks when present and the same defaults as the footer strip", () => {
+    expect(pitLaneFracs({ pitEntry: 0.96, pitExit: 0.06 })).toEqual({ entry: 0.96, exit: 0.06 });
+    expect(pitLaneFracs(null)).toEqual({ entry: DEFAULT_PIT_ENTRY, exit: DEFAULT_PIT_EXIT });
+    expect(pitLaneFracs({})).toEqual({ entry: DEFAULT_PIT_ENTRY, exit: DEFAULT_PIT_EXIT });
+  });
+});
 
 describe("nearestFrac", () => {
   it("returns 0 at S/F and ~0.375 at the midpoint of the second side", () => {

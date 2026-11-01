@@ -121,6 +121,17 @@ describe("track map zoom", () => {
     Object.defineProperty(svg, "clientHeight", { value: 600 });
     api.update();
     expect(svg.dataset.zoom).toBe("full");
+    expect(svg.querySelector('[data-pit="in"]')?.textContent).toContain("PIT IN");
+    expect(svg.querySelector('[data-pit="out"]')?.textContent).toContain("PIT OUT");
+    expect(svg.dataset.pitIn).toBe("0.9700");
+    expect(svg.dataset.pitOut).toBe("0.0500");
+    (state.bundle as SessionBundle).pitEntry = 0.96;
+    (state.bundle as SessionBundle).pitExit = 0.06;
+    api.update();
+    expect(svg.dataset.pitIn).toBe("0.9600");
+    expect(svg.dataset.pitOut).toBe("0.0600");
+    expect(svg.querySelector('[data-pit="in"] .pit-mark-label')?.getAttribute("fill")).toBe("#fbbf24");
+    expect(svg.querySelector('[data-pit="out"] .pit-mark-label')?.getAttribute("fill")).toBe("#22c55e");
     const btn = root.querySelector<HTMLButtonElement>("button.map-zoom")!;
     btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(btn.getAttribute("aria-pressed")).toBe("true");

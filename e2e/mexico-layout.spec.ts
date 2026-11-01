@@ -184,6 +184,32 @@ for (const size of SIZES) {
     await expect(zoom).toBeVisible();
     const svg = page.locator("svg.track");
     await expect(svg).toHaveAttribute("data-zoom", "full");
+    const pitIn = page.locator('svg.track [data-pit="in"]');
+    const pitOut = page.locator('svg.track [data-pit="out"]');
+    await expect(pitIn).toBeVisible();
+    await expect(pitOut).toBeVisible();
+    await expect(pitIn).toContainText("PIT IN");
+    await expect(pitOut).toContainText("PIT OUT");
+    await expect(svg).toHaveAttribute("data-pit-in", "0.9600");
+    await expect(svg).toHaveAttribute("data-pit-out", "0.0600");
+    const pitLook = await svg.evaluate((el) => {
+      const inn = el.querySelector('[data-pit="in"] .pit-mark-label');
+      const out = el.querySelector('[data-pit="out"] .pit-mark-label');
+      return {
+        inFill: inn?.getAttribute("fill"),
+        outFill: out?.getAttribute("fill"),
+        inSize: inn ? Number.parseFloat(getComputedStyle(inn).fontSize) : 0,
+        outSize: out ? Number.parseFloat(getComputedStyle(out).fontSize) : 0,
+      };
+    });
+    expect(pitLook.inFill).toBe("#fbbf24");
+    expect(pitLook.outFill).toBe("#22c55e");
+    expect(pitLook.inSize).toBeGreaterThanOrEqual(14);
+    expect(pitLook.outSize).toBeGreaterThanOrEqual(14);
+    await page.screenshot({
+      path: `/opt/cursor/artifacts/screenshots/mexico_trackmap_pits_${size.name}.png`,
+      fullPage: true,
+    });
     await page.locator("table.tower tbody tr[data-driver='44']").dispatchEvent("pointerdown");
     expect((await hooks(page)).state.selectedDriver).toBe(44);
     await zoom.dispatchEvent("pointerdown");
@@ -196,6 +222,12 @@ for (const size of SIZES) {
     expect(parts[2]).toBeLessThan(size.width);
     await page.screenshot({
       path: `/opt/cursor/artifacts/screenshots/mexico_trackmap_zoom_${size.name}.png`,
+      fullPage: true,
+    });
+    await expect(page.locator('svg.track [data-pit="in"]')).toHaveCount(1);
+    await expect(page.locator('svg.track [data-pit="out"]')).toHaveCount(1);
+    await page.screenshot({
+      path: `/opt/cursor/artifacts/screenshots/mexico_trackmap_pits_zoom_${size.name}.png`,
       fullPage: true,
     });
     await zoom.dispatchEvent("pointerdown");
