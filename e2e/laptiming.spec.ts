@@ -5,13 +5,33 @@ type Hooks = {
     t: number;
     start: number;
     end: number;
+    latestMs: number;
     mode: string;
     followLive: boolean;
     playing: boolean;
     loading: string;
+    error: string;
     lapTimingDrivers: number[];
     lapTimingView: string;
     sessionKey: number;
+    bundle: {
+      laps: Array<{
+        driver_number: number;
+        lap_number: number;
+        date_start: string;
+        lap_duration: number | null;
+        duration_sector_1: number | null;
+        duration_sector_2: number | null;
+        duration_sector_3: number | null;
+        is_pit_out_lap: boolean;
+        segments_sector_1: null;
+        segments_sector_2: null;
+        segments_sector_3: null;
+        i1_speed: number | null;
+        i2_speed: number | null;
+        st_speed: number | null;
+      }>;
+    } | null;
   };
   setClock: (t: number, source?: "scrub" | "code") => void;
   setPlaying: (on: boolean) => void;
@@ -246,6 +266,72 @@ test("navigating from Track map paints lap table on first show", async ({ page }
   await expect(page.locator("nav button[data-page='laptiming']")).toHaveClass(/active/);
   await expectTablePopulated(page, ["LEC", "VER", "ANT"]);
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_from_trackmap_1920.png" });
+});
+
+test("single leader ANT in live mode paints chart and table without empty class tokens", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+  });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/?e2e=1#laptiming");
+  await waitForApp(page);
+  await loadMexicoLapTiming(page);
+  await page.evaluate(() => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    const start = api.state.start;
+    api.state.bundle?.laps.push({
+      driver_number: 12,
+      lap_number: 37,
+      date_start: new Date(start + 37 * 82_000).toISOString(),
+      lap_duration: null,
+      duration_sector_1: 21.7,
+      duration_sector_2: null,
+      duration_sector_3: null,
+      is_pit_out_lap: false,
+      segments_sector_1: null,
+      segments_sector_2: null,
+      segments_sector_3: null,
+      i1_speed: null,
+      i2_speed: null,
+      st_speed: null,
+    });
+    const now = start + 37 * 82_000 + 20_000;
+    Object.assign(api.state, {
+      mode: "live",
+      playing: false,
+      followLive: false,
+      loading: "",
+      error: "",
+      latestMs: now,
+      end: now,
+    });
+    api.setLapTimingDrivers([12]);
+    api.setLapTimingView("both");
+    api.setClock(now, "code");
+  });
+
+  await expect(page.locator(".toast")).toBeHidden();
+  await expect(page.locator(".live-btn")).toBeVisible();
+  await expect(page.locator(".lt-chip")).toHaveText("ANT");
+  await expect(page.locator(".lt-drv.lt-stripe")).toHaveCount(0);
+  await expect(page.locator(".lt-views button.on")).toContainText("CHART + TABLE");
+  await expect(page.locator(".lt-chart")).toBeVisible();
+  await expectTablePopulated(page, ["ANT", "TRAP"]);
+  await expect.poll(async () => page.locator(".lt-svg rect").count()).toBeGreaterThan(5);
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_ant_leader_live_both_1920.png" });
+
+  await page.locator(".lt-views button[data-view='chart']").click();
+  await expect(page.locator(".toast")).toBeHidden();
+  await expect(page.locator(".lt-chart")).toBeVisible();
+  await expect(page.locator(".lt-table-panel")).toBeHidden();
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_ant_leader_live_chart_1920.png" });
+
+  await page.locator(".lt-views button[data-view='table']").click();
+  await expect(page.locator(".toast")).toBeHidden();
+  await expect(page.locator(".lt-table-panel")).toBeVisible();
+  await expect.poll(async () => page.locator(".lt-table tbody tr").count()).toBeGreaterThan(5);
+  await expect(page.locator(".lt-table")).toContainText("ANT");
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_ant_leader_live_table_1920.png" });
 });
 
 test("replay progress keeps the lap table filled", async ({ page }) => {

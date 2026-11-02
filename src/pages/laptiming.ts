@@ -12,7 +12,7 @@ import {
 import { compoundLetter } from "../data/tyres";
 import type { SectorKind } from "../data/types";
 import { teamColor, teamFill, tyreColor } from "../lib/colors";
-import { el } from "../lib/dom";
+import { addClass, el } from "../lib/dom";
 import { formatDelta, formatLap, formatSector } from "../lib/time";
 import {
   setLapTimingDrivers,
@@ -20,7 +20,7 @@ import {
   state,
 } from "../state";
 
-function kindClass(kind: SectorKind): string {
+function kindClass(kind: SectorKind | undefined): string {
   if (kind === "overall") return "sec-purple";
   if (kind === "personal") return "sec-green";
   if (kind === "yellow") return "sec-yellow";
@@ -269,21 +269,21 @@ function paintTable(model: LapTimingModel, wrap: HTMLElement, jumpLap: number | 
   const tbody = el("tbody");
   for (const lapNo of model.laps) {
     const tr = el("tr", { "data-lt-lap": String(lapNo) });
-    if (jumpLap === lapNo) tr.classList.add("lt-jump");
+    if (jumpLap === lapNo) addClass(tr, "lt-jump");
     const anySc = model.selected.some((s) => {
       const c = model.cells.get(s.driver.driver_number)?.get(lapNo);
       return c?.sc || c?.vsc;
     });
-    if (anySc) tr.classList.add("lt-sc");
+    if (anySc) addClass(tr, "lt-sc");
     const inProg = model.selected.some((s) => model.cells.get(s.driver.driver_number)?.get(lapNo)?.inProgress);
-    if (inProg) tr.classList.add("lt-progress");
+    if (inProg) addClass(tr, "lt-progress");
     tr.append(el("td", { class: "lt-lap", text: String(lapNo) }));
     const notes: HTMLElement[] = [];
     for (const sum of model.selected) {
       const cell = model.cells.get(sum.driver.driver_number)?.get(lapNo);
       const add = (text: string, kind?: SectorKind, extra = "") => {
-        const td = el("td", { class: extra, text });
-        if (kind) td.classList.add(kindClass(kind));
+        const td = el("td", { text });
+        addClass(td, extra, kindClass(kind));
         tr.append(td);
       };
       if (!cell) {
