@@ -31,6 +31,7 @@ jobs:
         run: npm run build
         env:
           VITE_BASE: /f1-pitwall/
+          GITHUB_SHA: ${{ github.sha }}
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

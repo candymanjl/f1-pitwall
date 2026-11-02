@@ -1,5 +1,6 @@
 import { DEFAULT_PIT_LOSS, readRelayUrl, readToken, writeRelayUrl } from "../config";
 import { peekAuth, signIn, signOut, writeManualToken } from "../data/auth";
+import { BUILD_VERSION } from "../lib/buildInfo";
 import { el } from "../lib/dom";
 import { UI_SCALE_OPTIONS, type UiScalePref } from "../lib/scale";
 import {
@@ -111,6 +112,7 @@ export function openSettings(): void {
   bg.append(
     el("div", { class: "modal" }, [
       el("h2", { text: "Settings" }),
+      el("p", { class: "build-ver", text: BUILD_VERSION, title: BUILD_VERSION }),
       el("p", {
         text: "Sign in with your OpenF1 account to unlock live sessions and raise rate limits. Username and password stay in this browser (localStorage) and are never committed. You accepted that risk for this static GitHub Pages app.",
       }),
