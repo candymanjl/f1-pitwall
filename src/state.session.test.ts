@@ -120,6 +120,34 @@ describe("deferred session load", () => {
     expect(state.loading).toBe("");
   });
 
+  it("applies the track outline as soon as Load publishes it, without opening Track map", async () => {
+    const emptyTrack = { ...loadedBundle, track: [] as [number, number][] };
+    const withTrack = {
+      ...loadedBundle,
+      track: [
+        [0, 0],
+        [100, 0],
+        [100, 80],
+        [0, 80],
+      ] as [number, number][],
+    };
+    let trackDuringOutline: number | undefined;
+    loadBundle.mockImplementation(async (_key: number, opts: { onProgress?: (p: string, b: unknown) => void }) => {
+      opts.onProgress?.("timing", emptyTrack);
+      opts.onProgress?.("outline", withTrack);
+      trackDuringOutline = state.bundle?.track.length;
+      opts.onProgress?.("map", { ...withTrack, locations: [] });
+      return withTrack;
+    });
+    state.page = "laptiming";
+    state.bundle = null;
+    state.sessionKey = 20;
+    await loadSelectedSession();
+    expect(trackDuringOutline).toBeGreaterThan(2);
+    expect(state.bundle!.track.length).toBeGreaterThan(2);
+    expect(state.page).toBe("laptiming");
+  });
+
   it("clears Loading session… as soon as timing data is on screen", async () => {
     let loadingDuringTiming = "unset";
     loadBundle.mockImplementation(async (_key: number, opts: { onProgress?: (p: string, b: unknown) => void }) => {
