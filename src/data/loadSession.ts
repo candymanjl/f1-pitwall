@@ -6,7 +6,7 @@ import { snapshotAt } from "./derive";
 import { isRaceOrSprint } from "./grid";
 import { loadDriverLocations } from "./carLocation";
 import { detectPitLane, DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT, pickPitForTrace } from "./pitlane";
-import { buildOutline, detectCorners, lapWindow, pickOutlineLap, sectorFractions } from "./track";
+import { buildOutline, detectCorners, lapWindow, outlineFromLocations, pickOutlineLap, sectorFractions } from "./track";
 import type {
   Driver,
   Interval,
@@ -67,7 +67,7 @@ async function loadTrack(sessionKey: number, laps: Lap[], drivers: Driver[]): Pr
   }
 }
 
-export type LoadProgress = "timing" | "map" | "weekend";
+export type LoadProgress = "timing" | "outline" | "map" | "weekend";
 
 export type LoadBundleOpts = {
   meeting?: Meeting | null;
@@ -187,22 +187,38 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
     if (isLiveLock(err)) throw err;
     return [] as LocationSample[];
   });
+  /** Outline fetch starts with timing data — never waits for the Track map tab, pit marks, or all-driver GPS. */
   const trackP = (async () => {
     const track = await loadTrack(sessionKey, laps, sortedDrivers);
+    const corners = detectCorners(track);
+    bundle = { ...bundle, track, corners };
+    opts.onProgress?.("outline", bundle);
     const pitMarks = await loadPitMarks(sessionKey, track, pits);
-    return { track, corners: detectCorners(track), pitMarks };
+    bundle = { ...bundle, pitEntry: pitMarks.entry, pitExit: pitMarks.exit };
+    return { track, corners, pitMarks };
   })();
   const stintP = loadWeekendStints(sortedWeekend, sessionKey, stints);
 
   const applyMap = async () => {
     const [locations, trackBits] = await Promise.all([locP, trackP]);
+    let track = trackBits.track;
+    let corners = trackBits.corners;
+    let pitMarks = trackBits.pitMarks;
+    if (track.length < 2) {
+      const fallback = outlineFromLocations(locations, laps, sortedDrivers);
+      if (fallback.length >= 2) {
+        track = fallback;
+        corners = detectCorners(track);
+        pitMarks = await loadPitMarks(sessionKey, track, pits);
+      }
+    }
     bundle = {
       ...bundle,
       locations,
-      track: trackBits.track,
-      corners: trackBits.corners,
-      pitEntry: trackBits.pitMarks.entry,
-      pitExit: trackBits.pitMarks.exit,
+      track,
+      corners,
+      pitEntry: pitMarks.entry,
+      pitExit: pitMarks.exit,
     };
     opts.onProgress?.("map", bundle);
   };

@@ -47,7 +47,8 @@ function placeStripCar(
 
 function drawGap(canvas: HTMLCanvasElement, snap: TimingSnapshot): void {
   const rows = snap.rows;
-  const w = canvas.clientWidth || 400;
+  const box = canvas.getBoundingClientRect();
+  const w = Math.max(1, Math.round(box.width) || canvas.clientWidth || 400);
   const h = 36;
   const pad = 8;
   const { entry: pitEntry, exit: pitExit } = pitLaneFracs(state.bundle);
@@ -120,12 +121,19 @@ function drawGap(canvas: HTMLCanvasElement, snap: TimingSnapshot): void {
   canvas.dataset.cars = String(cars.length);
 }
 
+function svgBox(svg: SVGSVGElement, fallbackW: number, fallbackH: number): { w: number; h: number } {
+  const box = svg.getBoundingClientRect();
+  const w = Math.max(1, Math.round(box.width) || svg.clientWidth || fallbackW);
+  const h = Math.max(1, Math.round(box.height) || svg.clientHeight || fallbackH);
+  return { w, h };
+}
+
 function drawWind(svg: SVGSVGElement): void {
-  const w = svg.clientWidth || 96;
-  const h = svg.clientHeight || 72;
+  const { w, h } = svgBox(svg, 96, 72);
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
   const pts = state.bundle?.track ?? [];
   const dir = state.snap?.weather?.wind_direction;
+  svg.dataset.outline = pts.length >= 2 ? "ready" : "empty";
   if (pts.length < 2) {
     svg.replaceChildren();
     const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -244,6 +252,27 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
   const wxWrap = el("div", { class: "wx-wind" }, [wx, windSvg]);
   parent.append(root);
 
+  let chromeRaf = 0;
+  const paintChrome = () => {
+    const snap = state.snap;
+    if (!snap || root.firstChild !== best) return;
+    drawGap(canvas, snap);
+    drawWind(windSvg);
+  };
+  const scheduleChrome = () => {
+    if (chromeRaf) return;
+    chromeRaf = requestAnimationFrame(() => {
+      chromeRaf = 0;
+      paintChrome();
+    });
+  };
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => scheduleChrome());
+    ro.observe(windSvg);
+    ro.observe(canvas);
+    ro.observe(root);
+  }
+
   const update = () => {
     const snap = state.snap;
     if (!snap) {
@@ -285,8 +314,8 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
       }),
     );
     hum.textContent = w ? `Hum ${w.humidity?.toFixed(0) ?? "—"}% · ${w.rainfall ? "rain" : "dry"}` : "—";
-    drawGap(canvas, snap);
-    drawWind(windSvg);
+    paintChrome();
+    scheduleChrome();
   };
   return { update };
 }

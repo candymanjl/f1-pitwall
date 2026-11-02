@@ -346,4 +346,71 @@ describe("mountStatusBar", () => {
     expect(dy.querySelector(".flag-name")?.textContent).toBe("DOUBLE YELLOW");
     expect(dy.querySelector("svg")?.getAttribute("viewBox")).toContain("132");
   });
+
+  it("redraws the wind mini-map when the outline arrives while paused, without Track map", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const api = mountStatusBar(host);
+    state.playing = false;
+    state.page = "laptiming";
+    state.snap = snap();
+    state.bundle = {
+      meeting: {
+        meeting_key: 1,
+        meeting_name: "Test GP",
+        circuit_short_name: "Test",
+        country_name: "Test",
+        location: "Test",
+        date_start: "2025-10-26T20:00:00.000Z",
+        year: 2025,
+      },
+      session: {
+        session_key: 1,
+        meeting_key: 1,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: "2025-10-26T20:00:00.000Z",
+        date_end: "2025-10-26T22:00:00.000Z",
+        circuit_short_name: "Test",
+        country_name: "Test",
+        location: "Test",
+        year: 2025,
+      },
+      weekendSessions: [],
+      drivers: [driver(1, "VER")],
+      laps: [],
+      intervals: [],
+      positions: [],
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+    };
+    api.update();
+    const svg = host.querySelector("svg.wind-map") as SVGSVGElement;
+    expect(svg.dataset.outline).toBe("empty");
+    expect(svg.textContent).toContain("No outline");
+
+    state.bundle = {
+      ...state.bundle,
+      track: [
+        [0, 0],
+        [100, 0],
+        [100, 80],
+        [0, 80],
+        [0, 0],
+      ],
+    };
+    api.update();
+    expect(state.playing).toBe(false);
+    expect(state.page).toBe("laptiming");
+    expect(svg.dataset.outline).toBe("ready");
+    expect(svg.querySelector("path.wind-track")).toBeTruthy();
+    expect(svg.textContent).not.toContain("No outline");
+    host.remove();
+  });
 });

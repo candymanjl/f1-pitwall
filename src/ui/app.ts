@@ -260,6 +260,7 @@ export function boot(root: HTMLElement): void {
   window.addEventListener("resize", () => {
     applyUiScale(state.uiScale);
     pageApi?.update();
+    statusApi.update();
   });
   startClock();
   window.addEventListener("f1pw:open-settings", () => openSettings());

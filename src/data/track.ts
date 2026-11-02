@@ -1,5 +1,5 @@
 import { parseTs } from "../lib/time";
-import type { Lap, LocationSample } from "./types";
+import type { Driver, Lap, LocationSample } from "./types";
 
 export function buildOutline(samples: LocationSample[]): [number, number][] {
   if (samples.length < 8) return [];
@@ -110,6 +110,32 @@ export function lapWindow(lap: Lap): { from: string; to: string } | null {
   const from = new Date(start - 200).toISOString();
   const to = new Date(start + lap.lap_duration * 1000 + 400).toISOString();
   return { from, to };
+}
+
+/** Build a circuit outline from GPS already on the bundle (no extra fetch). */
+export function outlineFromLocations(
+  samples: LocationSample[],
+  laps: Lap[],
+  drivers: Driver[],
+): [number, number][] {
+  if (!samples.length) return [];
+  const preferred =
+    pickOutlineLap(laps.filter((l) => l.driver_number === drivers[0]?.driver_number)) ?? pickOutlineLap(laps);
+  const driverNo = preferred?.driver_number ?? drivers[0]?.driver_number ?? samples[0]?.driver_number;
+  if (driverNo == null) return [];
+  const ofDriver = samples.filter((s) => s.driver_number === driverNo);
+  const win = preferred ? lapWindow(preferred) : null;
+  if (win) {
+    const from = parseTs(win.from);
+    const to = parseTs(win.to);
+    const windowed = ofDriver.filter((s) => {
+      const t = parseTs(s.date);
+      return t >= from && t <= to;
+    });
+    const pts = buildOutline(windowed);
+    if (pts.length >= 2) return pts;
+  }
+  return buildOutline(ofDriver);
 }
 
 export function project(

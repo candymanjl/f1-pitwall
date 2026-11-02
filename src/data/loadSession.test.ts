@@ -69,6 +69,7 @@ describe("session cache helpers", () => {
   it("loads map pages before weekend stints, tyres/strategy the other way", () => {
     expect(mapPagesFirst("trackmap")).toBe(true);
     expect(mapPagesFirst("timing")).toBe(true);
+    expect(mapPagesFirst("laptiming")).toBe(true);
     expect(mapPagesFirst("tyres")).toBe(false);
     expect(mapPagesFirst("strategy")).toBe(false);
   });
@@ -114,5 +115,84 @@ describe("loadBundle", () => {
     expect(seen.some((u) => /\/sessions\?/.test(u) || u.includes("/sessions?"))).toBe(false);
     expect(phases[0]).toBe("timing");
     expect(phases.indexOf("map")).toBeLessThan(phases.indexOf("weekend"));
+  });
+
+  it("publishes the track outline on Load before all-driver GPS, even from Lap timing", async () => {
+    mockStorage();
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
+    const lapStart = "2025-10-26T20:20:00.000Z";
+    const driver = {
+      driver_number: 1,
+      broadcast_name: "VER",
+      full_name: "Max Verstappen",
+      name_acronym: "VER",
+      team_name: "Red Bull",
+      team_colour: "3671C6",
+      first_name: "Max",
+      last_name: "Verstappen",
+    };
+    const outlineSamples = Array.from({ length: 16 }, (_, i) => ({
+      date: new Date(Date.parse(lapStart) + i * 1000).toISOString(),
+      driver_number: 1,
+      x: i * 40,
+      y: (i % 4) * 40,
+    }));
+    let outlineAt = "";
+    let locationsDone = false;
+    const phases: string[] = [];
+    const tracks: number[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: RequestInfo | URL) => {
+        const href = String(url);
+        if (href.includes("/drivers")) return jsonRes(200, [driver]);
+        if (href.includes("/laps")) {
+          return jsonRes(200, [
+            {
+              driver_number: 1,
+              lap_number: 12,
+              date_start: lapStart,
+              lap_duration: 80,
+              duration_sector_1: 22,
+              duration_sector_2: 29,
+              duration_sector_3: 29,
+              is_pit_out_lap: false,
+              segments_sector_1: null,
+              segments_sector_2: null,
+              segments_sector_3: null,
+              i1_speed: null,
+              i2_speed: null,
+              st_speed: null,
+            },
+          ]);
+        }
+        if (href.includes("/location") && href.includes("22:00:00")) {
+          await new Promise((r) => setTimeout(r, 80));
+          locationsDone = true;
+          return jsonRes(200, []);
+        }
+        if (href.includes("/location")) {
+          return jsonRes(200, outlineSamples);
+        }
+        return jsonRes(200, []);
+      }),
+    );
+
+    await loadBundle(9877, {
+      meeting,
+      weekendSessions: [fp1, race],
+      page: "laptiming",
+      onProgress: (phase, bundle) => {
+        phases.push(phase);
+        tracks.push(bundle.track.length);
+        if (phase === "outline") outlineAt = locationsDone ? "after-gps" : "before-gps";
+      },
+    });
+
+    expect(phases[0]).toBe("timing");
+    expect(phases).toContain("outline");
+    expect(phases.indexOf("outline")).toBeLessThan(phases.indexOf("map"));
+    expect(outlineAt).toBe("before-gps");
+    expect(tracks[phases.indexOf("outline")]).toBeGreaterThan(2);
   });
 });
