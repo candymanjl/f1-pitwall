@@ -15,6 +15,7 @@ import { mountRaceTrace } from "../pages/racetrace";
 import { mountStrategy } from "../pages/strategy";
 import { mountTelemetry } from "../pages/telemetry";
 import { mountTyres } from "../pages/tyres";
+import { mountLapTiming } from "../pages/laptiming";
 import { mountTiming } from "../pages/timing";
 import { mountTrackMap } from "../pages/trackmap";
 import { applyUiScale } from "../lib/scale";
@@ -32,6 +33,8 @@ import {
   setClock,
   setPlaying,
   setScrubbing,
+  setLapTimingDrivers,
+  setLapTimingView,
   setShowLiveDebug,
   setSpeed,
   startClock,
@@ -44,6 +47,7 @@ type PageMount = { update: () => void };
 const mounts: Record<string, (parent: HTMLElement) => PageMount> = {
   trackmap: mountTrackMap,
   timing: mountTiming,
+  laptiming: mountLapTiming,
   telemetry: mountTelemetry,
   racetrace: mountRaceTrace,
   pitcircle: mountPitCircle,
@@ -277,6 +281,8 @@ export function boot(root: HTMLElement): void {
     loadSelectedSession,
     sessionPickerDirty,
     setShowLiveDebug,
+    setLapTimingDrivers,
+    setLapTimingView,
     showFlagSheet,
   };
   const params = new URLSearchParams(location.search);

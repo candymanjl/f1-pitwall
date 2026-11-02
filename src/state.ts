@@ -16,6 +16,12 @@ import { snapshotAt } from "./data/derive";
 import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
 import { applyLiveUpdate } from "./data/liveMerge";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
+import {
+  clampLapTimingDrivers,
+  readLapTimingView,
+  writeLapTimingView,
+  type LapTimingView,
+} from "./data/lapTiming";
 import { emptyLiveDebug, seedLiveCursors, type LivePollDebug } from "./data/livePoll";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
@@ -63,6 +69,8 @@ export type AppState = {
   uiScale: UiScalePref;
   showLiveDebug: boolean;
   liveDebug: LivePollDebug;
+  lapTimingDrivers: number[];
+  lapTimingView: LapTimingView;
   /** Newest sample time, maintained on ingest. Full scan only after a bundle load. */
   latestMs: number;
   /** Wall clock of the last poll/MQTT batch that added rows. */
@@ -108,6 +116,8 @@ export const state: AppState = {
   uiScale: readUiScale(),
   showLiveDebug: readLiveDebug(),
   liveDebug: emptyLiveDebug(),
+  lapTimingDrivers: [],
+  lapTimingView: readLapTimingView(),
   latestMs: Number.NaN,
   lastIngestAt: 0,
 };
@@ -310,6 +320,20 @@ export function setShowLiveDebug(on: boolean): void {
   emit(true);
 }
 
+export function setLapTimingDrivers(ids: number[]): void {
+  const next = clampLapTimingDrivers(ids);
+  if (next.length === state.lapTimingDrivers.length && next.every((n, i) => n === state.lapTimingDrivers[i])) return;
+  state.lapTimingDrivers = next;
+  emit(true);
+}
+
+export function setLapTimingView(view: LapTimingView): void {
+  if (view === state.lapTimingView) return;
+  state.lapTimingView = view;
+  writeLapTimingView(view);
+  emit(true);
+}
+
 export function setPanelError(key: keyof AppState["panelErrors"], message: string): void {
   state.panelErrors[key] = message;
   emit();
@@ -504,6 +528,7 @@ function applyPartialBundle(bundle: SessionBundle, first: boolean): void {
   state.bundle = bundle;
   if (firstApply) {
     state.lastIngestAt = 0;
+    state.lapTimingDrivers = [];
     state.start = parseTs(bundle.session.date_start);
     applyLoadedClock();
     if (state.mode === "live" && !sessionIsFinished(bundle)) {
