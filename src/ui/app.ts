@@ -3,6 +3,7 @@ import { hasUsableAuth } from "../data/auth";
 import { shouldShowLiveLockBanner } from "../data/errors";
 import { isRaceOrSprint } from "../data/grid";
 import { PAGES } from "../data/types";
+import { BUILD_VERSION } from "../lib/buildInfo";
 import { el } from "../lib/dom";
 import { formatLiveDebug } from "../data/livePoll";
 import { formatReplayBadge, formatSessionHeadline } from "../lib/sessionHeadline";
@@ -59,9 +60,11 @@ export function boot(root: HTMLElement): void {
   applyUiScale(state.uiScale);
   const brand = el("div", { class: "brand" }, [el("span", { class: "bar" }), el("span", { text: "F1" })]);
   const title = el("div", { class: "session-title", text: "F1 PITWALL" });
+  const build = el("div", { class: "build-ver", text: BUILD_VERSION, title: BUILD_VERSION });
+  const sessionHead = el("div", { class: "session-head" }, [title, build]);
   const clock = el("div", { class: "session-clock", text: "00:00:00" });
   const brandR = el("div", { class: "brand-right" }, [el("span", { text: "F1" }), document.createTextNode(" TV")]);
-  const top = el("header", { class: "topbar" }, [brand, title, clock, brandR]);
+  const top = el("header", { class: "topbar" }, [brand, sessionHead, clock, brandR]);
 
   const nav = el("nav", { class: "nav" });
   for (const p of PAGES) {

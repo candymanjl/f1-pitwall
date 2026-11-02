@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { readRelayUrl, writeRelayUrl } from "../config";
 import { state } from "../state";
+import { BUILD_VERSION } from "../lib/buildInfo";
 import { closeAllModals } from "./overlays";
 import { openSettings } from "./settings";
 
@@ -11,6 +12,12 @@ afterEach(() => {
 });
 
 describe("Settings relay field", () => {
+  it("shows the injected build version", () => {
+    openSettings();
+    expect(document.querySelector(".modal .build-ver")?.textContent).toBe(BUILD_VERSION);
+    expect(BUILD_VERSION).toMatch(/^v [0-9a-f]{7} · .+ ET$/);
+  });
+
   it("starts empty and only saves a pasted Function App origin", () => {
     openSettings();
     const input = document.querySelector("input[type=url]") as HTMLInputElement | null;
