@@ -1,3 +1,9 @@
+/** classList.add('') throws; skip empty / whitespace tokens. */
+export function addClass(node: Element, ...tokens: Array<string | null | undefined>): void {
+  const names = tokens.flatMap((t) => String(t ?? "").split(/\s+/)).filter(Boolean);
+  if (names.length) node.classList.add(...names);
+}
+
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   attrs: Record<string, string | number | boolean | undefined> = {},
@@ -6,7 +12,7 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
     if (value == null || value === false) continue;
-    if (key === "class") node.className = String(value);
+    if (key === "class") addClass(node, String(value));
     else if (key === "text") node.textContent = String(value);
     else if (value === true) node.setAttribute(key, "");
     else node.setAttribute(key, String(value));
