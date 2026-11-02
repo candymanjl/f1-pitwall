@@ -104,8 +104,9 @@ function drawChart(svg: SVGSVGElement, model: LapTimingModel, vis: { from: numbe
   const ns = "http://www.w3.org/2000/svg";
   const laps = model.laps;
   const nDrv = Math.max(1, model.selected.length);
-  const w = Math.max(640, svg.clientWidth || 900);
-  const h = Math.max(160, svg.clientHeight || 200);
+  const box = svg.getBoundingClientRect();
+  const w = Math.max(64, Math.round(box.width) || svg.clientWidth || 900);
+  const h = Math.max(80, Math.round(box.height) || svg.clientHeight || 200);
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
   svg.setAttribute("preserveAspectRatio", "none");
   const padL = 8;
@@ -374,6 +375,7 @@ export function mountLapTiming(parent: HTMLElement): { update: () => void } {
   let vis: { from: number; to: number } | null = null;
   let stickBottom = true;
   let lastKey = "";
+  let layoutRaf = 0;
 
   const visibleLaps = (): { from: number; to: number } | null => {
     const rows = [...tableWrap.querySelectorAll<HTMLElement>("tr[data-lt-lap]")];
@@ -421,6 +423,38 @@ export function mountLapTiming(parent: HTMLElement): { update: () => void } {
     live: false,
   });
 
+  const tableEmpty = () => !tableWrap.querySelector("tbody tr");
+
+  const paintChart = () => {
+    if (chart.hidden) return;
+    vis = state.lapTimingView === "both" ? visibleLaps() : null;
+    drawChart(svg, lastModel, vis, jump);
+  };
+
+  const paintVisibleTable = (force = false) => {
+    if (tablePanel.hidden) return;
+    if (!force && !tableEmpty()) return;
+    const keep = tableWrap.scrollTop;
+    paintTable(lastModel, tableWrap, jumpLap);
+    tableWrap.scrollTop = state.mode === "live" && stickBottom ? tableWrap.scrollHeight : keep;
+  };
+
+  const afterLayout = () => {
+    if (layoutRaf) cancelAnimationFrame(layoutRaf);
+    layoutRaf = requestAnimationFrame(() => {
+      layoutRaf = 0;
+      paintVisibleTable(tableEmpty());
+      paintChart();
+    });
+  };
+
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => afterLayout());
+    ro.observe(page);
+    ro.observe(chart);
+    ro.observe(tableWrap);
+  }
+
   views.addEventListener("click", (ev) => {
     const btn = (ev.target as HTMLElement).closest("button[data-view]") as HTMLButtonElement | null;
     const v = btn?.dataset.view as LapTimingView | undefined;
@@ -431,8 +465,13 @@ export function mountLapTiming(parent: HTMLElement): { update: () => void } {
     const live = state.mode === "live";
     let selected = state.lapTimingDrivers;
     if (!selected.length && state.snap) {
-      selected = seedFromTower(state.snap.rows, selected);
-      if (selected.length) setLapTimingDrivers(selected);
+      const seeded = seedFromTower(state.snap.rows, selected);
+      if (seeded.length) {
+        selected = seeded;
+        queueMicrotask(() => {
+          if (!state.lapTimingDrivers.length) setLapTimingDrivers(seeded);
+        });
+      }
     }
     const model = buildLapTimingModel({
       bundle: state.bundle,
@@ -517,21 +556,20 @@ export function mountLapTiming(parent: HTMLElement): { update: () => void } {
     if (!tablePanel.hidden) {
       const progress = model.inProgressLap
         ? [...model.cells.values()]
-            .map((m) => m.get(model.inProgressLap!)?.s1 ?? m.get(model.inProgressLap!)?.s2 ?? "")
+            .map((m) => {
+              const cell = m.get(model.inProgressLap!);
+              return cell?.s1 ?? cell?.s2 ?? cell?.s3 ?? "";
+            })
             .join(",")
         : "";
-      const key = `${selected.join(",")}:${view}:${model.laps.join(",")}:${model.inProgressLap}:${progress}:${live}`;
-      if (key !== lastKey) {
-        const keep = tableWrap.scrollTop;
-        paintTable(model, tableWrap, jumpLap);
-        tableWrap.scrollTop = live && stickBottom ? tableWrap.scrollHeight : keep;
+      const key = `${selected.join(",")}:${view}:${model.laps.join(",")}:${model.inProgressLap}:${progress}:${live}:${live ? state.t : 0}`;
+      if (key !== lastKey || tableEmpty()) {
+        paintVisibleTable(true);
         lastKey = key;
       }
     }
-    if (!chart.hidden) {
-      vis = view === "both" ? visibleLaps() : null;
-      drawChart(svg, model, vis, jump);
-    }
+    if (!chart.hidden) paintChart();
+    afterLayout();
   };
 
   return { update };

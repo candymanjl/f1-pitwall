@@ -5,6 +5,17 @@ export function shouldShowLoadingOverlay(loading: string, lock: LockState): bool
   return Boolean(loading) && lock == null;
 }
 
+/** Load button copy. Once a session is on screen, never keep "Loading session…". */
+export function loadSessionButtonText(loading: string, hasBundle: boolean): string {
+  if (loading && !hasBundle) return loading.replace(/OpenF1…$/, "…") || "Loading…";
+  return "Load";
+}
+
+export function loadSessionButtonBusy(loading: string, hasBundle: boolean, sessionKey: number): boolean {
+  if (!sessionKey) return true;
+  return Boolean(loading) && !hasBundle;
+}
+
 /**
  * Show or fully disarm a loading/modal veil.
  * Always sets hidden + pointer-events so an author `display: flex` rule

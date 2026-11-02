@@ -476,12 +476,6 @@ export function changeSession(sessionKey: number): void {
   emit(true);
 }
 
-const LOAD_LABEL: Record<string, string> = {
-  timing: "Loading timing…",
-  map: "Loading map…",
-  weekend: "Loading weekend…",
-};
-
 let loadGen = 0;
 
 export async function loadSelectedSession(): Promise<void> {
@@ -500,7 +494,9 @@ export async function loadSelectedSession(): Promise<void> {
       onProgress: (phase, partial) => {
         if (gen !== loadGen) return;
         applyPartialBundle(partial, phase === "timing");
-        state.loading = LOAD_LABEL[phase] ?? "Loading session…";
+        // Timing data is enough to paint the pitwall — don't leave "Loading session…"
+        // on the top bar while map/weekend fetches continue.
+        if (phase === "timing") state.loading = "";
         emit(true);
       },
     });

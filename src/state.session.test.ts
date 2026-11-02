@@ -117,6 +117,23 @@ describe("deferred session load", () => {
     expect(loadBundle).toHaveBeenCalledTimes(1);
     expect(state.bundle?.session.session_key).toBe(20);
     expect(sessionPickerDirty()).toBe(false);
+    expect(state.loading).toBe("");
+  });
+
+  it("clears Loading session… as soon as timing data is on screen", async () => {
+    let loadingDuringTiming = "unset";
+    loadBundle.mockImplementation(async (_key: number, opts: { onProgress?: (p: string, b: unknown) => void }) => {
+      opts.onProgress?.("timing", loadedBundle);
+      loadingDuringTiming = state.loading;
+      opts.onProgress?.("map", loadedBundle);
+      return loadedBundle;
+    });
+    state.bundle = null;
+    state.sessionKey = 20;
+    state.loading = "stale";
+    await loadSelectedSession();
+    expect(loadingDuringTiming).toBe("");
+    expect(state.loading).toBe("");
   });
 
   it("Meeting list fetch does not set the heavy loading veil", async () => {
