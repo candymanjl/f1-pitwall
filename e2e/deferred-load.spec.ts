@@ -5,6 +5,7 @@ type Hooks = {
     t: number;
     sessionKey: number;
     loading: string;
+    loadProgress: { done: number; total: number; label: string; pct: number } | null;
     listsBusy: boolean;
     bundle: { session: { session_key: number; session_name: string }; meeting: { meeting_name: string } } | null;
     meetings: { meeting_key: number; meeting_name: string }[];
@@ -167,11 +168,16 @@ test.describe("deferred session Load button", () => {
       await page.evaluate(() => {
         const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
         api.state.loading = "Loading session…";
+        api.state.loadProgress = { done: 4, total: 10, label: "laps", pct: 40 };
         api.setClock(api.state.t);
       });
-      await expect(page.locator("#load-session")).toHaveText("Load");
-      await expect(page.locator("#load-session")).toBeEnabled();
-      await expect(page.locator(".overlay.is-visible")).toHaveCount(0);
+      await expect(page.locator("#load-session")).toHaveText("Loading session…");
+      await expect(page.locator("#load-session")).toBeDisabled();
+      await expect(page.locator(".overlay.is-visible")).toHaveCount(1);
+      await expect(page.locator(".overlay-title")).toHaveText("Loading session…");
+      await expect(page.locator(".overlay-label")).toHaveText("laps");
+      await expect(page.locator(".overlay-pct")).toHaveText("40%");
+      await expect(page.locator(".overlay-bar")).toHaveAttribute("aria-valuenow", "40");
       await page.screenshot({
         path: `/opt/cursor/artifacts/screenshots/deferred_load_progress_${size.name}.png`,
         fullPage: true,
@@ -180,6 +186,7 @@ test.describe("deferred session Load button", () => {
       await page.evaluate(() => {
         const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
         api.state.loading = "";
+        api.state.loadProgress = null;
         api.setClock(api.state.t);
       });
 

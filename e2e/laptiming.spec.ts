@@ -341,7 +341,6 @@ test("replay progress keeps the lap table filled", async ({ page }) => {
   await loadMexicoLapTiming(page);
   await page.evaluate(() => {
     const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
-    api.state.loading = "Loading session…";
     api.setPlaying(true);
     api.setClock(api.state.start + 20 * 82_000, "code");
   });
