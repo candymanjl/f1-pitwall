@@ -35,6 +35,7 @@ export const AUTH_EXPIRY_KEY = "f1pitwall.openf1ExpiresAt";
 export const MODE_STORAGE_KEY = "f1pitwall.dataMode";
 export const PIT_LOSS_STORAGE_KEY = "f1pitwall.pitLoss";
 export const LIVE_DEBUG_STORAGE_KEY = "f1pitwall.liveDebug";
+export const LAP_TIMING_VIEW_STORAGE_KEY = "f1pitwall.lapTimingView";
 
 export const DEFAULT_PIT_LOSS = {
   green: 22,

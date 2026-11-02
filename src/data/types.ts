@@ -228,6 +228,7 @@ export type TimingSnapshot = {
 export type PageId =
   | "trackmap"
   | "timing"
+  | "laptiming"
   | "telemetry"
   | "racetrace"
   | "pitcircle"
@@ -237,6 +238,7 @@ export type PageId =
 export const PAGES: { id: PageId; label: string }[] = [
   { id: "trackmap", label: "Track map" },
   { id: "timing", label: "Timing" },
+  { id: "laptiming", label: "Lap timing" },
   { id: "telemetry", label: "Telemetry" },
   { id: "racetrace", label: "Race trace" },
   { id: "pitcircle", label: "Pit circle" },

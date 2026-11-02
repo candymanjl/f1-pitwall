@@ -17,7 +17,7 @@ type Hooks = {
 };
 
 const START = Date.parse("2025-10-26T20:00:00.000Z");
-const PAGES = ["trackmap", "timing", "telemetry", "racetrace", "pitcircle", "tyres", "strategy"] as const;
+const PAGES = ["trackmap", "timing", "laptiming", "telemetry", "racetrace", "pitcircle", "tyres", "strategy"] as const;
 const SIZES = [
   { name: "1920", width: 1920, height: 1080 },
   { name: "1366", width: 1366, height: 768 },
