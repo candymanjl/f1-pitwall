@@ -286,6 +286,8 @@ for (const size of SIZES) {
     });
 
     const windSvg = page.locator("svg.wind-map");
+    await expect(windSvg).toHaveAttribute("data-outline", "ready");
+    await expect(page.locator("svg.wind-map path.wind-track")).toBeVisible();
     const windHead = page.locator("svg.wind-map path.wind-arrow-head");
     const windChevrons = page.locator("svg.wind-map path.wind-arrow-chevrons");
     await expect(windHead).toBeVisible();
@@ -312,6 +314,12 @@ for (const size of SIZES) {
     await windClose.screenshot({
       path: `/opt/cursor/artifacts/screenshots/mexico_wind_chevrons_closeup_${size.name}.png`,
     });
+
+    await page.locator("nav button[data-page='laptiming']").click();
+    await expect(page.locator(".page.laptiming")).toBeVisible();
+    expect((await hooks(page)).state.playing).toBe(false);
+    await expect(page.locator("svg.wind-map")).toHaveAttribute("data-outline", "ready");
+    await expect(page.locator("svg.wind-map path.wind-track")).toBeVisible();
 
     await page.locator("nav button[data-page='racetrace']").click();
     await expect(page.locator("button[data-trace-mode='average']")).toBeVisible();

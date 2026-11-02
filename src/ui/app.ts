@@ -151,8 +151,9 @@ export function boot(root: HTMLElement): void {
     }
     applyLoadingOverlay(
       overlay,
-      shouldShowLoadingOverlay(state.loading, state.lock) && !state.bundle,
+      shouldShowLoadingOverlay(state.loading, state.lock),
       state.loading,
+      state.loadProgress,
     );
     toast.hidden = !state.error || !!state.lock;
     toast.textContent = state.error;
@@ -260,6 +261,7 @@ export function boot(root: HTMLElement): void {
   window.addEventListener("resize", () => {
     applyUiScale(state.uiScale);
     pageApi?.update();
+    statusApi.update();
   });
   startClock();
   window.addEventListener("f1pw:open-settings", () => openSettings());
