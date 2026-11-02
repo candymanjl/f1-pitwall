@@ -247,6 +247,11 @@ describe("Lap timing page", () => {
     expect(host.textContent).toMatch(/Δ VER−LEC/);
     expect(host.textContent).toMatch(/Δ ANT−LEC/);
     expect(host.querySelectorAll(".lt-table tbody tr").length).toBe(4);
+    const ages = [...host.querySelectorAll(".lt-table .tyre-age-n")].map((n) => n.textContent ?? "");
+    expect(ages.some((a) => a.length === 1)).toBe(true);
+    expect(ages.some((a) => a.length === 2)).toBe(true);
+    expect(host.querySelectorAll(".lt-table .tyre-age").length).toBe(ages.length);
+    expect(host.querySelectorAll(".lt-table th.lt-tyre-col").length).toBe(3);
   });
 
   it("paints a single leader with missing sector classes in live mode", () => {

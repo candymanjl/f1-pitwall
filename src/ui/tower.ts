@@ -1,8 +1,9 @@
-import { teamColor, tyreColor } from "../lib/colors";
+import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { formatDelta, formatLap, formatLapDelta, formatSector } from "../lib/time";
 import type { TowerRow } from "../data/types";
 import { hasDriverSelection, isDriverSelected } from "../state";
+import { tyreAgeMark } from "./tyreMark";
 
 export type TowerCols = "basic" | "timing" | "strategy";
 
@@ -52,15 +53,7 @@ const COLS: Record<TowerCols, { label: string; cls: string }[]> = {
 };
 
 function tyreCell(row: TowerRow): HTMLElement {
-  const color = tyreColor(row.compound);
-  const letter = (row.compound ?? "?").slice(0, 1);
-  const node = el("span", { class: "tyre", text: letter });
-  node.style.color = color;
-  const wrap = el("span", { class: "code" }, [
-    node,
-    document.createTextNode(row.tyreAge != null ? String(row.tyreAge) : "—"),
-  ]);
-  return wrap;
+  return tyreAgeMark(row.compound, row.tyreAge);
 }
 
 export function posChangeBadge(row: TowerRow): HTMLElement | null {

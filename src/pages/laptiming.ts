@@ -14,6 +14,7 @@ import type { SectorKind } from "../data/types";
 import { teamColor, teamFill, tyreColor } from "../lib/colors";
 import { addClass, el } from "../lib/dom";
 import { formatDelta, formatLap, formatSector } from "../lib/time";
+import { tyreAgeMark } from "../ui/tyreMark";
 import {
   setLapTimingDrivers,
   setLapTimingView,
@@ -25,14 +26,6 @@ function kindClass(kind: SectorKind | undefined): string {
   if (kind === "personal") return "sec-green";
   if (kind === "yellow") return "sec-yellow";
   return "";
-}
-
-function tyreMark(compound: string | null, age: number | null): HTMLElement {
-  const letter = compoundLetter(compound ?? "?");
-  const node = el("span", { class: "tyre", text: letter });
-  node.style.color = tyreColor(compound);
-  const wrap = el("span", { class: "lt-tyre" }, [node, document.createTextNode(age != null ? String(age) : "—")]);
-  return wrap;
 }
 
 function viewLabel(view: LapTimingView): string {
@@ -261,7 +254,7 @@ function paintTable(model: LapTimingModel, wrap: HTMLElement, jumpLap: number | 
     : ["LAP TIME", "S1", "S2", "S3", "TYRE", "POS", ""];
   for (const _ of model.selected) {
     for (const label of one ? sub : ["LAP TIME", "S1", "S2", "S3", "TYRE", "POS"]) {
-      h2.append(el("th", { text: label }));
+      h2.append(el("th", { text: label, class: label === "TYRE" ? "lt-tyre-col" : undefined }));
     }
   }
   thead.append(h2);
@@ -299,8 +292,8 @@ function paintTable(model: LapTimingModel, wrap: HTMLElement, jumpLap: number | 
         add(cell.i2 != null ? String(Math.round(cell.i2)) : "—");
         add(cell.st != null ? String(Math.round(cell.st)) : "—");
       }
-      const tyreTd = el("td");
-      tyreTd.append(tyreMark(cell.tyre, cell.tyreAge));
+      const tyreTd = el("td", { class: "lt-tyre-col" });
+      tyreTd.append(tyreAgeMark(cell.tyre, cell.tyreAge));
       tr.append(tyreTd);
       add(cell.pos != null ? `P${cell.pos}` : "—");
       if (one) {

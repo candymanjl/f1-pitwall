@@ -334,6 +334,69 @@ test("single leader ANT in live mode paints chart and table without empty class 
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_ant_leader_live_table_1920.png" });
 });
 
+async function tyreIconLefts(page: Page, root = ".lt-table"): Promise<number[]> {
+  return page.locator(`${root} td.lt-tyre-col .tyre-age .tyre`).evaluateAll((icons) =>
+    icons.map((n) => Math.round((n as HTMLElement).getBoundingClientRect().left)),
+  );
+}
+
+test("TYRE icons stay in a vertical line for 1- and 2-digit ages", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/?e2e=1#laptiming");
+  await waitForApp(page);
+  await loadMexicoLapTiming(page);
+  await page.evaluate(() => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    api.setLapTimingDrivers([12]);
+    api.setLapTimingView("table");
+  });
+  await expect(page.locator(".lt-table-panel")).toBeVisible();
+  await expect.poll(async () => page.locator(".lt-table tbody tr").count()).toBeGreaterThan(5);
+  await expect.poll(async () => page.locator(".lt-table .tyre-age-n").count()).toBeGreaterThan(5);
+
+  const ages = await page.locator(".lt-table .tyre-age-n").evaluateAll((ns) => ns.map((n) => (n.textContent ?? "").trim()));
+  expect(ages.some((a) => a.length === 1)).toBeTruthy();
+  expect(ages.some((a) => a.length === 2)).toBeTruthy();
+
+  const singleLefts = await tyreIconLefts(page);
+  expect(new Set(singleLefts).size).toBe(1);
+  await page.locator(".lt-table-wrap").screenshot({
+    path: "/opt/cursor/artifacts/screenshots/laptiming_tyre_age_align_single.png",
+  });
+
+  await page.evaluate(() => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    api.setLapTimingDrivers([4, 16, 81]);
+  });
+  await expect(page.locator(".lt-table")).toContainText("Δ PIA−NOR");
+  await expect.poll(async () => page.locator(".lt-table th.lt-tyre-col").count()).toBe(3);
+
+  const compare = await page.locator(".lt-table tbody tr").first().locator("td.lt-tyre-col .tyre").evaluateAll((icons) =>
+    icons.map((n) => Math.round((n as HTMLElement).getBoundingClientRect().left)),
+  );
+  expect(compare.length).toBe(3);
+  const colLefts = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll(".lt-table tbody tr")];
+    const cols: number[][] = [[], [], []];
+    for (const row of rows) {
+      const icons = [...row.querySelectorAll("td.lt-tyre-col .tyre")];
+      icons.forEach((icon, i) => cols[i]?.push(Math.round((icon as HTMLElement).getBoundingClientRect().left)));
+    }
+    return cols.map((xs) => [...new Set(xs)]);
+  });
+  expect(colLefts.every((xs) => xs.length === 1)).toBeTruthy();
+
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_tyre_age_align_table.png" });
+  await page.evaluate(() => {
+    for (const cell of document.querySelectorAll(".lt-table .lt-tyre-col")) {
+      (cell as HTMLElement).style.outline = "1px solid #22d3ee";
+    }
+  });
+  await page.locator(".lt-table-wrap").screenshot({
+    path: "/opt/cursor/artifacts/screenshots/laptiming_tyre_age_align_closeup.png",
+  });
+});
+
 test("replay progress keeps the lap table filled", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/?e2e=1#laptiming");
