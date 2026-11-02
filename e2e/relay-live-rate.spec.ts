@@ -8,7 +8,16 @@ type Hooks = {
     followLive: boolean;
     playing: boolean;
     showLiveDebug: boolean;
-    liveDebug: { lastPollAt: number | null; added: Record<string, number>; lastError: string };
+    liveSource: string;
+    liveDebug: {
+      mode?: string;
+      lastPollAt: number | null;
+      added: Record<string, number>;
+      lastError: string;
+      topicRates?: Record<string, number>;
+      lastMessageAgeMs?: number | null;
+      tabRole?: string;
+    };
     snap: { leaderLap: number; scheduledLaps?: number | null; raceLaps: number } | null;
   };
   setClock: (t: number, source?: "scrub" | "code") => void;
@@ -112,10 +121,14 @@ async function loadMexicoLive(page: Page): Promise<void> {
         sessionKey: 99,
         liveSource: "poll",
         liveDebug: {
+          mode: "POLLING",
           lastPollAt: Date.parse("2026-11-01T20:57:04.000Z"),
           lastCycleMs: 880,
           added: { location: 12, position: 4, intervals: 4, laps: 0 },
           lastError: "ok",
+          topicRates: {},
+          lastMessageAgeMs: 4000,
+          tabRole: "leader",
         },
       });
       api.setClock(lap12, "code");
@@ -135,6 +148,7 @@ test("headline uses scheduled 71 laps and debug line reports poll rows", async (
 
   await page.evaluate(() => (window as unknown as { __f1pw: Hooks }).__f1pw.setShowLiveDebug(true));
   await expect(page.locator(".live-debug")).toBeVisible();
+  await expect(page.locator(".live-debug")).toContainText("POLLING");
   await expect(page.locator(".live-debug")).toContainText("location +12");
   await expect(page.locator(".live-debug")).toContainText("laps +0");
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/live_rate_debug_1920.png" });
@@ -151,4 +165,52 @@ test("headline uses scheduled 71 laps and debug line reports poll rows", async (
 
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/live_rate_debug_1366.png" });
+});
+
+test("debug line reports STREAM rates and a second-tab warning", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/?e2e=1#trackmap");
+  await waitForApp(page);
+  await loadMexicoLive(page);
+  await page.evaluate(() => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    api.state.liveSource = "mqtt";
+    api.state.liveDebug = {
+      mode: "STREAM",
+      lastPollAt: Date.parse("2026-11-01T20:57:04.000Z"),
+      added: {},
+      lastError: "ok",
+      topicRates: { "v1/location": 12.4, "v1/position": 2 },
+      lastMessageAgeMs: 400,
+      tabRole: "leader",
+    };
+    api.setShowLiveDebug(true);
+  });
+  await expect(page.locator(".live-debug")).toContainText("STREAM");
+  await expect(page.locator(".live-debug")).toContainText("v1/location 12.4/s");
+  await expect(page.locator(".live-debug")).toContainText("last 0.4s");
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/live_mqtt_stream_debug.png" });
+
+  await page.evaluate(() => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    api.state.liveDebug = {
+      ...api.state.liveDebug,
+      tabRole: "follower",
+    };
+    api.setShowLiveDebug(true);
+  });
+  await expect(page.locator(".live-tab-warn")).toBeVisible();
+  await expect(page.locator(".live-tab-warn")).toContainText("Another pitwall tab is already polling");
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/live_tab_warn.png" });
+});
+
+test("settings describe MQTT through the relay and REST fallback", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/?e2e=1&settings=1#trackmap");
+  await waitForApp(page);
+  await expect(page.locator(".modal")).toBeVisible();
+  await expect(page.locator(".modal")).toContainText("wss://mqtt.openf1.org:8084/mqtt");
+  await expect(page.locator(".modal")).toContainText("even when a relay is set");
+  await expect(page.locator(".modal")).toContainText("STREAM or POLLING");
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/settings_mqtt_relay.png" });
 });

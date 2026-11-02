@@ -92,6 +92,8 @@ export function boot(root: HTMLElement): void {
 
   const liveDebug = el("div", { class: "live-debug", role: "status" });
   liveDebug.hidden = true;
+  const tabWarn = el("div", { class: "live-tab-warn", role: "status" });
+  tabWarn.hidden = true;
   const banner = el("div", { class: "lock-banner", role: "status" });
   banner.hidden = true;
   const main = el("main");
@@ -101,7 +103,7 @@ export function boot(root: HTMLElement): void {
   const toast = el("div", { class: "toast" });
   toast.hidden = true;
 
-  root.append(top, nav, toolbar, liveDebug, banner, main, statusHost, overlay, toast);
+  root.append(top, nav, toolbar, liveDebug, tabWarn, banner, main, statusHost, overlay, toast);
   const statusApi = mountStatusBar(statusHost);
 
   let currentPage = "";
@@ -149,6 +151,11 @@ export function boot(root: HTMLElement): void {
     toast.textContent = state.error;
     liveDebug.hidden = !state.showLiveDebug;
     liveDebug.textContent = state.showLiveDebug ? formatLiveDebug(state.liveDebug) : "";
+    const otherTab = state.liveDebug.tabRole === "follower";
+    tabWarn.hidden = !otherTab;
+    tabWarn.textContent = otherTab
+      ? "Another pitwall tab is already polling OpenF1. This tab is idle so we stay under the rate limit."
+      : "";
     syncBanner(banner);
   };
 

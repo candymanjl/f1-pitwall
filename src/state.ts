@@ -615,7 +615,7 @@ export function syncLiveFeed(): void {
   const relay = Boolean(readRelayUrl());
   if (!relay && !auth.signedIn && auth.source !== "manual") return;
   liveHandle = startLiveFeed({
-    username: auth.username || "openf1",
+    username: auth.username || "pitwall",
     sessionKey: loadedSessionKey,
     cursors: seedLiveCursors(state.bundle),
     page: () => state.page,

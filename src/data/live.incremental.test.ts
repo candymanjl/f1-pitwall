@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { apiGet } = vi.hoisted(() => ({ apiGet: vi.fn() }));
-vi.mock("./client", () => ({ apiGet }));
+vi.mock("./client", () => ({ apiGet, parseRetryAfterMs: () => 4000 }));
 
 import { writeRelayUrl } from "../config";
 import { startLiveFeed } from "./live";
@@ -36,6 +36,8 @@ describe("relay incremental live poll", () => {
       username: "ada",
       sessionKey: () => 9877,
       cursors: { position: "2025-10-26T20:10:00.000Z" },
+      tabChannel: null,
+      getToken: async () => "",
       onMessage: (_topic, payload) => {
         if (Array.isArray(payload)) seen.push(...(payload as Array<{ date: string }>));
       },
@@ -68,6 +70,8 @@ describe("relay incremental live poll", () => {
     const handle = startLiveFeed({
       username: "ada",
       sessionKey: 1,
+      tabChannel: null,
+      getToken: async () => "",
       onMessage: () => {},
       onStatus: (source, detail) => statuses.push(`${source}:${detail ?? ""}`),
     });
@@ -94,6 +98,8 @@ describe("relay incremental live poll", () => {
     const handle = startLiveFeed({
       username: "ada",
       sessionKey: 1,
+      tabChannel: null,
+      getToken: async () => "",
       onMessage: () => {},
       onStatus: (source, detail) => statuses.push(`${source}:${detail ?? ""}`),
     });
@@ -125,6 +131,8 @@ describe("relay incremental live poll", () => {
       username: "ada",
       sessionKey: 1,
       cursors: { location: "2025-10-26T18:00:00.000Z" },
+      tabChannel: null,
+      getToken: async () => "",
       onMessage: () => {},
       onStatus: (source, detail) => statuses.push(`${source}:${detail ?? ""}`),
     });
