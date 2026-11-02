@@ -153,4 +153,99 @@ describe("Lap timing page", () => {
     expect(host.textContent).toMatch(/TRAP/);
     expect(host.querySelector(".lt-drv.lt-stripe")).toBeNull();
   });
+
+  it("paints the lap table on the first update without a view toggle", () => {
+    const start = Date.parse("2026-11-01T20:00:00.000Z");
+    const drivers = [
+      driver(16, "LEC", "Ferrari", "E8002D"),
+      driver(1, "VER", "Red Bull", "3671C6"),
+      driver(12, "ANT", "Mercedes", "27F4D2"),
+    ];
+    const bundle: SessionBundle = {
+      meeting: {
+        meeting_key: 1,
+        meeting_name: "Mexico City Grand Prix",
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        date_start: new Date(start).toISOString(),
+        year: 2026,
+      },
+      session: {
+        session_key: 99,
+        meeting_key: 1,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: new Date(start).toISOString(),
+        date_end: new Date(start + 90 * 60 * 1000).toISOString(),
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        year: 2026,
+      },
+      weekendSessions: [],
+      drivers,
+      laps: drivers.flatMap((d) =>
+        [1, 2, 3, 36].map((n) =>
+          lap({
+            driver_number: d.driver_number,
+            lap_number: n,
+            date_start: new Date(start + n * 80_000).toISOString(),
+            lap_duration: 79 + d.driver_number / 100,
+          }),
+        ),
+      ),
+      intervals: [],
+      positions: drivers.map((d, i) => ({
+        date: new Date(start).toISOString(),
+        driver_number: d.driver_number,
+        position: i + 1,
+      })),
+      stints: drivers.map((d) => ({
+        driver_number: d.driver_number,
+        stint_number: 1,
+        lap_start: 1,
+        lap_end: 36,
+        compound: "MEDIUM",
+        tyre_age_at_start: 0,
+      })),
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+    };
+    state.bundle = bundle;
+    state.t = start + 36 * 80_000;
+    state.snap = snapshotAt(bundle, state.t);
+    state.lapTimingDrivers = [];
+    state.lapTimingView = "both";
+    const host = document.createElement("div");
+    document.body.append(host);
+    const api = mountLapTiming(host);
+    api.update();
+    expect(host.querySelector(".lt-table tbody tr")).toBeTruthy();
+    expect(host.querySelectorAll(".lt-table tbody tr").length).toBe(4);
+    expect(host.querySelector(".lt-chip")?.textContent).toBe("LEC");
+    expect((host.querySelector(".lt-chart") as HTMLElement).hidden).toBe(false);
+    expect((host.querySelector(".lt-table-panel") as HTMLElement).hidden).toBe(false);
+
+    host.querySelector(".lt-table-wrap")!.replaceChildren();
+    expect(host.querySelector(".lt-table tbody tr")).toBeNull();
+    api.update();
+    expect(host.querySelectorAll(".lt-table tbody tr").length).toBe(4);
+
+    setLapTimingView("table");
+    api.update();
+    expect((host.querySelector(".lt-table-panel") as HTMLElement).hidden).toBe(false);
+    expect(host.querySelectorAll(".lt-table tbody tr").length).toBe(4);
+
+    setLapTimingDrivers([16, 1, 12]);
+    api.update();
+    expect(host.textContent).toMatch(/Δ VER−LEC/);
+    expect(host.textContent).toMatch(/Δ ANT−LEC/);
+    expect(host.querySelectorAll(".lt-table tbody tr").length).toBe(4);
+  });
 });

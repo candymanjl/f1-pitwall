@@ -6,7 +6,7 @@ import { PAGES } from "../data/types";
 import { el } from "../lib/dom";
 import { formatLiveDebug } from "../data/livePoll";
 import { formatReplayBadge, formatSessionHeadline } from "../lib/sessionHeadline";
-import { applyLoadingOverlay, shouldShowLoadingOverlay } from "./overlays";
+import { applyLoadingOverlay, loadSessionButtonBusy, loadSessionButtonText, shouldShowLoadingOverlay } from "./overlays";
 import { openSettings } from "./settings";
 import { mountFlagSheet } from "./flagIcon";
 import { mountStatusBar } from "./statusbar";
@@ -181,11 +181,12 @@ export function boot(root: HTMLElement): void {
     yearSel.disabled = state.listsBusy;
     meetSel.disabled = state.listsBusy;
     sessSel.disabled = state.listsBusy;
-    const loading = Boolean(state.loading);
-    loadBtn.disabled = loading || !state.sessionKey;
-    loadBtn.setAttribute("aria-busy", loading ? "true" : "false");
-    loadBtn.classList.toggle("pending", sessionPickerDirty() && !loading);
-    loadBtn.textContent = loading ? state.loading.replace(/OpenF1…$/, "…") || "Loading…" : "Load";
+    const hasBundle = Boolean(state.bundle);
+    const busy = loadSessionButtonBusy(state.loading, hasBundle, state.sessionKey);
+    loadBtn.disabled = busy;
+    loadBtn.setAttribute("aria-busy", busy ? "true" : "false");
+    loadBtn.classList.toggle("pending", sessionPickerDirty() && !busy);
+    loadBtn.textContent = loadSessionButtonText(state.loading, hasBundle);
   };
 
   const renderPage = () => {

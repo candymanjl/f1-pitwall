@@ -166,11 +166,11 @@ test.describe("deferred session Load button", () => {
 
       await page.evaluate(() => {
         const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
-        api.state.loading = "Loading timing…";
+        api.state.loading = "Loading session…";
         api.setClock(api.state.t);
       });
-      await expect(page.locator("#load-session")).toBeDisabled();
-      await expect(page.locator("#load-session")).toHaveText("Loading timing…");
+      await expect(page.locator("#load-session")).toHaveText("Load");
+      await expect(page.locator("#load-session")).toBeEnabled();
       await expect(page.locator(".overlay.is-visible")).toHaveCount(0);
       await page.screenshot({
         path: `/opt/cursor/artifacts/screenshots/deferred_load_progress_${size.name}.png`,

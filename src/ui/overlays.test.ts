@@ -2,7 +2,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { applyLoadingOverlay, closeAllModals, shouldShowLoadingOverlay } from "./overlays";
+import {
+  applyLoadingOverlay,
+  closeAllModals,
+  loadSessionButtonBusy,
+  loadSessionButtonText,
+  shouldShowLoadingOverlay,
+} from "./overlays";
 
 describe("shouldShowLoadingOverlay", () => {
   it("shows only while a fetch is in flight and the live lock is off", () => {
@@ -10,6 +16,18 @@ describe("shouldShowLoadingOverlay", () => {
     expect(shouldShowLoadingOverlay("Retrying OpenF1…", "live")).toBe(false);
     expect(shouldShowLoadingOverlay("", null)).toBe(false);
     expect(shouldShowLoadingOverlay("", "live")).toBe(false);
+  });
+});
+
+describe("loadSessionButtonText", () => {
+  it("clears Loading session… once a bundle is already on screen", () => {
+    expect(loadSessionButtonText("Loading session…", false)).toBe("Loading session…");
+    expect(loadSessionButtonText("Loading session…", true)).toBe("Load");
+    expect(loadSessionButtonText("Loading timing…", true)).toBe("Load");
+    expect(loadSessionButtonText("", true)).toBe("Load");
+    expect(loadSessionButtonBusy("Loading session…", true, 99)).toBe(false);
+    expect(loadSessionButtonBusy("Loading session…", false, 99)).toBe(true);
+    expect(loadSessionButtonBusy("", false, 0)).toBe(true);
   });
 });
 

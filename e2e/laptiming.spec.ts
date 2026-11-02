@@ -8,11 +8,13 @@ type Hooks = {
     mode: string;
     followLive: boolean;
     playing: boolean;
+    loading: string;
     lapTimingDrivers: number[];
     lapTimingView: string;
     sessionKey: number;
   };
   setClock: (t: number, source?: "scrub" | "code") => void;
+  setPlaying: (on: boolean) => void;
   setLapTimingDrivers: (ids: number[]) => void;
   setLapTimingView: (view: string) => void;
 };
@@ -34,6 +36,7 @@ async function loadMexicoLapTiming(page: Page): Promise<void> {
         { driver_number: 16, broadcast_name: "LEC", full_name: "Charles Leclerc", name_acronym: "LEC", team_name: "Ferrari", team_colour: "E8002D", first_name: "Charles", last_name: "Leclerc" },
         { driver_number: 81, broadcast_name: "PIA", full_name: "Oscar Piastri", name_acronym: "PIA", team_name: "McLaren", team_colour: "FF8000", first_name: "Oscar", last_name: "Piastri" },
         { driver_number: 1, broadcast_name: "VER", full_name: "Max Verstappen", name_acronym: "VER", team_name: "Red Bull", team_colour: "3671C6", first_name: "Max", last_name: "Verstappen" },
+        { driver_number: 12, broadcast_name: "ANT", full_name: "Kimi Antonelli", name_acronym: "ANT", team_name: "Mercedes", team_colour: "27F4D2", first_name: "Kimi", last_name: "Antonelli" },
         { driver_number: 44, broadcast_name: "HAM", full_name: "Lewis Hamilton", name_acronym: "HAM", team_name: "Ferrari", team_colour: "E8002D", first_name: "Lewis", last_name: "Hamilton" },
       ];
       const lapAt = (dn: number, n: number, dur: number, s1: number, s2: number, s3: number, extra: Record<string, unknown> = {}) => ({
@@ -57,10 +60,12 @@ async function loadMexicoLapTiming(page: Page): Promise<void> {
         4: [81.4, 80.2, 79.95, 79.81, 79.7, 79.65, 79.62, 79.58, 79.55, 79.51, 79.48, 79.2, 110.2, 108.4, 80.9, 79.4],
         16: [81.6, 80.1, 79.99, 79.84, 79.72, 79.68, 79.6, 79.57, 79.52, 79.5, 79.47, 79.31, 109.8, 107.9, 81.1, 79.5],
         81: [81.5, 80.3, 80.05, 79.9, 79.8, 79.74, 79.7, 79.66, 79.61, 79.55, 79.5, 79.28, 110.5, 108.1, 81.0, 79.45],
+        1: [81.7, 80.15, 79.9, 79.8, 79.68, 79.6, 79.55, 79.5, 79.46, 79.42, 79.4, 79.1, 111.0, 108.8, 80.7, 79.35],
+        12: [81.8, 80.4, 80.1, 79.95, 79.85, 79.78, 79.72, 79.68, 79.63, 79.58, 79.52, 79.33, 110.8, 108.6, 81.2, 79.55],
       };
       const laps = [];
       const nums = [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36];
-      for (const dn of [4, 16, 81]) {
+      for (const dn of [4, 16, 81, 1, 12]) {
         times[dn].forEach((dur, i) => {
           const n = nums[i];
           const s1 = 21.8 + (dur - 79.2) * 0.15;
@@ -75,6 +80,9 @@ async function loadMexicoLapTiming(page: Page): Promise<void> {
         { driver_number: 16, stint_number: 1, lap_start: 1, lap_end: 29, compound: "HARD", tyre_age_at_start: 0 },
         { driver_number: 81, stint_number: 1, lap_start: 1, lap_end: 22, compound: "MEDIUM", tyre_age_at_start: 0 },
         { driver_number: 81, stint_number: 2, lap_start: 23, lap_end: 71, compound: "HARD", tyre_age_at_start: 0 },
+        { driver_number: 1, stint_number: 1, lap_start: 1, lap_end: 71, compound: "HARD", tyre_age_at_start: 0 },
+        { driver_number: 12, stint_number: 1, lap_start: 1, lap_end: 28, compound: "MEDIUM", tyre_age_at_start: 0 },
+        { driver_number: 12, stint_number: 2, lap_start: 29, lap_end: 71, compound: "HARD", tyre_age_at_start: 0 },
       ];
       const bundle = {
         meeting: {
@@ -147,7 +155,8 @@ async function loadMexicoLapTiming(page: Page): Promise<void> {
         year: 2026,
         meetingKey: 1,
       });
-      api.setLapTimingDrivers([4, 16, 81]);
+      api.state.loading = "";
+      api.setLapTimingDrivers([16, 1, 12]);
       api.setLapTimingView("both");
       api.setClock(end, "code");
     },
@@ -155,11 +164,26 @@ async function loadMexicoLapTiming(page: Page): Promise<void> {
   );
 }
 
+async function expectTablePopulated(page: Page, names: string[]): Promise<void> {
+  await expect.poll(async () => page.locator(".lt-table tbody tr").count()).toBeGreaterThan(5);
+  await expect
+    .poll(async () => page.locator(".lt-table-wrap").evaluate((el) => (el as HTMLElement).clientHeight))
+    .toBeGreaterThan(80);
+  await expect(page.locator(".lt-table")).toBeVisible();
+  for (const name of names) await expect(page.locator(".lt-table")).toContainText(name);
+  await expect(page.locator(".lt-svg")).toHaveAttribute("viewBox", /0 0 \d+ \d+/);
+  await expect(page.locator("#load-session")).toHaveText("Load");
+}
+
 test("lap timing three views and teammate stripe on Mexico 2026 replay", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/?e2e=1#laptiming");
   await waitForApp(page);
   await loadMexicoLapTiming(page);
+  await page.evaluate(() => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    api.setLapTimingDrivers([4, 16, 81]);
+  });
 
   await expect(page.locator("nav button[data-page='laptiming']")).toHaveClass(/active/);
   await expect(page.locator(".lt-drv.lt-stripe")).toContainText("PIA");
@@ -169,6 +193,7 @@ test("lap timing three views and teammate stripe on Mexico 2026 replay", async (
   await expect(page.locator(".lt-chart")).toBeVisible();
   await expect(page.locator(".lt-table")).toBeVisible();
   await expect(page.locator(".lt-table")).toContainText("Δ PIA−NOR");
+  await expectTablePopulated(page, ["NOR", "LEC", "PIA"]);
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_both_teammates_1920.png" });
 
   await page.locator(".lt-views button[data-view='chart']").click();
@@ -180,5 +205,62 @@ test("lap timing three views and teammate stripe on Mexico 2026 replay", async (
   await expect(page.locator(".lt-table-panel")).toBeVisible();
   await expect(page.locator(".lt-chart")).toBeHidden();
   await expect(page.locator(".lt-table")).toContainText("SC");
+  await expect.poll(async () => page.locator(".lt-table tbody tr").count()).toBeGreaterThan(5);
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_table_1920.png" });
+});
+
+test("CHART + TABLE paints laps on first load without toggling views", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/?e2e=1#laptiming");
+  await waitForApp(page);
+  await loadMexicoLapTiming(page);
+  await expect(page.locator(".lt-views button.on")).toContainText("CHART + TABLE");
+  await expect(page.locator(".lt-chart")).toBeVisible();
+  await expectTablePopulated(page, ["LEC", "VER", "ANT", "Δ VER−LEC", "Δ ANT−LEC"]);
+  await expect.poll(async () => page.locator(".lt-svg rect").count()).toBeGreaterThan(10);
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_first_load_table_1920.png" });
+});
+
+test("TABLE-only view has rows without visiting CHART first", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/?e2e=1#laptiming");
+  await waitForApp(page);
+  await loadMexicoLapTiming(page);
+  await page.evaluate(() => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    api.setLapTimingView("table");
+  });
+  await expect(page.locator(".lt-chart")).toBeHidden();
+  await expect(page.locator(".lt-table-panel")).toBeVisible();
+  await expectTablePopulated(page, ["LEC", "VER", "ANT"]);
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_table_only_first_1920.png" });
+});
+
+test("navigating from Track map paints lap table on first show", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/?e2e=1#trackmap");
+  await waitForApp(page);
+  await loadMexicoLapTiming(page);
+  await expect(page.locator("nav button[data-page='trackmap']")).toHaveClass(/active/);
+  await page.locator("nav button[data-page='laptiming']").click();
+  await expect(page.locator("nav button[data-page='laptiming']")).toHaveClass(/active/);
+  await expectTablePopulated(page, ["LEC", "VER", "ANT"]);
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_from_trackmap_1920.png" });
+});
+
+test("replay progress keeps the lap table filled", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/?e2e=1#laptiming");
+  await waitForApp(page);
+  await loadMexicoLapTiming(page);
+  await page.evaluate(() => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    api.state.loading = "Loading session…";
+    api.setPlaying(true);
+    api.setClock(api.state.start + 20 * 82_000, "code");
+  });
+  await expect(page.locator("#load-session")).toHaveText("Load");
+  await expectTablePopulated(page, ["LEC", "VER", "ANT"]);
+  await expect(page.locator(".lt-chart")).toBeVisible();
+  await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_replay_running_1920.png" });
 });
