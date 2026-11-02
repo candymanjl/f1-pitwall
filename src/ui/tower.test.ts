@@ -86,6 +86,21 @@ describe("renderTower", () => {
     expect(delta?.textContent).toBe("+0.222");
     expect(delta?.querySelector(".slower")).not.toBeNull();
     expect(table.querySelector("td.c-pits")?.textContent).toBe("1");
+    const tyre = table.querySelector("td.c-tyre .tyre-age");
+    expect(tyre?.querySelector(".tyre")?.textContent).toBe("S");
+    expect(tyre?.querySelector(".tyre-age-n")?.textContent).toBe("8");
+  });
+
+  it("keeps tyre icons on a fixed slot for 1- and 2-digit ages", () => {
+    const table = renderTower(
+      [row(1, "VER", 1, { tyreAge: 4 }), row(44, "HAM", 2, { compound: "HARD", tyreAge: 12 })],
+      { cols: "basic" },
+    );
+    const marks = [...table.querySelectorAll("td.c-tyre .tyre-age")];
+    expect(marks).toHaveLength(2);
+    expect(marks[0].querySelector(".tyre-age-n")?.textContent).toBe("4");
+    expect(marks[1].querySelector(".tyre-age-n")?.textContent).toBe("12");
+    expect(marks.every((m) => m.querySelector(".tyre"))).toBe(true);
   });
 
   it("puts the previous-lap delta between Last and Best on the basic tower", () => {
