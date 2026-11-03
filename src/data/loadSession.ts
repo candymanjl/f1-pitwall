@@ -5,6 +5,7 @@ import { isLiveLock } from "./errors";
 import { snapshotAt } from "./derive";
 import { isRaceOrSprint } from "./grid";
 import { loadDriverLocations } from "./carLocation";
+import { createFetchTracker, trackJob, type FetchProgress } from "./loadProgress";
 import { detectPitLane, DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT, pickPitForTrace } from "./pitlane";
 import {
   buildOutline,
@@ -80,11 +81,14 @@ async function loadTrack(
 
 export type LoadProgress = "timing" | "outline" | "map" | "weekend";
 
+export type { FetchProgress };
+
 export type LoadBundleOpts = {
   meeting?: Meeting | null;
   weekendSessions?: Session[] | null;
   page?: PageId;
   onProgress?: (phase: LoadProgress, bundle: SessionBundle) => void;
+  onFetch?: (progress: FetchProgress) => void;
 };
 
 function emptyBundle(meeting: Meeting, session: Session, weekendSessions: Session[]): SessionBundle {
@@ -111,7 +115,12 @@ function emptyBundle(meeting: Meeting, session: Session, weekendSessions: Sessio
   };
 }
 
-async function loadWeekendStints(weekendSessions: Session[], sessionKey: number, current: Stint[]): Promise<Stint[]> {
+async function loadWeekendStints(
+  weekendSessions: Session[],
+  sessionKey: number,
+  current: Stint[],
+  onSession?: (session: Session) => void,
+): Promise<Stint[]> {
   const extras = await Promise.all(
     weekendSessions
       .filter((s) => s.session_key !== sessionKey)
@@ -122,6 +131,8 @@ async function loadWeekendStints(weekendSessions: Session[], sessionKey: number,
         } catch (err) {
           if (isLiveLock(err)) throw err;
           return [] as Stint[];
+        } finally {
+          onSession?.(s);
         }
       }),
   );
@@ -129,8 +140,11 @@ async function loadWeekendStints(weekendSessions: Session[], sessionKey: number,
 }
 
 export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}): Promise<SessionBundle> {
+  const tracker = createFetchTracker(opts.onFetch);
   const cached = cachedSession(opts.weekendSessions ?? undefined, sessionKey);
-  const session = cached ?? (await apiGet<Session[]>("sessions", { session_key: sessionKey }))[0];
+  const session = cached
+    ? cached
+    : (await trackJob(tracker, "session", apiGet<Session[]>("sessions", { session_key: sessionKey })))[0];
   if (!session) throw new Error("Session not found");
 
   const knownMeeting = cachedMeeting(opts.meeting ? [opts.meeting] : undefined, session.meeting_key);
@@ -146,28 +160,40 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
     await Promise.all([
       knownMeeting
         ? Promise.resolve(knownMeeting)
-        : apiGet<Meeting[]>("meetings", { meeting_key: session.meeting_key }).then((rows) => rows[0]),
+        : trackJob(
+            tracker,
+            "meetings",
+            apiGet<Meeting[]>("meetings", { meeting_key: session.meeting_key }).then((rows) => rows[0]),
+          ),
       weekendKnown
         ? Promise.resolve(weekendKnown)
-        : apiGet<Session[]>("sessions", { meeting_key: session.meeting_key }),
-      apiGet<Driver[]>("drivers", { session_key: sessionKey }),
-      apiGet<Lap[]>("laps", { session_key: sessionKey }),
-      apiGet<Stint[]>("stints", { session_key: sessionKey }),
-      apiGet<Pit[]>("pit", { session_key: sessionKey }),
-      apiGet<Weather[]>("weather", { session_key: sessionKey }),
-      apiGet<RaceControl[]>("race_control", { session_key: sessionKey }),
-      apiGet<Position[]>("position", { session_key: sessionKey }),
+        : trackJob(tracker, "sessions", apiGet<Session[]>("sessions", { meeting_key: session.meeting_key })),
+      trackJob(tracker, "drivers", apiGet<Driver[]>("drivers", { session_key: sessionKey })),
+      trackJob(tracker, "laps", apiGet<Lap[]>("laps", { session_key: sessionKey })),
+      trackJob(tracker, "stints", apiGet<Stint[]>("stints", { session_key: sessionKey })),
+      trackJob(tracker, "pit", apiGet<Pit[]>("pit", { session_key: sessionKey })),
+      trackJob(tracker, "weather", apiGet<Weather[]>("weather", { session_key: sessionKey })),
+      trackJob(tracker, "race control", apiGet<RaceControl[]>("race_control", { session_key: sessionKey })),
+      trackJob(tracker, "position", apiGet<Position[]>("position", { session_key: sessionKey })),
       raceLike
-        ? apiGet<Interval[]>("intervals", { session_key: sessionKey }).catch((err) => {
-            if (isLiveLock(err)) throw err;
-            return [] as Interval[];
-          })
+        ? trackJob(
+            tracker,
+            "intervals",
+            apiGet<Interval[]>("intervals", { session_key: sessionKey }).catch((err) => {
+              if (isLiveLock(err)) throw err;
+              return [] as Interval[];
+            }),
+          )
         : Promise.resolve([] as Interval[]),
       isRaceOrSprint(session)
-        ? apiGet<StartingGrid[]>("starting_grid", { session_key: sessionKey }).catch((err) => {
-            if (isLiveLock(err)) throw err;
-            return [] as StartingGrid[];
-          })
+        ? trackJob(
+            tracker,
+            "starting grid",
+            apiGet<StartingGrid[]>("starting_grid", { session_key: sessionKey }).catch((err) => {
+              if (isLiveLock(err)) throw err;
+              return [] as StartingGrid[];
+            }),
+          )
         : Promise.resolve([] as StartingGrid[]),
     ]);
 
@@ -194,23 +220,33 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
   };
   opts.onProgress?.("timing", bundle);
 
-  const locP = loadDriverLocations(sessionKey, sortedDrivers, session.date_start, session.date_end).catch((err) => {
+  if (sortedDrivers.length) tracker.add(sortedDrivers.length);
+  const locP = loadDriverLocations(sessionKey, sortedDrivers, session.date_start, session.date_end, (d) => {
+    tracker.mark(`location · ${d.name_acronym || d.driver_number}`);
+  }).catch((err) => {
     if (isLiveLock(err)) throw err;
     return [] as LocationSample[];
   });
   /** Outline fetch starts with timing data — never waits for the Track map tab, pit marks, or all-driver GPS. */
   const trackP = (async () => {
-    const loaded = await loadTrack(sessionKey, laps, sortedDrivers);
+    const loaded = await trackJob(tracker, "track outline", loadTrack(sessionKey, laps, sortedDrivers));
     const track = loaded.track;
     const corners = detectCorners(track);
     const sectorFracs = loaded.sectorFracs ?? bundle.sectorFracs;
     bundle = { ...bundle, track, corners, sectorFracs };
     opts.onProgress?.("outline", bundle);
-    const pitMarks = await loadPitMarks(sessionKey, track, pits);
+    const wantsPit = Boolean(pickPitForTrace(pits) && track.length >= 2);
+    const pitMarks = wantsPit
+      ? await trackJob(tracker, "pit lane", loadPitMarks(sessionKey, track, pits))
+      : await loadPitMarks(sessionKey, track, pits);
     bundle = { ...bundle, pitEntry: pitMarks.entry, pitExit: pitMarks.exit };
     return { track, corners, pitMarks, sectorFracs };
   })();
-  const stintP = loadWeekendStints(sortedWeekend, sessionKey, stints);
+  const extraSessions = sortedWeekend.filter((s) => s.session_key !== sessionKey);
+  if (extraSessions.length) tracker.add(extraSessions.length);
+  const stintP = loadWeekendStints(sortedWeekend, sessionKey, stints, (s) => {
+    tracker.mark(`stints · ${s.session_name}`);
+  });
 
   const applyMap = async () => {
     const [locations, trackBits] = await Promise.all([locP, trackP]);
