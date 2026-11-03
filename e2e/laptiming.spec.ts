@@ -406,10 +406,13 @@ test("replay progress keeps the lap table filled", async ({ page }) => {
     const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
     api.state.loading = "Loading session…";
     api.setPlaying(true);
-    api.setClock(api.state.start + 20 * 82_000, "code");
+    api.setClock(api.state.start + 32 * 82_000, "code");
   });
   await expect(page.locator("#load-session")).toHaveText("Loading session…");
-  await expectTablePopulated(page, ["LEC", "VER", "ANT"]);
+  await expect.poll(async () => page.locator(".lt-table tbody tr").count()).toBeGreaterThan(5);
+  await expect(page.locator(".lt-table")).toContainText("LEC");
+  await expect(page.locator(".lt-table")).toContainText("VER");
+  await expect(page.locator(".lt-table")).toContainText("ANT");
   await expect(page.locator(".lt-chart")).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_replay_running_1920.png" });
 });

@@ -426,4 +426,118 @@ describe("Lap timing page", () => {
     clickCode("LEC");
     expect(state.lapTimingDrivers).toEqual([4, 1]);
   });
+
+  it("paints a mid-S2 in-progress lap with S1 filled and later fields blank", () => {
+    const start = Date.parse("2026-10-25T20:00:00.000Z");
+    const lap10 = start + 18 * 60_000 + 47_000;
+    const now = start + 19 * 60_000 + 27_000;
+    const ant = driver(12, "ANT", "Mercedes", "27F4D2");
+    const nor = driver(4, "NOR", "McLaren", "FF8000");
+    const bundle: SessionBundle = {
+      meeting: {
+        meeting_key: 1295,
+        meeting_name: "United States Grand Prix",
+        circuit_short_name: "Austin",
+        country_name: "United States",
+        location: "Austin",
+        date_start: new Date(start).toISOString(),
+        year: 2026,
+      },
+      session: {
+        session_key: 11400,
+        meeting_key: 1295,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: new Date(start).toISOString(),
+        date_end: new Date(start + 90 * 60_000).toISOString(),
+        circuit_short_name: "Austin",
+        country_name: "United States",
+        location: "Austin",
+        year: 2026,
+      },
+      weekendSessions: [],
+      drivers: [ant, nor],
+      laps: [
+        lap({
+          driver_number: 12,
+          lap_number: 9,
+          date_start: new Date(lap10 - 96_000).toISOString(),
+          lap_duration: 96,
+          duration_sector_1: 25.1,
+          duration_sector_2: 38.4,
+          duration_sector_3: 32.5,
+          i1_speed: 275,
+          i2_speed: 305,
+          st_speed: 328,
+        }),
+        lap({
+          driver_number: 12,
+          lap_number: 10,
+          date_start: new Date(lap10).toISOString(),
+          lap_duration: 96.2,
+          duration_sector_1: 25.112,
+          duration_sector_2: 38.4,
+          duration_sector_3: 32.7,
+          i1_speed: 278,
+          i2_speed: 310,
+          st_speed: 331,
+        }),
+        lap({
+          driver_number: 4,
+          lap_number: 10,
+          date_start: new Date(lap10 + 500).toISOString(),
+          lap_duration: 96.4,
+          duration_sector_1: 25.401,
+          duration_sector_2: 38.6,
+          duration_sector_3: 32.4,
+        }),
+      ],
+      intervals: [],
+      positions: [
+        { date: new Date(start).toISOString(), driver_number: 12, position: 1 },
+        { date: new Date(start).toISOString(), driver_number: 4, position: 2 },
+      ],
+      stints: [
+        { driver_number: 12, stint_number: 1, lap_start: 1, lap_end: 56, compound: "MEDIUM", tyre_age_at_start: 0 },
+        { driver_number: 4, stint_number: 1, lap_start: 1, lap_end: 56, compound: "HARD", tyre_age_at_start: 0 },
+      ],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+    };
+    state.bundle = bundle;
+    state.mode = "historical";
+    state.t = now;
+    state.snap = snapshotAt(bundle, now);
+    state.lapTimingDrivers = [12];
+    state.lapTimingView = "table";
+    const host = document.createElement("div");
+    document.body.append(host);
+    const api = mountLapTiming(host);
+    api.update();
+    const row = host.querySelector("tr[data-lt-lap='10']") as HTMLElement;
+    expect(row).toBeTruthy();
+    expect(row.classList.contains("lt-progress")).toBe(true);
+    const col = (name: string) => row.querySelector(`[data-lt-col='${name}']`)?.textContent?.trim();
+    expect(col("time")).toBe("…");
+    expect(col("s1")).toBe("25.112");
+    expect(col("s2")).toBe("—");
+    expect(col("s3")).toBe("—");
+    expect(col("i1")).toBe("278");
+    expect(col("i2")).toBe("—");
+    expect(col("st")).toBe("—");
+
+    setLapTimingDrivers([12, 4]);
+    api.update();
+    const compare = host.querySelector("tr[data-lt-lap='10']") as HTMLElement;
+    const cells = [...compare.querySelectorAll("td[data-lt-col]")].map((n) => n.textContent?.trim());
+    expect(cells.filter((t) => t === "…").length).toBe(2);
+    expect(cells).toContain("25.112");
+    expect(cells).toContain("25.401");
+    expect(cells.filter((t) => t === "—").length).toBe(4);
+  });
 });

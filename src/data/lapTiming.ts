@@ -1,5 +1,5 @@
 import { latestBefore, parseTs } from "../lib/time";
-import { safetyCarBands } from "./derive";
+import { safetyCarBands, visibleLapTiming } from "./derive";
 import type {
   Driver,
   Interval,
@@ -93,9 +93,8 @@ export function lapEndMs(lap: Lap): number {
   return start;
 }
 
-function completed(lap: Lap, until: number, replayAll: boolean): boolean {
+function completed(lap: Lap, until: number): boolean {
   if (lap.lap_duration == null || !Number.isFinite(lap.lap_duration) || lap.lap_duration <= 0) return false;
-  if (replayAll) return true;
   const end = lapEndMs(lap);
   return Number.isFinite(end) && end <= until;
 }
@@ -271,7 +270,6 @@ export function buildLapTimingModel(opts: {
     };
   });
 
-  const replayAll = !opts.live;
   const until = opts.now;
   const bands = opts.snap?.scBands ?? safetyCarBands(bundle.raceControl, parseTs(bundle.session.date_end));
   const flags = yellowFlagLaps(bundle.raceControl);
@@ -298,12 +296,17 @@ export function buildLapTimingModel(opts: {
 
   for (const id of selectedIds) {
     const laps = driverLaps.get(id) ?? [];
-    const done = laps.filter((l) => completed(l, until, replayAll));
+    const revealed = laps
+      .filter((l) => {
+        const start = parseTs(l.date_start);
+        return Number.isFinite(start) && start <= until;
+      })
+      .map((l) => visibleLapTiming(l, until));
     personal.set(id, {
-      lap: minOf(done.map((l) => l.lap_duration)),
-      s1: minOf(done.map((l) => l.duration_sector_1)),
-      s2: minOf(done.map((l) => l.duration_sector_2)),
-      s3: minOf(done.map((l) => l.duration_sector_3)),
+      lap: minOf(revealed.map((v) => v.time)),
+      s1: minOf(revealed.map((v) => v.s1)),
+      s2: minOf(revealed.map((v) => v.s2)),
+      s3: minOf(revealed.map((v) => v.s3)),
     });
   }
   const overall = {
@@ -325,14 +328,9 @@ export function buildLapTimingModel(opts: {
     let topSpeedLap: number | null = null;
 
     for (const lap of laps) {
-      const isDone = completed(lap, until, replayAll);
+      const isDone = completed(lap, until);
       const start = parseTs(lap.date_start);
-      const inProgress =
-        opts.live &&
-        !isDone &&
-        Number.isFinite(start) &&
-        start <= until &&
-        (lap.lap_duration == null || start + (lap.lap_duration || 0) * 1000 > until);
+      const inProgress = !isDone && Number.isFinite(start) && start <= until;
       if (!isDone && !inProgress) continue;
       maxLap = Math.max(maxLap, lap.lap_number);
       if (inProgress) inProgressLap = Math.max(inProgressLap ?? 0, lap.lap_number);
@@ -358,12 +356,13 @@ export function buildLapTimingModel(opts: {
           )
         : null;
       const tyre = tyreAtLap(stintSpans, lap.lap_number);
-      const time = isDone ? lap.lap_duration : null;
-      const s1 = isDone || lap.duration_sector_1 != null ? lap.duration_sector_1 : null;
-      const s2 = isDone || lap.duration_sector_2 != null ? lap.duration_sector_2 : null;
-      const s3 = isDone ? lap.duration_sector_3 : inProgress ? lap.duration_sector_3 : null;
+      const vis = visibleLapTiming(lap, until);
+      const time = vis.time;
+      const s1 = vis.s1;
+      const s2 = vis.s2;
+      const s3 = vis.s3;
       if (isDone && time != null && !pitIn && !pitOut && !sc && !vsc) cleanTimes.push(time);
-      const st = lap.st_speed;
+      const st = vis.st;
       if (st != null && (topSpeed == null || st > topSpeed)) {
         topSpeed = st;
         topSpeedLap = lap.lap_number;
@@ -384,9 +383,9 @@ export function buildLapTimingModel(opts: {
         tyre: tyre.compound,
         tyreAge: tyre.age,
         pos: posEvt?.position ?? null,
-        i1: lap.i1_speed,
-        i2: lap.i2_speed,
-        st: lap.st_speed,
+        i1: vis.i1,
+        i2: vis.i2,
+        st,
         gap: intEvt?.gap_to_leader ?? null,
         interval: intEvt?.interval ?? null,
         deltaBest: time != null && pb.lap != null ? time - pb.lap : null,

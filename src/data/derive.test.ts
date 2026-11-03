@@ -166,9 +166,9 @@ describe("visibleLapTiming", () => {
     segments_sector_1: [2049, 2049],
     segments_sector_2: [2048, 2048],
     segments_sector_3: [2051, 2051],
-    i1_speed: null,
-    i2_speed: null,
-    st_speed: null,
+    i1_speed: 280,
+    i2_speed: 300,
+    st_speed: 330,
   };
   const start = parseTs(lap.date_start);
 
@@ -177,14 +177,23 @@ describe("visibleLapTiming", () => {
     expect(vis.s1).toBeNull();
     expect(vis.s2).toBeNull();
     expect(vis.s3).toBeNull();
+    expect(vis.time).toBeNull();
+    expect(vis.i1).toBeNull();
+    expect(vis.i2).toBeNull();
+    expect(vis.st).toBeNull();
+    expect(vis.lapDone).toBe(false);
     expect(vis.segments).toEqual([]);
   });
 
-  it("reveals S1 and its mini-sectors only after sector 1 completes", () => {
+  it("reveals S1 and I1 only after sector 1 completes", () => {
     const vis = visibleLapTiming(lap, start + 30_000);
     expect(vis.s1).toBe(30);
     expect(vis.s2).toBeNull();
     expect(vis.s3).toBeNull();
+    expect(vis.time).toBeNull();
+    expect(vis.i1).toBe(280);
+    expect(vis.i2).toBeNull();
+    expect(vis.st).toBeNull();
     expect(vis.segments).toEqual([2049, 2049]);
   });
 
@@ -211,7 +220,34 @@ describe("visibleLapTiming", () => {
     expect(midS3.segments).toEqual([2049, 2049, 2048, 2048]);
     const done = visibleLapTiming(lap, start + 90_000);
     expect(done.s3).toBe(30);
+    expect(done.time).toBe(90);
+    expect(done.st).toBe(330);
+    expect(done.lapDone).toBe(true);
     expect(done.segments).toEqual([2049, 2049, 2048, 2048, 2051, 2051]);
+  });
+
+  it("does not put unrevealed in-progress sectors on the best-sectors footer", () => {
+    const prev: Lap = {
+      ...lap,
+      lap_number: 4,
+      date_start: "2025-10-26T20:03:00.000Z",
+      lap_duration: 90,
+      duration_sector_1: 31,
+      duration_sector_2: 40,
+      duration_sector_3: 31,
+    };
+    const snap = snapshotAt(
+      bundle({
+        laps: [prev, lap],
+        drivers: [driver(1, "AAA")],
+      }),
+      parseTs(lap.date_start) + 45_000,
+    );
+    expect(snap.rows[0].s1).toBe(30);
+    expect(snap.rows[0].s2).toBeNull();
+    expect(snap.bestSectors.s1?.time).toBe(31);
+    expect(snap.bestSectors.s2?.time).toBe(40);
+    expect(snap.bestSectors.s3?.time).toBe(31);
   });
 });
 
