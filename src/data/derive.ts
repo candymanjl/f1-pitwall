@@ -31,16 +31,33 @@ function nums(values: Array<number | null> | null | undefined): number[] {
   return (values ?? []).filter((v): v is number => v != null);
 }
 
-/** Sector times and mini-sectors that have actually elapsed by `now`. */
+const HIDDEN_LAP = {
+  s1: null as number | null,
+  s2: null as number | null,
+  s3: null as number | null,
+  time: null as number | null,
+  i1: null as number | null,
+  i2: null as number | null,
+  st: null as number | null,
+  lapDone: false,
+  segments: [] as number[],
+};
+
+/** Sector times, speeds, and mini-sectors that have actually elapsed by `now`. */
 export function visibleLapTiming(lap: Lap | null, now: number): {
   s1: number | null;
   s2: number | null;
   s3: number | null;
+  time: number | null;
+  i1: number | null;
+  i2: number | null;
+  st: number | null;
+  lapDone: boolean;
   segments: number[];
 } {
-  if (!lap) return { s1: null, s2: null, s3: null, segments: [] };
+  if (!lap) return { ...HIDDEN_LAP, segments: [] };
   const start = parseTs(lap.date_start);
-  if (!Number.isFinite(start)) return { s1: null, s2: null, s3: null, segments: [] };
+  if (!Number.isFinite(start)) return { ...HIDDEN_LAP, segments: [] };
   const s1 = lap.duration_sector_1;
   const s2 = lap.duration_sector_2;
   const s3 = lap.duration_sector_3;
@@ -53,9 +70,15 @@ export function visibleLapTiming(lap: Lap | null, now: number): {
   if (s2Done) segments.push(...nums(lap.segments_sector_2));
   if (s3Done) segments.push(...nums(lap.segments_sector_3));
   return {
-    s1: s1Done ? s1 : null,
-    s2: s2Done ? s2 : null,
-    s3: s3Done ? s3 : null,
+    s1: s1Done ? s1 ?? null : null,
+    s2: s2Done ? s2 ?? null : null,
+    s3: s3Done ? s3 ?? null : null,
+    time: lapDone ? lap.lap_duration : null,
+    i1: s1Done ? lap.i1_speed : null,
+    i2: s2Done ? lap.i2_speed : null,
+    // OpenF1 has no trap-marker fraction, so ST appears with the lap time.
+    st: lapDone ? lap.st_speed : null,
+    lapDone,
     segments,
   };
 }

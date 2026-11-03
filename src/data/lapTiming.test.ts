@@ -206,7 +206,118 @@ describe("buildLapTimingModel", () => {
     expect(model.laps).toEqual([1, 2]);
     expect(model.cells.get(4)?.get(2)?.inProgress).toBe(true);
     expect(model.cells.get(4)?.get(2)?.s1).toBe(21.9);
+    expect(model.cells.get(4)?.get(2)?.s2).toBeNull();
+    expect(model.cells.get(4)?.get(2)?.s3).toBeNull();
+    expect(model.cells.get(4)?.get(2)?.time).toBeNull();
+    expect(model.cells.get(4)?.get(2)?.i1).toBe(280);
+    expect(model.cells.get(4)?.get(2)?.i2).toBeNull();
+    expect(model.cells.get(4)?.get(2)?.st).toBeNull();
     expect(model.inProgressLap).toBe(2);
+  });
+
+  it("reveals S1 only while the replay clock is mid S2, including historical", () => {
+    const start = Date.parse("2026-10-25T20:00:00.000Z");
+    const lap10 = start + 18 * 60_000 + 47_000;
+    const now = start + 19 * 60_000 + 27_000;
+    const b = bundle({
+      meeting: {
+        meeting_key: 1295,
+        meeting_name: "United States Grand Prix",
+        circuit_short_name: "Austin",
+        country_name: "United States",
+        location: "Austin",
+        date_start: new Date(start).toISOString(),
+        year: 2026,
+      },
+      session: {
+        session_key: 11400,
+        meeting_key: 1295,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: new Date(start).toISOString(),
+        date_end: new Date(start + 90 * 60_000).toISOString(),
+        circuit_short_name: "Austin",
+        country_name: "United States",
+        location: "Austin",
+        year: 2026,
+      },
+      drivers: [driver(12, "ANT", "Mercedes", "27F4D2"), driver(4, "NOR", "McLaren", "FF8000")],
+      laps: [
+        lap({
+          driver_number: 12,
+          lap_number: 9,
+          date_start: new Date(lap10 - 96_000).toISOString(),
+          lap_duration: 96,
+          duration_sector_1: 25.1,
+          duration_sector_2: 38.4,
+          duration_sector_3: 32.5,
+          i1_speed: 275,
+          i2_speed: 305,
+          st_speed: 328,
+        }),
+        lap({
+          driver_number: 12,
+          lap_number: 10,
+          date_start: new Date(lap10).toISOString(),
+          lap_duration: 96.2,
+          duration_sector_1: 25.1,
+          duration_sector_2: 38.4,
+          duration_sector_3: 32.7,
+          i1_speed: 278,
+          i2_speed: 310,
+          st_speed: 331,
+        }),
+        lap({
+          driver_number: 4,
+          lap_number: 10,
+          date_start: new Date(lap10 + 500).toISOString(),
+          lap_duration: 96.4,
+          duration_sector_1: 25.4,
+          duration_sector_2: 38.6,
+          duration_sector_3: 32.4,
+          i1_speed: 274,
+          i2_speed: 308,
+          st_speed: 329,
+        }),
+        lap({
+          driver_number: 12,
+          lap_number: 11,
+          date_start: new Date(lap10 + 96_200).toISOString(),
+          lap_duration: 96.0,
+        }),
+      ],
+    });
+    const model = buildLapTimingModel({
+      bundle: b,
+      snap: null,
+      selected: [12, 4],
+      now,
+      live: false,
+    });
+    const ant = model.cells.get(12)?.get(10);
+    const nor = model.cells.get(4)?.get(10);
+    expect(ant?.inProgress).toBe(true);
+    expect(ant?.time).toBeNull();
+    expect(ant?.s1).toBe(25.1);
+    expect(ant?.s2).toBeNull();
+    expect(ant?.s3).toBeNull();
+    expect(ant?.i1).toBe(278);
+    expect(ant?.i2).toBeNull();
+    expect(ant?.st).toBeNull();
+    expect(ant?.deltaBest).toBeNull();
+    expect(ant?.s3Kind).toBe("none");
+    expect(nor?.inProgress).toBe(true);
+    expect(nor?.s1).toBe(25.4);
+    expect(nor?.s2).toBeNull();
+    expect(nor?.s3).toBeNull();
+    expect(nor?.time).toBeNull();
+    expect(model.cells.get(12)?.get(11)).toBeUndefined();
+    expect(model.cells.get(12)?.get(9)?.s3Kind).toBe("overall");
+    expect(model.cells.get(12)?.get(9)?.timeKind).toBe("overall");
+    expect(model.bestTime).toBe(96);
+    expect(barHeightFrac(ant?.time ?? null, model.bestTime)).toBe(0);
+    expect(model.selected.find((s) => s.driver.driver_number === 12)?.topSpeed).toBe(328);
+    expect(model.laps).toEqual([9, 10]);
   });
 
   it("stripes PIA when comparing NOR, LEC, and PIA and writes delta vs first", () => {

@@ -274,8 +274,8 @@ function paintTable(model: LapTimingModel, wrap: HTMLElement, jumpLap: number | 
     const notes: HTMLElement[] = [];
     for (const sum of model.selected) {
       const cell = model.cells.get(sum.driver.driver_number)?.get(lapNo);
-      const add = (text: string, kind?: SectorKind, extra = "") => {
-        const td = el("td", { text });
+      const add = (text: string, kind?: SectorKind, extra = "", col = "") => {
+        const td = el("td", { text, "data-lt-col": col || undefined });
         addClass(td, extra, kindClass(kind));
         tr.append(td);
       };
@@ -283,14 +283,14 @@ function paintTable(model: LapTimingModel, wrap: HTMLElement, jumpLap: number | 
         for (let i = 0; i < (one ? 12 : 6); i++) tr.append(el("td", { text: "—" }));
         continue;
       }
-      add(cell.inProgress && cell.time == null ? "…" : formatLap(cell.time), cell.timeKind, cell.inProgress ? "lt-live" : "");
-      add(formatSector(cell.s1), cell.s1Kind);
-      add(formatSector(cell.s2), cell.s2Kind);
-      add(formatSector(cell.s3), cell.s3Kind);
+      add(cell.inProgress && cell.time == null ? "…" : formatLap(cell.time), cell.timeKind, cell.inProgress ? "lt-live" : "", "time");
+      add(formatSector(cell.s1), cell.s1Kind, "", "s1");
+      add(formatSector(cell.s2), cell.s2Kind, "", "s2");
+      add(formatSector(cell.s3), cell.s3Kind, "", "s3");
       if (one) {
-        add(cell.i1 != null ? String(Math.round(cell.i1)) : "—");
-        add(cell.i2 != null ? String(Math.round(cell.i2)) : "—");
-        add(cell.st != null ? String(Math.round(cell.st)) : "—");
+        add(cell.i1 != null ? String(Math.round(cell.i1)) : "—", undefined, "", "i1");
+        add(cell.i2 != null ? String(Math.round(cell.i2)) : "—", undefined, "", "i2");
+        add(cell.st != null ? String(Math.round(cell.st)) : "—", undefined, "", "st");
       }
       const tyreTd = el("td", { class: "lt-tyre-col" });
       tyreTd.append(tyreAgeMark(cell.tyre, cell.tyreAge));
@@ -584,7 +584,7 @@ export function mountLapTiming(parent: HTMLElement): { update: () => void } {
             })
             .join(",")
         : "";
-      const key = `${selected.join(",")}:${view}:${model.laps.join(",")}:${model.inProgressLap}:${progress}:${live}:${live ? state.t : 0}`;
+      const key = `${selected.join(",")}:${view}:${model.laps.join(",")}:${model.inProgressLap}:${progress}:${live}:${state.t}`;
       if (key !== lastKey || tableEmpty()) {
         paintVisibleTable(true);
         lastKey = key;
