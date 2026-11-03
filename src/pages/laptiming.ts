@@ -322,6 +322,57 @@ function paintTable(model: LapTimingModel, wrap: HTMLElement, jumpLap: number | 
   wrap.append(table);
 }
 
+function driverRowIds(list: LapTimingModel["list"]): string {
+  return list.map((row) => String(row.driver.driver_number)).join(",");
+}
+
+function fillDriverRow(item: HTMLElement, row: LapTimingModel["list"][number], selectedCount: number): void {
+  const color = teamColor(row.driver.team_colour);
+  item.className = `lt-drv${row.selected ? " on" : ""}${row.striped ? " lt-stripe" : ""}`;
+  item.dataset.driver = String(row.driver.driver_number);
+  item.style.setProperty("--team", color);
+  item.style.background = row.selected ? teamFill(row.driver.team_colour, row.striped ? 0.28 : 0.38) : "";
+  const box = item.querySelector("input") as HTMLInputElement;
+  box.checked = row.selected;
+  box.disabled = !row.selected && selectedCount >= 4;
+  (item.querySelector(".lt-pos") as HTMLElement).textContent = String(row.pos);
+  (item.querySelector(".lt-bar") as HTMLElement).style.background = color;
+  (item.querySelector(".lt-code") as HTMLElement).textContent = row.driver.name_acronym;
+  (item.querySelector(".lt-num") as HTMLElement).textContent = String(row.driver.driver_number);
+  (item.querySelector(".lt-gap") as HTMLElement).textContent = row.pos === 1 ? "LEADER" : formatDelta(row.gap);
+}
+
+function makeDriverRow(row: LapTimingModel["list"][number], selectedCount: number): HTMLElement {
+  const item = el("label", { class: "lt-drv" });
+  item.append(
+    el("input", { type: "checkbox" }) as HTMLInputElement,
+    el("span", { class: "lt-pos" }),
+    el("span", { class: "lt-bar" }),
+    el("span", { class: "lt-code" }),
+    el("span", { class: "lt-num" }),
+    el("span", { class: "lt-gap" }),
+  );
+  fillDriverRow(item, row, selectedCount);
+  item.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    const box = item.querySelector("input") as HTMLInputElement;
+    if (box.disabled) return;
+    setLapTimingDrivers(toggleLapTimingId(state.lapTimingDrivers, Number(item.dataset.driver)));
+  });
+  return item;
+}
+
+function syncDriverList(listBody: HTMLElement, list: LapTimingModel["list"], selectedCount: number): void {
+  const nodes = [...listBody.querySelectorAll<HTMLElement>(".lt-drv")];
+  const sameOrder = nodes.length === list.length && driverRowIds(list) === nodes.map((n) => n.dataset.driver ?? "").join(",");
+  if (sameOrder) {
+    list.forEach((row, i) => fillDriverRow(nodes[i], row, selectedCount));
+    return;
+  }
+  listBody.replaceChildren();
+  for (const row of list) listBody.append(makeDriverRow(row, selectedCount));
+}
+
 export function mountLapTiming(parent: HTMLElement): { update: () => void } {
   const listBody = el("div", { class: "lt-list" });
   const listHead = el("div", { class: "lt-list-h", text: "DRIVERS · SELECT UP TO 4" });
@@ -488,29 +539,7 @@ export function mountLapTiming(parent: HTMLElement): { update: () => void } {
     }
 
     count.textContent = `${model.list.filter((r) => r.selected).length} SELECTED`;
-    listBody.replaceChildren();
-    for (const row of model.list) {
-      const color = teamColor(row.driver.team_colour);
-      const item = el("label", { class: `lt-drv${row.selected ? " on" : ""}${row.striped ? " lt-stripe" : ""}` });
-      item.style.setProperty("--team", color);
-      if (row.selected) item.style.background = teamFill(row.driver.team_colour, row.striped ? 0.28 : 0.38);
-      const box = el("input", { type: "checkbox" }) as HTMLInputElement;
-      box.checked = row.selected;
-      box.disabled = !row.selected && selected.length >= 4;
-      box.addEventListener("change", () =>
-        setLapTimingDrivers(toggleLapTimingId(state.lapTimingDrivers, row.driver.driver_number)),
-      );
-      item.append(
-        box,
-        el("span", { class: "lt-pos", text: String(row.pos) }),
-        el("span", { class: "lt-bar" }),
-        el("span", { class: "lt-code", text: row.driver.name_acronym }),
-        el("span", { class: "lt-num", text: String(row.driver.driver_number) }),
-        el("span", { class: "lt-gap", text: row.pos === 1 ? "LEADER" : formatDelta(row.gap) }),
-      );
-      (item.querySelector(".lt-bar") as HTMLElement).style.background = color;
-      listBody.append(item);
-    }
+    syncDriverList(listBody, model.list, selected.length);
 
     chips.replaceChildren();
     for (const sum of model.selected) {

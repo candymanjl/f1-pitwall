@@ -56,7 +56,10 @@ export function applyLoadingOverlay(
   host.hidden = !show;
   host.classList.toggle("is-visible", show);
   host.style.pointerEvents = show ? "auto" : "none";
+  host.style.zIndex = show ? "5" : "-1";
   host.setAttribute("aria-hidden", show ? "false" : "true");
+  if (show) host.removeAttribute("inert");
+  else host.setAttribute("inert", "");
   if (!show) {
     host.replaceChildren();
     host.removeAttribute("aria-busy");

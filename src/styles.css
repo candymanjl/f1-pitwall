@@ -775,7 +775,13 @@ svg.mini { width: 100%; height: 10rem; display: block; }
   background: rgba(7,8,13,.55); color: #dbe1ee; letter-spacing: 0.08em; text-transform: uppercase;
   font-family: var(--cond); z-index: 5;
 }
-.overlay.is-visible { display: flex; pointer-events: auto; }
+.overlay.is-visible { display: flex; pointer-events: auto; z-index: 5; }
+.overlay:not(.is-visible) {
+  display: none !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  z-index: -1;
+}
 .overlay-card {
   display: flex;
   flex-direction: column;
