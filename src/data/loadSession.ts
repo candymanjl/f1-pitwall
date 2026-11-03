@@ -6,7 +6,16 @@ import { snapshotAt } from "./derive";
 import { isRaceOrSprint } from "./grid";
 import { loadDriverLocations } from "./carLocation";
 import { detectPitLane, DEFAULT_PIT_ENTRY, DEFAULT_PIT_EXIT, pickPitForTrace } from "./pitlane";
-import { buildOutline, detectCorners, lapWindow, outlineFromLocations, pickOutlineLap, sectorFractions } from "./track";
+import {
+  buildOutline,
+  detectCorners,
+  lapWindow,
+  outlineFromLocations,
+  pickSectorLap,
+  sectorDistanceFractions,
+  sectorFractions,
+  sectorFracsFromLocations,
+} from "./track";
 import type {
   Driver,
   Interval,
@@ -46,13 +55,15 @@ export function mapPagesFirst(page?: PageId): boolean {
   return page !== "tyres" && page !== "strategy";
 }
 
-async function loadTrack(sessionKey: number, laps: Lap[], drivers: Driver[]): Promise<[number, number][]> {
-  const preferred =
-    pickOutlineLap(laps.filter((l) => l.driver_number === drivers[0]?.driver_number)) ??
-    pickOutlineLap(laps);
-  if (!preferred) return [];
+async function loadTrack(
+  sessionKey: number,
+  laps: Lap[],
+  drivers: Driver[],
+): Promise<{ track: [number, number][]; sectorFracs: [number, number, number] | null }> {
+  const preferred = pickSectorLap(laps, drivers);
+  if (!preferred) return { track: [], sectorFracs: null };
   const win = lapWindow(preferred);
-  if (!win) return [];
+  if (!win) return { track: [], sectorFracs: null };
   try {
     const samples = await apiGet<LocationSample[]>("location", {
       session_key: sessionKey,
@@ -60,10 +71,10 @@ async function loadTrack(sessionKey: number, laps: Lap[], drivers: Driver[]): Pr
       "date>": win.from,
       "date<": win.to,
     });
-    return buildOutline(samples);
+    return { track: buildOutline(samples), sectorFracs: sectorDistanceFractions(samples, preferred) };
   } catch (err) {
     if (isLiveLock(err)) throw err;
-    return [];
+    return { track: [], sectorFracs: null };
   }
 }
 
@@ -189,13 +200,15 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
   });
   /** Outline fetch starts with timing data — never waits for the Track map tab, pit marks, or all-driver GPS. */
   const trackP = (async () => {
-    const track = await loadTrack(sessionKey, laps, sortedDrivers);
+    const loaded = await loadTrack(sessionKey, laps, sortedDrivers);
+    const track = loaded.track;
     const corners = detectCorners(track);
-    bundle = { ...bundle, track, corners };
+    const sectorFracs = loaded.sectorFracs ?? bundle.sectorFracs;
+    bundle = { ...bundle, track, corners, sectorFracs };
     opts.onProgress?.("outline", bundle);
     const pitMarks = await loadPitMarks(sessionKey, track, pits);
     bundle = { ...bundle, pitEntry: pitMarks.entry, pitExit: pitMarks.exit };
-    return { track, corners, pitMarks };
+    return { track, corners, pitMarks, sectorFracs };
   })();
   const stintP = loadWeekendStints(sortedWeekend, sessionKey, stints);
 
@@ -204,12 +217,14 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
     let track = trackBits.track;
     let corners = trackBits.corners;
     let pitMarks = trackBits.pitMarks;
+    let sectorFracs = trackBits.sectorFracs;
     if (track.length < 2) {
       const fallback = outlineFromLocations(locations, laps, sortedDrivers);
       if (fallback.length >= 2) {
         track = fallback;
         corners = detectCorners(track);
         pitMarks = await loadPitMarks(sessionKey, track, pits);
+        sectorFracs = sectorFracsFromLocations(locations, laps, sortedDrivers) ?? sectorFracs;
       }
     }
     bundle = {
@@ -217,6 +232,7 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
       locations,
       track,
       corners,
+      sectorFracs,
       pitEntry: pitMarks.entry,
       pitExit: pitMarks.exit,
     };

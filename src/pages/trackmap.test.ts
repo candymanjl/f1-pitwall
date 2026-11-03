@@ -123,6 +123,9 @@ describe("track map zoom", () => {
     Object.defineProperty(svg, "clientHeight", { value: 600 });
     api.update();
     expect(svg.dataset.zoom).toBe("full");
+    const sectors = [...svg.querySelectorAll<SVGPathElement>("path.track-line")];
+    expect(sectors.map((p) => p.dataset.sector)).toEqual(["1", "2", "3"]);
+    expect(sectors.map((p) => p.getAttribute("stroke"))).toEqual(["#e10600", "#eab308", "#3b82f6"]);
     expect(svg.querySelector('[data-pit="in"]')?.textContent).toContain("PIT IN");
     expect(svg.querySelector('[data-pit="out"]')?.textContent).toContain("PIT OUT");
     expect(svg.dataset.pitIn).toBe("0.9700");

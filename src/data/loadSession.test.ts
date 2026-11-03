@@ -195,4 +195,71 @@ describe("loadBundle", () => {
     expect(outlineAt).toBe("before-gps");
     expect(tracks[phases.indexOf("outline")]).toBeGreaterThan(2);
   });
+
+  it("replaces time-median sector fractions with GPS timestamp splits on the outline lap", async () => {
+    mockStorage();
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
+    const lapStart = "2025-10-26T20:20:00.000Z";
+    const start = Date.parse(lapStart);
+    const driver = {
+      driver_number: 1,
+      broadcast_name: "VER",
+      full_name: "Max Verstappen",
+      name_acronym: "VER",
+      team_name: "Red Bull",
+      team_colour: "3671C6",
+      first_name: "Max",
+      last_name: "Verstappen",
+    };
+    const outlineSamples = Array.from({ length: 81 }, (_, i) => ({
+      date: new Date(start + i * 1000).toISOString(),
+      driver_number: 1,
+      x: i * 10,
+      y: 0,
+    }));
+    let outlineFracs: [number, number, number] | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: RequestInfo | URL) => {
+        const href = String(url);
+        if (href.includes("/drivers")) return jsonRes(200, [driver]);
+        if (href.includes("/laps")) {
+          return jsonRes(200, [
+            {
+              driver_number: 1,
+              lap_number: 12,
+              date_start: lapStart,
+              lap_duration: 80,
+              duration_sector_1: 20,
+              duration_sector_2: 30,
+              duration_sector_3: 30,
+              is_pit_out_lap: false,
+              segments_sector_1: null,
+              segments_sector_2: null,
+              segments_sector_3: null,
+              i1_speed: null,
+              i2_speed: null,
+              st_speed: null,
+            },
+          ]);
+        }
+        if (href.includes("/location") && href.includes("22:00:00")) return jsonRes(200, []);
+        if (href.includes("/location")) return jsonRes(200, outlineSamples);
+        return jsonRes(200, []);
+      }),
+    );
+
+    await loadBundle(9877, {
+      meeting,
+      weekendSessions: [fp1, race],
+      page: "trackmap",
+      onProgress: (phase, bundle) => {
+        if (phase === "outline") outlineFracs = bundle.sectorFracs;
+      },
+    });
+
+    expect(outlineFracs).toBeTruthy();
+    expect(outlineFracs![0]).toBeCloseTo(0.25, 1);
+    expect(outlineFracs![1]).toBeCloseTo(0.375, 1);
+  });
 });

@@ -3,6 +3,7 @@ import { emptyTrackFlag } from "../data/trackFlag";
 import { isRaceOrSprint } from "../data/grid";
 import { pitLaneFracs } from "../data/pitlane";
 import { project, windArrowScreen } from "../data/track";
+import { appendSectorOutline } from "../lib/trackOutline";
 import type { TimingSnapshot } from "../data/types";
 import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
@@ -148,22 +149,14 @@ function drawWind(svg: SVGSVGElement): void {
   }
   svg.querySelector("text.car-label")?.remove();
   const { map } = project(pts, w, h, 8);
-  const d = pts
-    .map((p, i) => {
-      const [px, py] = map(p[0], p[1]);
-      return `${i === 0 ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`;
-    })
-    .join(" ");
-  let path = svg.querySelector<SVGPathElement>("path.wind-track");
-  if (!path) {
-    path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("class", "wind-track");
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "#cbd5e1");
-    path.setAttribute("stroke-width", "1.4");
-    svg.prepend(path);
+  let sectors = svg.querySelector<SVGGElement>("g.wind-track-sectors");
+  if (!sectors) {
+    sectors = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    sectors.setAttribute("class", "wind-track-sectors");
+    svg.prepend(sectors);
   }
-  path.setAttribute("d", d);
+  sectors.replaceChildren();
+  appendSectorOutline(sectors, pts, map, state.bundle?.sectorFracs, { width: 1.4, className: "wind-track" });
   const arrow = dir != null ? windArrowScreen(pts, dir, w, h) : null;
   if (!arrow) return;
   const fitted = fitWindArrow(arrow.from[0], arrow.from[1], arrow.to[0], arrow.to[1], w, h);
