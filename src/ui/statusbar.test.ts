@@ -409,7 +409,10 @@ describe("mountStatusBar", () => {
     expect(state.playing).toBe(false);
     expect(state.page).toBe("laptiming");
     expect(svg.dataset.outline).toBe("ready");
-    expect(svg.querySelector("path.wind-track")).toBeTruthy();
+    expect(svg.querySelectorAll("path.wind-track")).toHaveLength(3);
+    expect(svg.querySelector("path.track-s1")?.getAttribute("stroke")).toBe("#e10600");
+    expect(svg.querySelector("path.track-s2")?.getAttribute("stroke")).toBe("#eab308");
+    expect(svg.querySelector("path.track-s3")?.getAttribute("stroke")).toBe("#3b82f6");
     expect(svg.textContent).not.toContain("No outline");
     host.remove();
   });

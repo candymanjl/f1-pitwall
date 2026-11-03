@@ -74,6 +74,92 @@ export function detectCorners(pts: [number, number][]): { n: number; x: number; 
   return corners.slice(0, 20);
 }
 
+export function slicePolyline(pts: [number, number][], fromFrac: number, toFrac: number): [number, number][] {
+  if (pts.length < 2) return pts.slice();
+  const total = polylineLength(pts);
+  if (total <= 0) return [pts[0]];
+  const a = Math.max(0, Math.min(1, fromFrac));
+  const b = Math.max(a, Math.min(1, toFrac));
+  const out: [number, number][] = [pointAt(pts, a)];
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    acc += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    const f = acc / total;
+    if (f > a + 1e-9 && f < b - 1e-9) out.push(pts[i]);
+  }
+  const end = pointAt(pts, b);
+  const last = out[out.length - 1];
+  if (!last || last[0] !== end[0] || last[1] !== end[1]) out.push(end);
+  return out;
+}
+
+/**
+ * Distance-along-track fractions for S1/S2/S3 from one reference lap:
+ * /location samples split by duration_sector_1/2/3 on the clock.
+ */
+export function sectorDistanceFractions(samples: LocationSample[], lap: Lap): [number, number, number] | null {
+  const start = parseTs(lap.date_start);
+  const s1 = lap.duration_sector_1;
+  const s2 = lap.duration_sector_2;
+  const s3 = lap.duration_sector_3;
+  if (!Number.isFinite(start) || !s1 || !s2 || !s3) return null;
+  const lapMs = (s1 + s2 + s3) * 1000;
+  if (lapMs < 40_000) return null;
+  const t1 = start + s1 * 1000;
+  const t2 = t1 + s2 * 1000;
+  const win = lapWindow(lap);
+  const from = win ? parseTs(win.from) : start;
+  const to = win ? parseTs(win.to) : start + (lap.lap_duration ?? s1 + s2 + s3) * 1000;
+  const pts = samples
+    .filter((s) => Number.isFinite(s.x) && Number.isFinite(s.y))
+    .map((s) => ({ x: s.x, y: s.y, t: parseTs(s.date) }))
+    .filter((s) => Number.isFinite(s.t) && s.t >= from && s.t <= to)
+    .sort((a, b) => a.t - b.t);
+  if (pts.length < 8) return null;
+  const span = pts[pts.length - 1].t - pts[0].t;
+  if (span < lapMs * 0.6) return null;
+
+  const cum: { t: number; d: number }[] = [];
+  let dist = 0;
+  for (let i = 0; i < pts.length; i++) {
+    if (i > 0) dist += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    cum.push({ t: pts[i].t, d: dist });
+  }
+  if (dist <= 0) return null;
+  const distAt = (t: number): number => {
+    if (t <= cum[0].t) return cum[0].d;
+    if (t >= cum[cum.length - 1].t) return cum[cum.length - 1].d;
+    for (let i = 1; i < cum.length; i++) {
+      if (cum[i].t >= t) {
+        const spanT = cum[i].t - cum[i - 1].t;
+        const u = spanT === 0 ? 1 : (t - cum[i - 1].t) / spanT;
+        return cum[i - 1].d + (cum[i].d - cum[i - 1].d) * u;
+      }
+    }
+    return dist;
+  };
+  const f1 = distAt(t1) / dist;
+  const f2 = Math.max(0, (distAt(t2) - distAt(t1)) / dist);
+  const f3 = Math.max(0, 1 - f1 - f2);
+  if (f1 < 0.08 || f2 < 0.08 || f3 < 0.08) return null;
+  return [f1, f2, f3];
+}
+
+export function pickSectorLap(laps: Lap[], drivers: Driver[]): Lap | null {
+  return pickOutlineLap(laps.filter((l) => l.driver_number === drivers[0]?.driver_number)) ?? pickOutlineLap(laps);
+}
+
+export function sectorFracsFromLocations(
+  samples: LocationSample[],
+  laps: Lap[],
+  drivers: Driver[],
+): [number, number, number] | null {
+  const preferred = pickSectorLap(laps, drivers);
+  if (!preferred) return null;
+  const ofDriver = samples.filter((s) => s.driver_number === preferred.driver_number);
+  return sectorDistanceFractions(ofDriver.length ? ofDriver : samples, preferred);
+}
+
 export function sectorFractions(laps: Lap[]): [number, number, number] {
   const s1: number[] = [];
   const s2: number[] = [];

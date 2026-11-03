@@ -3,6 +3,7 @@ import { snapshotAt } from "../data/derive";
 import { isRaceOrSprint } from "../data/grid";
 import { pitLaneFracs } from "../data/pitlane";
 import { pointAt, project } from "../data/track";
+import { appendSectorOutline } from "../lib/trackOutline";
 import type { SessionBundle, TimingSnapshot } from "../data/types";
 import { bindDriverSelect } from "../lib/bindSelect";
 import { teamColor } from "../lib/colors";
@@ -70,20 +71,7 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
     return;
   }
   const { map } = project(pts, w, h, 48);
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute(
-    "d",
-    pts.map((p, i) => {
-      const [px, py] = map(p[0], p[1]);
-      return `${i === 0 ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`;
-    }).join(" "),
-  );
-  path.setAttribute("fill", "none");
-  path.setAttribute("stroke", "#e8edf7");
-  path.setAttribute("stroke-width", String(MAP_LINE_WIDTH));
-  path.setAttribute("stroke-linejoin", "round");
-  path.setAttribute("stroke-linecap", "round");
-  svg.append(path);
+  appendSectorOutline(svg, pts, map, bundle.sectorFracs, { width: MAP_LINE_WIDTH, className: "track-line" });
 
   const [f1, f2] = bundle.sectorFracs;
   const marks = [
