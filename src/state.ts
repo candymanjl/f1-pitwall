@@ -23,6 +23,7 @@ import {
   type LapTimingView,
 } from "./data/lapTiming";
 import { emptyLiveDebug, seedLiveCursors, type LivePollDebug } from "./data/livePoll";
+import { emptyFetchProgress, type FetchProgress } from "./data/loadProgress";
 import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
 import { historicalStartMs, isFinishedSession, latestSampleMs, playableEndMs } from "./lib/sessionClock";
@@ -52,6 +53,8 @@ export type AppState = {
   mode: DataMode;
   pitLoss: { green: number; vsc: number; sc: number };
   loading: string;
+  /** Per-endpoint session fetch progress, or null when idle. */
+  loadProgress: FetchProgress | null;
   /** True while Year/Meeting list fetches run — does not replace the loaded session. */
   listsBusy: boolean;
   error: string;
@@ -100,6 +103,7 @@ export const state: AppState = {
   mode: readMode(),
   pitLoss: readPitLoss(),
   loading: "",
+  loadProgress: null,
   listsBusy: false,
   error: "",
   lock: null,
@@ -347,6 +351,7 @@ export function applyFetchError(err: unknown): OpenF1Error {
     tokenAttached: Boolean(peekAccessToken()),
   });
   state.loading = "";
+  state.loadProgress = null;
   if (e.kind === "live-lock") {
     state.lock = "live";
     state.error = "";
@@ -483,6 +488,7 @@ export async function loadSelectedSession(): Promise<void> {
   if (!sessionKey) return;
   const gen = ++loadGen;
   state.loading = "Loading session…";
+  state.loadProgress = emptyFetchProgress();
   state.error = "";
   emit(true);
   try {
@@ -491,18 +497,21 @@ export async function loadSelectedSession(): Promise<void> {
       meeting,
       weekendSessions: state.sessions,
       page: state.page,
+      onFetch: (progress) => {
+        if (gen !== loadGen) return;
+        state.loadProgress = progress;
+        emit(true);
+      },
       onProgress: (phase, partial) => {
         if (gen !== loadGen) return;
         applyPartialBundle(partial, phase === "timing");
-        // Timing data is enough to paint the pitwall — don't leave "Loading session…"
-        // on the top bar while map/weekend fetches continue.
-        if (phase === "timing") state.loading = "";
         emit(true);
       },
     });
     if (gen !== loadGen) return;
     applyPartialBundle(bundle, false);
     state.loading = "";
+    state.loadProgress = null;
     state.lock = null;
     state.error = "";
     state.panelErrors = {

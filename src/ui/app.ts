@@ -151,8 +151,9 @@ export function boot(root: HTMLElement): void {
     }
     applyLoadingOverlay(
       overlay,
-      shouldShowLoadingOverlay(state.loading, state.lock) && !state.bundle,
+      shouldShowLoadingOverlay(state.loading, state.lock),
       state.loading,
+      state.loadProgress,
     );
     toast.hidden = !state.error || !!state.lock;
     toast.textContent = state.error;

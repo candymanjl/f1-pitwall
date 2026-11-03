@@ -123,8 +123,12 @@ export async function loadDriverLocations(
   drivers: Driver[],
   from: string,
   to: string,
+  onChunk?: (driver: Driver) => void,
 ): Promise<LocationSample[]> {
-  if (!drivers.length || !from || !to) return [];
+  if (!drivers.length || !from || !to) {
+    for (const d of drivers) onChunk?.(d);
+    return [];
+  }
   const chunks = await Promise.all(
     drivers.map(async (d) => {
       try {
@@ -137,6 +141,8 @@ export async function loadDriverLocations(
       } catch (err) {
         if (isLiveLock(err)) throw err;
         return [];
+      } finally {
+        onChunk?.(d);
       }
     }),
   );

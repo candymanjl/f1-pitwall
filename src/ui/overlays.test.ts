@@ -20,13 +20,14 @@ describe("shouldShowLoadingOverlay", () => {
 });
 
 describe("loadSessionButtonText", () => {
-  it("clears Loading session… once a bundle is already on screen", () => {
+  it("keeps Loading session… on every Load, even with a bundle already on screen", () => {
     expect(loadSessionButtonText("Loading session…", false)).toBe("Loading session…");
-    expect(loadSessionButtonText("Loading session…", true)).toBe("Load");
-    expect(loadSessionButtonText("Loading timing…", true)).toBe("Load");
+    expect(loadSessionButtonText("Loading session…", true)).toBe("Loading session…");
+    expect(loadSessionButtonText("Loading timing…", true)).toBe("Loading timing…");
     expect(loadSessionButtonText("", true)).toBe("Load");
-    expect(loadSessionButtonBusy("Loading session…", true, 99)).toBe(false);
+    expect(loadSessionButtonBusy("Loading session…", true, 99)).toBe(true);
     expect(loadSessionButtonBusy("Loading session…", false, 99)).toBe(true);
+    expect(loadSessionButtonBusy("", true, 99)).toBe(false);
     expect(loadSessionButtonBusy("", false, 0)).toBe(true);
   });
 });
@@ -41,7 +42,7 @@ describe("applyLoadingOverlay", () => {
     expect(el.hidden).toBe(false);
     expect(el.classList.contains("is-visible")).toBe(true);
     expect(el.style.pointerEvents).toBe("auto");
-    expect(el.textContent).toBe("Loading OpenF1…");
+    expect(el.querySelector(".overlay-title")?.textContent).toBe("Loading OpenF1…");
     expect(el.getAttribute("aria-hidden")).toBe("false");
 
     applyLoadingOverlay(el, false, "Loading OpenF1…");
@@ -69,6 +70,26 @@ describe("applyLoadingOverlay", () => {
     expect(cs.display).toBe("none");
     expect(el.style.pointerEvents).toBe("none");
   });
+
+  it("paints a labeled percent bar for in-flight session fetches", () => {
+    const node = document.createElement("div");
+    node.className = "overlay";
+    document.body.append(node);
+    applyLoadingOverlay(node, true, "Loading session…", {
+      done: 3,
+      total: 10,
+      label: "laps",
+      pct: 30,
+    });
+    expect(node.querySelector(".overlay-title")?.textContent).toBe("Loading session…");
+    expect(node.querySelector(".overlay-label")?.textContent).toBe("laps");
+    expect(node.querySelector(".overlay-pct")?.textContent).toBe("30%");
+    expect((node.querySelector(".overlay-bar-fill") as HTMLElement).style.width).toBe("30%");
+    const bar = node.querySelector(".overlay-bar")!;
+    expect(bar.getAttribute("role")).toBe("progressbar");
+    expect(bar.getAttribute("aria-valuenow")).toBe("30");
+    expect(bar.getAttribute("aria-label")).toBe("laps 30%");
+  });
 });
 
 describe("closeAllModals", () => {
@@ -86,5 +107,7 @@ describe("overlay CSS regression", () => {
     expect(css).toMatch(/\.overlay\[hidden\]/);
     expect(css).toMatch(/\.overlay\[hidden\][\s\S]*?display:\s*none\s*!important/);
     expect(css).toMatch(/\.overlay\[hidden\][\s\S]*?pointer-events:\s*none\s*!important/);
+    expect(css).toMatch(/\.overlay-bar\b/);
+    expect(css).toMatch(/\.overlay-bar-fill/);
   });
 });

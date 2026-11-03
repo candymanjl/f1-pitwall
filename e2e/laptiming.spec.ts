@@ -408,7 +408,7 @@ test("replay progress keeps the lap table filled", async ({ page }) => {
     api.setPlaying(true);
     api.setClock(api.state.start + 20 * 82_000, "code");
   });
-  await expect(page.locator("#load-session")).toHaveText("Load");
+  await expect(page.locator("#load-session")).toHaveText("Loading session…");
   await expectTablePopulated(page, ["LEC", "VER", "ANT"]);
   await expect(page.locator(".lt-chart")).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/laptiming_replay_running_1920.png" });

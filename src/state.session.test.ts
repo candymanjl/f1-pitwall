@@ -11,6 +11,7 @@ vi.mock("./data/loadSession", () => ({
   loadBundle: (...args: unknown[]) => loadBundle(...args),
 }));
 
+import { OpenF1Error } from "./data/errors";
 import {
   changeMeeting,
   changeSession,
@@ -75,6 +76,7 @@ beforeEach(() => {
   state.sessions = [];
   state.bundle = loadedBundle as typeof state.bundle;
   state.loading = "";
+  state.loadProgress = null;
   state.listsBusy = false;
   state.error = "";
   state.lock = null;
@@ -83,6 +85,7 @@ beforeEach(() => {
 afterEach(() => {
   state.bundle = loadedBundle as typeof state.bundle;
   state.loading = "";
+  state.loadProgress = null;
   state.listsBusy = false;
 });
 
@@ -148,20 +151,51 @@ describe("deferred session load", () => {
     expect(state.page).toBe("laptiming");
   });
 
-  it("clears Loading session… as soon as timing data is on screen", async () => {
+  it("keeps Loading session… until the full bundle is ready, including the first Load", async () => {
     let loadingDuringTiming = "unset";
-    loadBundle.mockImplementation(async (_key: number, opts: { onProgress?: (p: string, b: unknown) => void }) => {
-      opts.onProgress?.("timing", loadedBundle);
-      loadingDuringTiming = state.loading;
-      opts.onProgress?.("map", loadedBundle);
-      return loadedBundle;
-    });
+    let loadingDuringMap = "unset";
+    let progressDuringLaps: typeof state.loadProgress = null;
+    let bundleDuringTiming: unknown = "unset";
+    loadBundle.mockImplementation(
+      async (
+        _key: number,
+        opts: {
+          onProgress?: (p: string, b: unknown) => void;
+          onFetch?: (p: { done: number; total: number; label: string; pct: number }) => void;
+        },
+      ) => {
+        expect(state.loading).toBe("Loading session…");
+        expect(state.bundle).toBeNull();
+        opts.onFetch?.({ done: 3, total: 10, label: "laps", pct: 30 });
+        progressDuringLaps = state.loadProgress;
+        opts.onProgress?.("timing", loadedBundle);
+        loadingDuringTiming = state.loading;
+        bundleDuringTiming = state.bundle;
+        opts.onProgress?.("map", loadedBundle);
+        loadingDuringMap = state.loading;
+        return loadedBundle;
+      },
+    );
     state.bundle = null;
     state.sessionKey = 20;
-    state.loading = "stale";
+    state.loading = "";
     await loadSelectedSession();
-    expect(loadingDuringTiming).toBe("");
+    expect(loadingDuringTiming).toBe("Loading session…");
+    expect(loadingDuringMap).toBe("Loading session…");
+    expect(bundleDuringTiming).toBe(loadedBundle);
+    expect(progressDuringLaps).toMatchObject({ label: "laps", pct: 30, done: 3, total: 10 });
     expect(state.loading).toBe("");
+    expect(state.loadProgress).toBeNull();
+  });
+
+  it("clears the overlay progress when a Load fails", async () => {
+    loadBundle.mockRejectedValue(new OpenF1Error("http", "OpenF1 500", 500));
+    state.bundle = null;
+    state.sessionKey = 20;
+    state.loadProgress = { done: 2, total: 8, label: "drivers", pct: 25 };
+    await loadSelectedSession();
+    expect(state.loading).toBe("");
+    expect(state.loadProgress).toBeNull();
   });
 
   it("Meeting list fetch does not set the heavy loading veil", async () => {

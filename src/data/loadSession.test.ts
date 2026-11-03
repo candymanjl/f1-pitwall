@@ -81,6 +81,7 @@ describe("loadBundle", () => {
     writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
     const seen: string[] = [];
     const phases: string[] = [];
+    const fetches: string[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: RequestInfo | URL) => {
@@ -109,12 +110,19 @@ describe("loadBundle", () => {
       onProgress: (phase) => {
         phases.push(phase);
       },
+      onFetch: (p) => {
+        fetches.push(`${p.label}:${p.done}/${p.total}`);
+      },
     });
 
     expect(seen.some((u) => u.includes("/meetings"))).toBe(false);
     expect(seen.some((u) => /\/sessions\?/.test(u) || u.includes("/sessions?"))).toBe(false);
     expect(phases[0]).toBe("timing");
     expect(phases.indexOf("map")).toBeLessThan(phases.indexOf("weekend"));
+    expect(fetches.some((row) => row.startsWith("drivers:"))).toBe(true);
+    expect(fetches.some((row) => row.startsWith("laps:"))).toBe(true);
+    expect(fetches.some((row) => row.startsWith("stints:"))).toBe(true);
+    expect(fetches.at(-1)).toMatch(/\/\d+$/);
   });
 
   it("publishes the track outline on Load before all-driver GPS, even from Lap timing", async () => {
