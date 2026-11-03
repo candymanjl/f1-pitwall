@@ -50,8 +50,31 @@ describe("applyLoadingOverlay", () => {
     expect(el.hasAttribute("hidden")).toBe(true);
     expect(el.classList.contains("is-visible")).toBe(false);
     expect(el.style.pointerEvents).toBe("none");
+    expect(el.style.zIndex).toBe("-1");
+    expect(el.hasAttribute("inert")).toBe(true);
     expect(el.textContent).toBe("");
     expect(el.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("arms inert and a high z-index only while the veil is showing", () => {
+    const node = document.createElement("div");
+    node.className = "overlay";
+    document.body.append(node);
+    applyLoadingOverlay(node, true, "Loading session…", {
+      done: 2,
+      total: 8,
+      label: "drivers",
+      pct: 25,
+    });
+    expect(node.classList.contains("is-visible")).toBe(true);
+    expect(node.hasAttribute("inert")).toBe(false);
+    expect(node.style.zIndex).toBe("5");
+    expect(node.style.pointerEvents).toBe("auto");
+
+    applyLoadingOverlay(node, false);
+    expect(node.hasAttribute("inert")).toBe(true);
+    expect(node.style.pointerEvents).toBe("none");
+    expect(node.style.zIndex).toBe("-1");
   });
 
   it("author display:flex cannot keep a hidden overlay painted or clickable", () => {
@@ -107,6 +130,7 @@ describe("overlay CSS regression", () => {
     expect(css).toMatch(/\.overlay\[hidden\]/);
     expect(css).toMatch(/\.overlay\[hidden\][\s\S]*?display:\s*none\s*!important/);
     expect(css).toMatch(/\.overlay\[hidden\][\s\S]*?pointer-events:\s*none\s*!important/);
+    expect(css).toMatch(/\.overlay:not\(\.is-visible\)/);
     expect(css).toMatch(/\.overlay-bar\b/);
     expect(css).toMatch(/\.overlay-bar-fill/);
   });

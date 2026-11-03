@@ -342,4 +342,88 @@ describe("Lap timing page", () => {
       }
     }
   });
+
+  it("lets compare checkboxes add and remove drivers without rebuilding the row", async () => {
+    const start = Date.parse("2026-10-25T20:00:00.000Z");
+    const drivers = [
+      driver(4, "NOR", "McLaren", "FF8000"),
+      driver(16, "LEC", "Ferrari", "E8002D"),
+      driver(1, "VER", "Red Bull", "3671C6"),
+      driver(44, "HAM", "Ferrari", "E8002D"),
+    ];
+    const bundle: SessionBundle = {
+      meeting: {
+        meeting_key: 1295,
+        meeting_name: "United States Grand Prix",
+        circuit_short_name: "Austin",
+        country_name: "United States",
+        location: "Austin",
+        date_start: new Date(start).toISOString(),
+        year: 2026,
+      },
+      session: {
+        session_key: 11400,
+        meeting_key: 1295,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: new Date(start).toISOString(),
+        date_end: new Date(start + 90 * 60 * 1000).toISOString(),
+        circuit_short_name: "Austin",
+        country_name: "United States",
+        location: "Austin",
+        year: 2026,
+      },
+      weekendSessions: [],
+      drivers,
+      laps: drivers.flatMap((d) =>
+        [1, 2, 3].map((n) =>
+          lap({
+            driver_number: d.driver_number,
+            lap_number: n,
+            date_start: new Date(start + n * 80_000).toISOString(),
+            lap_duration: 95 + d.driver_number / 100,
+          }),
+        ),
+      ),
+      intervals: [],
+      positions: drivers.map((d, i) => ({
+        date: new Date(start).toISOString(),
+        driver_number: d.driver_number,
+        position: i + 1,
+      })),
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+    };
+    state.bundle = bundle;
+    state.t = start + 400_000;
+    state.snap = snapshotAt(bundle, state.t);
+    state.lapTimingDrivers = [];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const api = mountLapTiming(host);
+    api.update();
+    await Promise.resolve();
+    api.update();
+    expect(state.lapTimingDrivers).toEqual([4]);
+    const firstRow = host.querySelector(".lt-drv") as HTMLElement;
+    const clickCode = (code: string) => {
+      const row = [...host.querySelectorAll<HTMLElement>(".lt-drv")].find((n) => n.textContent?.includes(code));
+      row?.click();
+      api.update();
+    };
+    clickCode("LEC");
+    clickCode("VER");
+    expect(state.lapTimingDrivers).toEqual([4, 16, 1]);
+    expect(host.querySelector(".lt-drv") === firstRow).toBe(true);
+    expect(host.querySelectorAll(".lt-drv.on").length).toBe(3);
+    expect(host.textContent).toMatch(/3 SELECTED/);
+    clickCode("LEC");
+    expect(state.lapTimingDrivers).toEqual([4, 1]);
+  });
 });

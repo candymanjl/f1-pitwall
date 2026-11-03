@@ -36,8 +36,11 @@
   font-size: 0.75rem;
   cursor: pointer;
   border: 1px solid transparent;
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
 }
-.lt-drv input { margin: 0; accent-color: var(--red); }
+.lt-drv input { margin: 0; accent-color: var(--red); pointer-events: none; }
 .lt-drv .lt-bar { width: 0.22rem; height: 1rem; border-radius: 0.12rem; }
 .lt-drv .lt-pos { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
 .lt-drv .lt-code { font-weight: 800; letter-spacing: 0.04em; }
