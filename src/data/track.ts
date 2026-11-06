@@ -1,6 +1,22 @@
 import { parseTs } from "../lib/time";
 import type { Driver, Lap, LocationSample } from "./types";
 
+export function outlineIsUsable(pts: [number, number][]): boolean {
+  return pts.length >= 8;
+}
+
+export function liveOutlineBeatsFallback(
+  live: [number, number][],
+  fallback: [number, number][] | null | undefined,
+): boolean {
+  if (!outlineIsUsable(live)) return false;
+  if (!fallback || fallback.length < 2) return true;
+  const liveLen = polylineLength(live);
+  const fbLen = polylineLength(fallback);
+  if (fbLen <= 0) return true;
+  return liveLen >= fbLen * 0.45;
+}
+
 export function buildOutline(samples: LocationSample[]): [number, number][] {
   if (samples.length < 8) return [];
   const pts: [number, number][] = [];

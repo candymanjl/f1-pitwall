@@ -4,6 +4,7 @@ export type Meeting = {
   meeting_key: number;
   meeting_name: string;
   meeting_official_name?: string;
+  circuit_key?: number;
   circuit_short_name: string;
   country_name: string;
   location: string;
@@ -18,11 +19,21 @@ export type Session = {
   session_type: string;
   date_start: string;
   date_end: string;
+  circuit_key?: number;
   circuit_short_name: string;
   country_name: string;
   location: string;
   year: number;
   gmt_offset?: string;
+  is_cancelled?: boolean;
+};
+
+/** Set when the map polyline came from an earlier session at this circuit. */
+export type OutlineFrom = {
+  year: number;
+  meetingName: string;
+  sessionName: string;
+  sessionKey: number;
 };
 
 export type Driver = {
@@ -156,6 +167,8 @@ export type SessionBundle = {
   track: [number, number][];
   corners: { n: number; x: number; y: number; dist: number }[];
   sectorFracs: [number, number, number];
+  /** Present while the polyline is a same-circuit stand-in, not this session's GPS. */
+  outlineFrom?: OutlineFrom | null;
   /** Racing-line fraction of pit-lane entry, 0 = S/F. */
   pitEntry?: number;
   /** Racing-line fraction of pit-lane exit, 0 = S/F. */

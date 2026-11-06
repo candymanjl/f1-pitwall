@@ -369,4 +369,84 @@ describe("track map zoom", () => {
     expect(root.querySelector("tr[data-driver='14'] td.c-stat")?.textContent).toBe("GARAGE");
     expect(root.querySelector("tr[data-driver='18'] .status.garage")).toBeTruthy();
   });
+
+  it("labels a same-circuit fallback outline and keeps sector colours", () => {
+    const ant = driver(12, "ANT");
+    const track = Array.from({ length: 24 }, (_, i) => {
+      const a = (i / 23) * Math.PI * 2;
+      return [Math.cos(a) * 4000, Math.sin(a) * 2200] as [number, number];
+    });
+    state.bundle = {
+      meeting: {
+        meeting_key: 1299,
+        meeting_name: "São Paulo Grand Prix",
+        circuit_key: 14,
+        circuit_short_name: "Interlagos",
+        country_name: "Brazil",
+        location: "São Paulo",
+        date_start: "2026-11-06T15:30:00.000Z",
+        year: 2026,
+      },
+      session: {
+        session_key: 11405,
+        meeting_key: 1299,
+        session_name: "Practice 1",
+        session_type: "Practice",
+        date_start: "2026-11-06T15:30:00.000Z",
+        date_end: "2026-11-06T16:30:00.000Z",
+        circuit_key: 14,
+        circuit_short_name: "Interlagos",
+        country_name: "Brazil",
+        location: "São Paulo",
+        year: 2026,
+      },
+      weekendSessions: [],
+      drivers: [ant],
+      laps: [],
+      intervals: [],
+      positions: [],
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track,
+      corners: [],
+      sectorFracs: [0.26, 0.5, 0.24],
+      outlineFrom: {
+        year: 2025,
+        meetingName: "São Paulo Grand Prix",
+        sessionName: "Race",
+        sessionKey: 9869,
+      },
+      locations: [{ date: "2026-11-06T15:40:00.000Z", driver_number: 12, x: 4000, y: 0 }],
+    } as SessionBundle;
+    state.snap = {
+      now: Date.parse("2026-11-06T15:40:00.000Z"),
+      rows: [row(ant, 1, 0.1, { inGarage: false, status: "ON TRACK" })],
+      leaderLap: 1,
+      medianGreenLap: 72,
+      weather: { wind_direction: 210, wind_speed: 4 } as TimingSnapshot["weather"],
+      bestSectors: { s1: null, s2: null, s3: null },
+      flagMode: "green",
+      scBands: [],
+      raceLaps: 71,
+    } as TimingSnapshot;
+    state.panelErrors = { track: "", telemetry: "" };
+
+    const root = document.createElement("div");
+    document.body.append(root);
+    const api = mountTrackMap(root);
+    const svg = root.querySelector("svg.track") as SVGSVGElement;
+    Object.defineProperty(svg, "clientWidth", { value: 800 });
+    Object.defineProperty(svg, "clientHeight", { value: 600 });
+    api.update();
+    const titles = [...root.querySelectorAll(".panel-h .t")].map((n) => n.textContent);
+    expect(titles.some((t) => /Outline from 2025 São Paulo GP/i.test(t ?? ""))).toBe(true);
+    expect(svg.dataset.outlineSrc).toBe("fallback");
+    expect(svg.querySelector(".map-outline-note")?.textContent).toBe("Outline from 2025 São Paulo GP");
+    expect(svg.querySelector("path.track-s1")?.getAttribute("stroke")).toBe("#e10600");
+    expect((root.querySelector(".panel-error") as HTMLElement).hidden).toBe(true);
+    expect(svg.querySelector("[data-driver='12']")).toBeTruthy();
+  });
 });

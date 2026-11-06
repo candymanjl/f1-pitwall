@@ -2,6 +2,7 @@ import { indexLocations } from "../data/carLocation";
 import { snapshotAt } from "../data/derive";
 import { isRaceOrSprint } from "../data/grid";
 import { pitLaneFracs } from "../data/pitlane";
+import { formatOutlineLabel } from "../data/outlineFallback";
 import { pointAt, project } from "../data/track";
 import { appendSectorOutline } from "../lib/trackOutline";
 import type { SessionBundle, TimingSnapshot } from "../data/types";
@@ -68,10 +69,22 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
     t.setAttribute("fill", "#8b93a7");
     t.textContent = "Loading track outline from /location…";
     svg.append(t);
+    svg.dataset.outlineSrc = "empty";
     return;
   }
   const { map } = project(pts, w, h, 48);
   appendSectorOutline(svg, pts, map, bundle.sectorFracs, { width: MAP_LINE_WIDTH, className: "track-line" });
+  const fromLabel = formatOutlineLabel(bundle.outlineFrom);
+  svg.dataset.outlineSrc = fromLabel ? "fallback" : "live";
+  if (fromLabel) {
+    const note = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    note.setAttribute("class", "map-outline-note");
+    note.setAttribute("x", "12");
+    note.setAttribute("y", String(h - 10));
+    note.setAttribute("fill", "#8b93a7");
+    note.textContent = fromLabel;
+    svg.append(note);
+  }
 
   const [f1, f2] = bundle.sectorFracs;
   const marks = [
@@ -219,6 +232,8 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
       );
     }
     draw();
+    const fromLabel = formatOutlineLabel(bundle?.outlineFrom);
+    right.setTitle(fromLabel ? `Track map  ·  ${fromLabel}` : "Track map  ·  outline from OpenF1 /location");
     const trackErr =
       state.panelErrors.track ||
       (bundle && bundle.track.length < 2 ? "Track outline could not be loaded from OpenF1 /location." : "");
