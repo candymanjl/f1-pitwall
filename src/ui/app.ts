@@ -6,6 +6,7 @@ import { PAGES } from "../data/types";
 import { BUILD_VERSION } from "../lib/buildInfo";
 import { el } from "../lib/dom";
 import { formatLiveDebug } from "../data/livePoll";
+import { motionJumpSummary } from "../lib/carMotion";
 import { formatReplayBadge, formatSessionHeadline } from "../lib/sessionHeadline";
 import { applyLoadingOverlay, loadSessionButtonBusy, loadSessionButtonText, shouldShowLoadingOverlay } from "./overlays";
 import { openSettings } from "./settings";
@@ -300,6 +301,7 @@ export function boot(root: HTMLElement): void {
     setLapTimingDrivers,
     setLapTimingView,
     showFlagSheet,
+    motionJumpSummary,
   };
   const params = new URLSearchParams(location.search);
   if (params.has("flagsheet")) queueMicrotask(() => showFlagSheet());

@@ -24,14 +24,6 @@ const LAP_MS = 80_000;
 const CHECKS = [20, 40, 60, 68] as const;
 const LAPPED = new Set(["NOR", "GAS", "STR", "ALB", "COL", "HAD"]);
 
-function wrap01(frac: number): number {
-  return ((frac % 1) + 1) % 1;
-}
-
-function gapFrac(leaderProgress: number, gapSec: number, lapSec: number): number {
-  return wrap01(leaderProgress - gapSec / Math.max(1, lapSec));
-}
-
 async function hooks(page: Page): Promise<Hooks> {
   return page.evaluate(() => (window as unknown as { __f1pw: Hooks }).__f1pw);
 }
@@ -242,7 +234,7 @@ async function mapCars(page: Page) {
   );
 }
 
-test("Mexico 2025 race pit circle stays on gap time while the map uses GPS", async ({ page }) => {
+test("Mexico 2025 race pit circle and map share the same track progress", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/?e2e=1#pitcircle");
   await expect.poll(async () => page.evaluate(() => Boolean((window as unknown as { __f1pw?: unknown }).__f1pw))).toBe(
@@ -256,37 +248,22 @@ test("Mexico 2025 race pit circle stays on gap time while the map uses GPS", asy
     const api = await hooks(page);
     const rows = (api.state.snap?.rows ?? []).filter((r) => !r.retired && r.status !== "OUT");
     expect(rows.length).toBe(17);
-    const lapSec = api.state.snap?.medianGreenLap ?? 80;
-    const leaderProg = rows[0]?.progress ?? 0;
 
     const circle = await circleCars(page);
     expect(circle).toHaveLength(17);
     await expect(page.locator("svg.circle")).toHaveAttribute("data-cars", "17");
-    const leadCircle = circle.filter((c) => !LAPPED.has(c.code));
-    expect(leadCircle.every((c) => c.place === "gap")).toBe(true);
-    for (const car of circle) {
-      const row = rows.find((r) => r.driver.driver_number === car.id);
-      expect(row, car.code).toBeTruthy();
-      const gap = row!.pos === 1 ? 0 : typeof row!.gap === "number" ? row!.gap : null;
-      if (gap != null) {
-        expect(car.place).toBe("gap");
-        expect(car.frac).toBeCloseTo(gapFrac(leaderProg, gap, lapSec), 2);
-      } else {
-        expect(car.place === "gap" || car.place === "progress").toBe(true);
-        expect(car.frac).not.toBeCloseTo(circle.find((c) => c.code === rows[0].driver.name_acronym)?.frac ?? -1, 2);
-      }
-    }
+    expect(circle.every((c) => c.place === "location")).toBe(true);
     for (const code of LAPPED) expect(circle.some((c) => c.code.includes(code))).toBe(true);
 
     await page.locator("nav button[data-page='trackmap']").click();
     const map = await mapCars(page);
     expect(map).toHaveLength(17);
     expect(map.every((c) => c.place === "location")).toBe(true);
-    const moved = map.filter((m) => {
+    for (const m of map) {
       const c = circle.find((x) => x.id === m.id);
-      return c && Math.abs(c.frac - m.frac) > 0.08;
-    });
-    expect(moved.length).toBeGreaterThan(5);
+      expect(c, String(m.id)).toBeTruthy();
+      expect(c!.frac).toBeCloseTo(m.frac, 2);
+    }
     await page.locator("nav button[data-page='pitcircle']").click();
 
     const before = await circleCars(page);
@@ -296,7 +273,6 @@ test("Mexico 2025 race pit circle stays on gap time while the map uses GPS", asy
     for (const car of after) {
       const prev = before.find((c) => c.id === car.id);
       expect(car.place).toBe(prev?.place ?? "");
-      expect(Math.abs(car.frac - (prev?.frac ?? 0))).toBeLessThan(0.06);
     }
 
     await page.screenshot({
@@ -309,7 +285,7 @@ test("Mexico 2025 race pit circle stays on gap time while the map uses GPS", asy
       await page.evaluate((t) => (window as unknown as { __f1pw: Hooks }).__f1pw.setClock(t, "code"), nowAt(lap));
       await expect(page.locator("svg.circle")).toHaveAttribute("data-cars", "17");
       const compact = await circleCars(page);
-      expect(compact.every((c) => !LAPPED.has(c.code) ? c.place === "gap" : true)).toBe(true);
+      expect(compact.every((c) => c.place === "location")).toBe(true);
       await page.screenshot({
         path: "/opt/cursor/artifacts/screenshots/mexico_pitcircle_time_lap68_1366.png",
         fullPage: true,

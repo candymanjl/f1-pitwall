@@ -51,3 +51,23 @@ export function appendDriverDot(
   svg.append(g);
   return g;
 }
+
+export function moveDriverDot(
+  g: SVGGElement,
+  px: number,
+  py: number,
+  labelX?: number,
+  labelY?: number,
+): void {
+  g.setAttribute("data-x", String(px));
+  g.setAttribute("data-y", String(py));
+  for (const c of g.querySelectorAll("circle")) {
+    c.setAttribute("cx", String(px));
+    c.setAttribute("cy", String(py));
+  }
+  const lab = g.querySelector("text.drv-label");
+  if (lab && labelX != null && labelY != null) {
+    lab.setAttribute("x", String(labelX));
+    lab.setAttribute("y", String(labelY));
+  }
+}

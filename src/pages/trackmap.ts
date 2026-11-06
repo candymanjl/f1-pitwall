@@ -21,9 +21,10 @@ import {
   MAP_SECTOR_R,
 } from "../lib/mapMarks";
 import { followViewBox, MAP_FOLLOW_ZOOM } from "../lib/mapZoom";
+import { motionFade, setMotionPainter, smoothedFrac } from "../lib/carMotion";
 import { liveLocationWaitNote } from "../lib/mapCarsNote";
 import { placeTrackCar } from "../lib/pitcircle";
-import { appendDriverDot } from "../lib/svgcar";
+import { appendDriverDot, moveDriverDot } from "../lib/svgcar";
 import { panel } from "../ui/panel";
 import { mountTowerSplitter } from "../ui/splitter";
 import { renderTower } from "../ui/tower";
@@ -138,7 +139,7 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
     const placed = placeTrackCar(row, placeOpts);
     if (!placed) continue;
     running += 1;
-    const frac = placed.frac;
+    const frac = smoothedFrac(row.driver.driver_number, placed.frac);
     const [x, y] = pointAt(pts, frac);
     const [px, py] = map(x, y);
     if (row.driver.driver_number === followN) {
@@ -157,6 +158,7 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
       labelX: px + MAP_LABEL_DX,
       labelY: py + MAP_LABEL_DY,
     });
+    dot.style.opacity = String(motionFade(row.driver.driver_number, snap.now));
     dot.dataset.frac = frac.toFixed(4);
     dot.dataset.place = placed.source;
   }
@@ -218,6 +220,38 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
     const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t) : null);
     if (bundle && snap) drawMap(svg, bundle, snap, followZoom);
   };
+
+  const paintMotion = () => {
+    if (!svg.isConnected) return;
+    const bundle = state.bundle;
+    const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t) : null);
+    if (!bundle || !snap || bundle.track.length < 2) return;
+    const w = svg.clientWidth || 800;
+    const h = svg.clientHeight || 600;
+    const pts = bundle.track;
+    const { map } = project(pts, w, h, 48);
+    const followN = state.selectedDriver ?? snap.rows[0]?.driver.driver_number ?? null;
+    let followPx = w / 2;
+    let followPy = h / 2;
+    for (const g of svg.querySelectorAll<SVGGElement>("g.car-hit[data-driver]")) {
+      const n = Number(g.getAttribute("data-driver"));
+      const frac = smoothedFrac(n, Number(g.getAttribute("data-frac")) || 0);
+      const [x, y] = pointAt(pts, frac);
+      const [px, py] = map(x, y);
+      if (n === followN) {
+        followPx = px;
+        followPy = py;
+      }
+      moveDriverDot(g, px, py, px + MAP_LABEL_DX, py + MAP_LABEL_DY);
+      g.style.opacity = String(motionFade(n, snap.now));
+      g.dataset.frac = frac.toFixed(4);
+    }
+    if (followZoom && pts.length >= 2) {
+      const box = followViewBox(followPx, followPy, w, h, MAP_FOLLOW_ZOOM);
+      svg.setAttribute("viewBox", `${box.x.toFixed(1)} ${box.y.toFixed(1)} ${box.w.toFixed(1)} ${box.h.toFixed(1)}`);
+    }
+  };
+  setMotionPainter("trackmap", paintMotion);
 
   zoomBtn.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
