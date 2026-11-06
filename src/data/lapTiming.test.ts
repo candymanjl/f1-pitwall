@@ -345,4 +345,110 @@ describe("buildLapTimingModel", () => {
     expect(model.cells.get(16)?.get(1)?.deltaFirst).toBeCloseTo(0.1, 5);
     expect(model.cells.get(81)?.get(1)?.deltaFirst).toBeCloseTo(0.3, 5);
   });
+
+  it("shows São Paulo FP1 NOR laps at 00:12 and 00:45 with OpenF1 microsecond stamps", () => {
+    const start = Date.parse("2026-11-06T15:30:00.000Z");
+    const nor = driver(1, "NOR", "McLaren", "FF8000");
+    const b = bundle({
+      session: {
+        session_key: 11405,
+        meeting_key: 1296,
+        session_name: "Practice 1",
+        session_type: "Practice",
+        date_start: "2026-11-06T15:30:00+00:00",
+        date_end: "2026-11-06T16:30:00+00:00",
+        circuit_short_name: "Interlagos",
+        country_name: "Brazil",
+        location: "São Paulo",
+        year: 2026,
+      },
+      drivers: [nor],
+      stints: [
+        { driver_number: 1, stint_number: 1, lap_start: 1, lap_end: 3, compound: "MEDIUM", tyre_age_at_start: 0 },
+        { driver_number: 1, stint_number: 2, lap_start: 4, lap_end: 7, compound: "MEDIUM", tyre_age_at_start: 0 },
+      ],
+      laps: [
+        lap({
+          driver_number: 1,
+          lap_number: 1,
+          date_start: "2026-11-06T15:31:02.019000+00:00",
+          lap_duration: null,
+          is_pit_out_lap: true,
+        }),
+        lap({
+          driver_number: 1,
+          lap_number: 2,
+          date_start: "2026-11-06T15:32:52.806000",
+          lap_duration: 73.661,
+          duration_sector_1: 18.926,
+          duration_sector_2: 36.2,
+          duration_sector_3: 18.535,
+          st_speed: 312,
+        }),
+        lap({
+          driver_number: 1,
+          lap_number: 6,
+          date_start: "2026-11-06T15:39:08.260000+00:00",
+          lap_duration: 127.958,
+        }),
+        lap({
+          driver_number: 1,
+          lap_number: 8,
+          date_start: "2026-11-06T15:49:32.790000+00:00",
+          lap_duration: 90.1,
+        }),
+        lap({
+          driver_number: 1,
+          lap_number: 20,
+          date_start: "2026-11-06T16:10:00.000000+00:00",
+          lap_duration: 74.2,
+          st_speed: 318,
+        }),
+      ],
+    });
+    const early = buildLapTimingModel({
+      bundle: b,
+      snap: null,
+      selected: [1],
+      now: start + (12 * 60 + 23) * 1000,
+      live: false,
+    });
+    expect(early.cells.get(1)?.get(2)?.time).toBeCloseTo(73.661, 5);
+    expect(early.cells.get(1)?.get(8)).toBeUndefined();
+    expect(early.selected[0].bestLap).toBeCloseTo(73.661, 5);
+    const late = buildLapTimingModel({
+      bundle: b,
+      snap: null,
+      selected: [1],
+      now: start + (45 * 60 + 29) * 1000,
+      live: false,
+    });
+    expect(late.cells.get(1)?.get(8)?.time).toBeCloseTo(90.1, 5);
+    expect(late.cells.get(1)?.get(20)?.time).toBeCloseTo(74.2, 5);
+    expect(late.selected[0].bestLap).toBeCloseTo(73.661, 5);
+    expect(late.laps).toContain(20);
+  });
+
+  it("still hides Race laps that have not started at the replay clock", () => {
+    const start = Date.parse("2026-11-01T20:00:00.000Z");
+    const model = buildLapTimingModel({
+      bundle: bundle({
+        laps: [
+          lap({ driver_number: 4, lap_number: 1, date_start: new Date(start).toISOString(), lap_duration: 80 }),
+          lap({
+            driver_number: 4,
+            lap_number: 2,
+            date_start: new Date(start + 80_000).toISOString(),
+            lap_duration: 79.4,
+          }),
+        ],
+      }),
+      snap: null,
+      selected: [4],
+      now: start + 40_000,
+      live: false,
+    });
+    expect(model.laps).toEqual([1]);
+    expect(model.cells.get(4)?.get(2)).toBeUndefined();
+  });
 });

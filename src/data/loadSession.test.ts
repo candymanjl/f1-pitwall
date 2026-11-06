@@ -272,6 +272,85 @@ describe("loadBundle", () => {
     expect(outlineFracs![1]).toBeCloseTo(0.375, 1);
   });
 
+  it("refetches laps after an empty live snapshot when stints already exist", async () => {
+    mockStorage();
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
+    const live = {
+      ...fp1,
+      session_key: 11405,
+      meeting_key: 1299,
+      session_name: "Practice 1",
+      session_type: "Practice",
+      date_start: "2026-11-06T15:30:00+00:00",
+      date_end: "2026-11-06T16:30:00+00:00",
+      year: 2026,
+    };
+    const gp: Meeting = {
+      ...meeting,
+      meeting_key: 1299,
+      meeting_name: "São Paulo Grand Prix",
+      year: 2026,
+    };
+    let lapCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: RequestInfo | URL) => {
+        const href = String(url);
+        if (href.includes("/drivers")) {
+          return jsonRes(200, [
+            {
+              driver_number: 1,
+              broadcast_name: "NOR",
+              full_name: "Lando Norris",
+              name_acronym: "NOR",
+              team_name: "McLaren",
+              team_colour: "FF8000",
+              first_name: "Lando",
+              last_name: "Norris",
+            },
+          ]);
+        }
+        if (href.includes("/laps")) {
+          lapCalls += 1;
+          if (lapCalls === 1) return jsonRes(200, []);
+          return jsonRes(200, [
+            {
+              driver_number: 1,
+              lap_number: 2,
+              date_start: "2026-11-06T15:32:52.806000+00:00",
+              lap_duration: 73.661,
+              duration_sector_1: 18.926,
+              duration_sector_2: 36.2,
+              duration_sector_3: 18.535,
+              is_pit_out_lap: false,
+              segments_sector_1: null,
+              segments_sector_2: null,
+              segments_sector_3: null,
+              i1_speed: null,
+              i2_speed: null,
+              st_speed: null,
+            },
+          ]);
+        }
+        if (href.includes("/stints")) {
+          return jsonRes(200, [
+            { driver_number: 1, stint_number: 1, lap_start: 1, lap_end: 33, compound: "MEDIUM", tyre_age_at_start: 0 },
+          ]);
+        }
+        return jsonRes(200, []);
+      }),
+    );
+
+    const bundle = await loadBundle(11405, {
+      meeting: gp,
+      weekendSessions: [live],
+      page: "laptiming",
+    });
+    expect(lapCalls).toBeGreaterThanOrEqual(2);
+    expect(bundle.laps).toHaveLength(1);
+    expect(bundle.laps[0].lap_duration).toBeCloseTo(73.661, 5);
+  });
+
   it("uses a cached same-circuit outline when this session has no /location lap yet", async () => {
     mockStorage();
     writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");

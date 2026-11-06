@@ -193,6 +193,34 @@ describe("relay rate limits", () => {
   });
 });
 
+describe("empty live snapshots", () => {
+  it("does not persist an empty array, so a later fetch can see finished-session data", async () => {
+    const memory = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (k: string) => memory.get(k) ?? null,
+        setItem: (k: string, v: string) => void memory.set(k, v),
+        removeItem: (k: string) => void memory.delete(k),
+      },
+      configurable: true,
+    });
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) return jsonRes(200, []);
+        return jsonRes(200, [{ driver_number: 1, lap_number: 2 }]);
+      }),
+    );
+    await expect(apiGet("laps", { session_key: 11405 })).resolves.toEqual([]);
+    expect([...memory.keys()].some((k) => k.startsWith("f1pw.cache:laps"))).toBe(false);
+    resetClientForTests();
+    await expect(apiGet("laps", { session_key: 11405 })).resolves.toEqual([{ driver_number: 1, lap_number: 2 }]);
+    expect(calls).toBe(2);
+  });
+});
+
 describe("OpenF1 empty and Retry-After", () => {
   it("treats 404 as an empty list and honors Retry-After on 429", async () => {
     expect(parseRetryAfterMs("2")).toBe(2000);

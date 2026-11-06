@@ -1,6 +1,7 @@
 import { DEFAULT_MEETING_KEY, DEFAULT_SESSION_KEY, DEFAULT_YEAR } from "../config";
 import { parseTs } from "../lib/time";
 import { apiGet } from "./client";
+import { fillMissingLapStarts, timingLooksSparse } from "./lapStarts";
 import { isLiveLock } from "./errors";
 import { snapshotAt } from "./derive";
 import { isRaceOrSprint } from "./grid";
@@ -133,7 +134,7 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
       : null;
 
   const raceLike = /race|sprint/i.test(session.session_name);
-  const [meetingRow, weekendSessions, drivers, laps, stints, pits, weather, raceControl, positions, intervals, startingGrid] =
+  const [meetingRow, weekendSessions, drivers, rawLaps, rawStints, rawPits, rawWeather, rawRaceControl, rawPositions, intervals, startingGrid] =
     await Promise.all([
       knownMeeting
         ? Promise.resolve(knownMeeting)
@@ -176,6 +177,21 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
 
   const meeting = meetingRow;
   if (!meeting) throw new Error("Meeting not found");
+
+  const recovered = await recoverEmptyTiming(sessionKey, {
+    laps: rawLaps,
+    stints: rawStints,
+    weather: rawWeather,
+    positions: rawPositions,
+    pits: rawPits,
+    raceControl: rawRaceControl,
+  });
+  const laps = fillMissingLapStarts(recovered.laps, parseTs(session.date_start));
+  const stints = recovered.stints;
+  const weather = recovered.weather;
+  const positions = recovered.positions;
+  const pits = recovered.pits;
+  const raceControl = recovered.raceControl;
 
   const sortedWeekend = weekendSessions.slice().sort((a, b) => parseTs(a.date_start) - parseTs(b.date_start));
   const sortedDrivers = drivers.slice().sort((a, b) => a.driver_number - b.driver_number);
@@ -329,4 +345,77 @@ export async function loadDefaultKeys(): Promise<{ year: number; meetingKey: num
   return { year: DEFAULT_YEAR, meetingKey: DEFAULT_MEETING_KEY, sessionKey: DEFAULT_SESSION_KEY };
 }
 
-export { snapshotAt };
+const FORCE = { force: true as const, ttlMs: 0 };
+
+async function refetchIfEmpty<T>(path: string, sessionKey: number, current: T[]): Promise<T[]> {
+  if (current.length) return current;
+  return apiGet<T[]>(path, { session_key: sessionKey }, FORCE);
+}
+
+/** A live session cached as [] would otherwise leave Timing / weather / laps blank after it finishes. */
+async function recoverEmptyTiming(
+  sessionKey: number,
+  current: {
+    laps: Lap[];
+    stints: Stint[];
+    weather: Weather[];
+    positions: Position[];
+    pits: Pit[];
+    raceControl: RaceControl[];
+  },
+): Promise<typeof current> {
+  if (!timingLooksSparse(current)) return current;
+  const [laps, weather, positions, pits, raceControl, stints] = await Promise.all([
+    refetchIfEmpty<Lap>("laps", sessionKey, current.laps),
+    refetchIfEmpty<Weather>("weather", sessionKey, current.weather),
+    refetchIfEmpty<Position>("position", sessionKey, current.positions),
+    refetchIfEmpty<Pit>("pit", sessionKey, current.pits),
+    refetchIfEmpty<RaceControl>("race_control", sessionKey, current.raceControl),
+    refetchIfEmpty<Stint>("stints", sessionKey, current.stints),
+  ]);
+  return { laps, stints, weather, positions, pits, raceControl };
+}
+
+/** Full REST snapshot after a live session ends, replacing the 20s incremental window. */
+export async function refreshTimingData(bundle: SessionBundle): Promise<SessionBundle> {
+  const sessionKey = bundle.session.session_key;
+  const raceLike = /race|sprint/i.test(bundle.session.session_name);
+  const [laps, stints, pits, weather, raceControl, positions, intervals] = await Promise.all([
+    apiGet<Lap[]>("laps", { session_key: sessionKey }, FORCE),
+    apiGet<Stint[]>("stints", { session_key: sessionKey }, FORCE),
+    apiGet<Pit[]>("pit", { session_key: sessionKey }, FORCE),
+    apiGet<Weather[]>("weather", { session_key: sessionKey }, FORCE),
+    apiGet<RaceControl[]>("race_control", { session_key: sessionKey }, FORCE),
+    apiGet<Position[]>("position", { session_key: sessionKey }, FORCE),
+    raceLike
+      ? apiGet<Interval[]>("intervals", { session_key: sessionKey }, FORCE).catch((err) => {
+          if (isLiveLock(err)) throw err;
+          return bundle.intervals;
+        })
+      : Promise.resolve(bundle.intervals),
+  ]);
+  let locations = bundle.locations;
+  try {
+    locations = await loadDriverLocations(
+      sessionKey,
+      bundle.drivers,
+      bundle.session.date_start,
+      bundle.session.date_end,
+    );
+  } catch (err) {
+    if (isLiveLock(err)) throw err;
+  }
+  return {
+    ...bundle,
+    laps: fillMissingLapStarts(laps, parseTs(bundle.session.date_start)),
+    stints,
+    pits,
+    weather,
+    raceControl,
+    positions,
+    intervals,
+    locations,
+  };
+}
+
+export { snapshotAt, timingLooksSparse };

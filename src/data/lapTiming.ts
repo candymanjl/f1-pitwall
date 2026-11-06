@@ -1,4 +1,4 @@
-import { latestBefore, parseTs } from "../lib/time";
+import { asNumber, latestBefore, parseTs } from "../lib/time";
 import { safetyCarBands, visibleLapTiming } from "./derive";
 import type {
   Driver,
@@ -87,14 +87,14 @@ function minOf(values: Array<number | null | undefined>): number | null {
 export function lapEndMs(lap: Lap): number {
   const start = parseTs(lap.date_start);
   if (!Number.isFinite(start)) return NaN;
-  if (lap.lap_duration != null && Number.isFinite(lap.lap_duration) && lap.lap_duration > 0) {
-    return start + lap.lap_duration * 1000;
-  }
+  const dur = asNumber(lap.lap_duration);
+  if (dur != null && dur > 0) return start + dur * 1000;
   return start;
 }
 
 function completed(lap: Lap, until: number): boolean {
-  if (lap.lap_duration == null || !Number.isFinite(lap.lap_duration) || lap.lap_duration <= 0) return false;
+  const dur = asNumber(lap.lap_duration);
+  if (dur == null || dur <= 0) return false;
   const end = lapEndMs(lap);
   return Number.isFinite(end) && end <= until;
 }
