@@ -7,7 +7,7 @@ vi.mock("./client", () => ({ apiGet, parseRetryAfterMs: () => 4000 }));
 import { AUTH_ACCESS_KEY, AUTH_EXPIRY_KEY, AUTH_USER_KEY, TOKEN_REFRESH_SKEW_MS, writeRelayUrl } from "../config";
 import { applyLiveMessage } from "./liveMerge";
 import { startLiveFeed, type MqttLike } from "./live";
-import { MQTT_SILENCE_MS } from "./livePoll";
+import { LOCATION_POLL_MS, MQTT_SILENCE_MS } from "./livePoll";
 import type { SessionBundle } from "./types";
 
 function mockBroker() {
@@ -234,6 +234,36 @@ describe("OpenF1 MQTT even when a relay is set", () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(connectMqtt).toHaveBeenCalledTimes(2);
     expect(first.end).toHaveBeenCalled();
+    handle.stop();
+  });
+
+  it("keeps REST /location going while MQTT is up if v1/location never arrives", async () => {
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
+    vi.useFakeTimers();
+    apiGet.mockResolvedValue([]);
+    const client = mockBroker();
+    const statuses: string[] = [];
+    const handle = startLiveFeed({
+      username: "ada",
+      sessionKey: 11406,
+      tabChannel: null,
+      getToken: async () => "tok",
+      connectMqtt: () => client,
+      onMessage: () => {},
+      onStatus: (source, detail) => statuses.push(`${source}:${detail ?? ""}`),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    client.emit("connect");
+    client.emit("message", "v1/position", JSON.stringify({ driver_number: 12, position: 1, session_key: 11406 }));
+    expect(statuses.filter((s) => s.startsWith("mqtt")).length).toBeGreaterThan(0);
+    const locBefore = apiGet.mock.calls.filter((call) => call[0] === "location").length;
+    await vi.advanceTimersByTimeAsync(LOCATION_POLL_MS);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(LOCATION_POLL_MS);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    const locAfter = apiGet.mock.calls.filter((call) => call[0] === "location").length;
+    expect(locAfter).toBeGreaterThan(locBefore);
+    expect(statuses.some((s) => s.startsWith("poll:"))).toBe(false);
     handle.stop();
   });
 

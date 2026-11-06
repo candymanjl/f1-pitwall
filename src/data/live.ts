@@ -12,6 +12,7 @@ import {
   lastMessageAgeMs,
   lastSeenIso,
   livePollParams,
+  LOCATION_POLL_MS,
   locationLiveSinceIso,
   MQTT_CAR_DATA_TOPIC,
   MQTT_SILENCE_MS,
@@ -251,15 +252,26 @@ export function startLiveFeed(opts: {
     report({ lastPollAt: clock(), lastCycleMs: clock() - started, added, lastError });
   };
 
+  const locationMqttStale = () => {
+    const at = debug.lastMessageAt["v1/location"];
+    return !Number.isFinite(at) || clock() - at > LOCATION_POLL_MS * 2;
+  };
+
   const startPoll = (detail?: string) => {
-    if (stopped || polling || holdPoll) return;
+    if (stopped || polling) return;
+    if (holdPoll && !locationMqttStale()) {
+      if (!pollTimer) schedule(LOCATION_POLL_MS, detail);
+      return;
+    }
     if (pollTimer) {
-      opts.onStatus("poll", detail);
+      if (!holdPoll) opts.onStatus("poll", detail);
       return;
     }
     polling = true;
-    report({ mode: "POLLING", lastError: detail || debug.lastError });
-    opts.onStatus("poll", detail);
+    if (!holdPoll) {
+      report({ mode: "POLLING", lastError: detail || debug.lastError });
+      opts.onStatus("poll", detail);
+    }
     const tick = async () => {
       if (stopped) return;
       const sessionKey = loadedKey();
@@ -267,14 +279,25 @@ export function startLiveFeed(opts: {
         schedule(FAST_POLL_MS, "Relay live");
         return;
       }
+      if (holdPoll && !locationMqttStale()) {
+        report({ mode: "STREAM" });
+        schedule(LOCATION_POLL_MS, detail);
+        return;
+      }
       const started = clock();
       const specs = duePollSpecs(opts.page?.(), lastRan, started, loadedName());
+      const due = holdPoll ? specs.filter((spec) => spec.path === "location") : specs;
+      if (!due.length) {
+        schedule(holdPoll ? LOCATION_POLL_MS : nextDueInMs(opts.page?.(), lastRan, clock(), loadedName()), detail);
+        return;
+      }
       const since = fallbackSinceIso(started);
-      const { added, lastError, hardError, retryAfterMs } = await runDueSpecs(specs, sessionKey, since);
+      const { added, lastError, hardError, retryAfterMs } = await runDueSpecs(due, sessionKey, since);
 
       if (stopped) return;
       if (holdPoll) {
-        polling = false;
+        report({ mode: "STREAM", lastPollAt: clock(), lastCycleMs: clock() - started, added, lastError });
+        schedule(LOCATION_POLL_MS, detail);
         return;
       }
       report({ mode: "POLLING", lastPollAt: clock(), lastCycleMs: clock() - started, added, lastError });
@@ -344,9 +367,9 @@ export function startLiveFeed(opts: {
 
   const enterStream = (detail?: string) => {
     holdPoll = true;
-    stopPoll();
     report({ mode: "STREAM", lastError: detail || "" });
     opts.onStatus("mqtt", detail);
+    if (!polling && !pollTimer) startPoll(detail);
   };
 
   const connectMqtt = async () => {

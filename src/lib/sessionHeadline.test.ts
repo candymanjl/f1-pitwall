@@ -60,6 +60,28 @@ describe("formatReplayBadge", () => {
     ).toBe("live polling");
     expect(
       formatReplayBadge({
+        mode: "live",
+        followLive: true,
+        playing: true,
+        speed: 1,
+        liveSource: "mqtt",
+        streamMode: "STREAM",
+        streamAgeMs: 400,
+      }),
+    ).toBe("live mqtt");
+    expect(
+      formatReplayBadge({
+        mode: "live",
+        followLive: true,
+        playing: true,
+        speed: 1,
+        liveSource: "mqtt",
+        streamMode: "STREAM",
+        streamAgeMs: null,
+      }),
+    ).toBe("live mqtt · silent");
+    expect(
+      formatReplayBadge({
         mode: "historical",
         followLive: false,
         playing: true,

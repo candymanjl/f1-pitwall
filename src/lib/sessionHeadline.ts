@@ -8,12 +8,21 @@ export function formatReplayBadge(opts: {
   playing: boolean;
   speed: number;
   liveSource: LiveSource;
+  /** Age of the newest MQTT/REST live message. Null = nothing received yet. */
+  streamAgeMs?: number | null;
+  streamMode?: "STREAM" | "POLLING" | "OFF";
 }): string {
   if (opts.mode !== "live") return `replay ${opts.speed}×`;
   if (!opts.followLive) {
     return opts.playing ? `catch-up ${opts.speed}×` : `paused ${opts.speed}×`;
   }
-  if (opts.liveSource === "mqtt") return "live mqtt";
+  if (opts.liveSource === "mqtt") {
+    const silent =
+      opts.streamMode != null && opts.streamMode !== "STREAM"
+        ? true
+        : opts.streamAgeMs == null || opts.streamAgeMs > 5_000;
+    return silent ? "live mqtt · silent" : "live mqtt";
+  }
   if (opts.liveSource === "poll") return "live polling";
   return "live";
 }
