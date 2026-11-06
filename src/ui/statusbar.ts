@@ -10,6 +10,7 @@ import { teamColor } from "../lib/colors";
 import { el } from "../lib/dom";
 import { renderFlagIndicator } from "./flagIcon";
 import { formatPressure, pressureTrendLabel, pressureTrendMark, weatherPressureAt } from "../data/weatherPressure";
+import { motionFade, setMotionPainter, smoothedFrac } from "../lib/carMotion";
 import { placeTrackCar } from "../lib/pitcircle";
 import { formatSector } from "../lib/time";
 import { nearestStripCar, stripX } from "../lib/trackStrip";
@@ -70,7 +71,8 @@ function drawGap(canvas: HTMLCanvasElement, snap: TimingSnapshot): void {
       cars: rows.flatMap((row) => {
         const placed = placeStripCar(row, pitEntry, pitExit, snap, locIndex);
         if (!placed) return [];
-        return [{ n: row.driver.driver_number, x: stripX(placed.frac, w, pad) }];
+        const frac = smoothedFrac(row.driver.driver_number, placed.frac);
+        return [{ n: row.driver.driver_number, x: stripX(frac, w, pad) }];
       }),
     };
     canvas.dataset.cars = String(lastStrip.cars.length);
@@ -109,9 +111,11 @@ function drawGap(canvas: HTMLCanvasElement, snap: TimingSnapshot): void {
   for (const row of rows) {
     const placed = placeStripCar(row, pitEntry, pitExit, snap, locIndex);
     if (!placed) continue;
-    const x = stripX(placed.frac, w, pad);
+    const frac = smoothedFrac(row.driver.driver_number, placed.frac);
+    const x = stripX(frac, w, pad);
     const on = isDriverSelected(row.driver.driver_number);
-    ctx.globalAlpha = dim && !on ? 0.28 : 1;
+    const fade = motionFade(row.driver.driver_number, snap.now);
+    ctx.globalAlpha = (dim && !on ? 0.28 : 1) * fade;
     ctx.fillStyle = teamColor(row.driver.team_colour);
     ctx.beginPath();
     ctx.arc(x, midY, on ? 6 : 4, 0, Math.PI * 2);
@@ -314,5 +318,10 @@ export function mountStatusBar(parent: HTMLElement): { update: () => void } {
     paintChrome();
     scheduleChrome();
   };
+  setMotionPainter("strip", () => {
+    if (!canvas.isConnected) return;
+    const snap = state.snap;
+    if (snap) drawGap(canvas, snap);
+  });
   return { update };
 }

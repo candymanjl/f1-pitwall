@@ -27,6 +27,7 @@ import { emptyLiveDebug, seedLiveCursors, type LivePollDebug } from "./data/live
 import { emptyFetchProgress, type FetchProgress } from "./data/loadProgress";
 import { loadBundle, loadMeetings, loadSessions, refreshTimingData } from "./data/loadSession";
 import { fillMissingLapStarts, timingLooksSparse } from "./data/lapStarts";
+import { notifyMotion, resetCarMotion, stepCarMotion, syncCarMotion } from "./lib/carMotion";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
 import { historicalStartMs, isFinishedSession, latestSampleMs, playableEndMs } from "./lib/sessionClock";
 import { nextSelection } from "./lib/select";
@@ -183,9 +184,11 @@ function scheduleLiveSnap(): void {
 function refreshSnap(): void {
   if (!state.bundle) {
     state.snap = null;
+    resetCarMotion();
     return;
   }
   state.snap = snapshotAt(state.bundle, state.t);
+  syncCarMotion(state.bundle, state.snap, state.t, state.playing && !state.scrubbing);
 }
 
 export function setPage(page: PageId): void {
@@ -537,6 +540,7 @@ function applyPartialBundle(bundle: SessionBundle, first: boolean): void {
   const laps = fillMissingLapStarts(bundle.laps, start);
   state.bundle = laps === bundle.laps ? bundle : { ...bundle, laps };
   if (firstApply) {
+    resetCarMotion();
     finishedRefreshKey = 0;
     state.lastIngestAt = 0;
     state.lapTimingDrivers = [];
@@ -597,6 +601,9 @@ function tick(now: number): void {
   const dt = now - lastTick;
   lastTick = now;
   stepClock(dt);
+  if (stepCarMotion(state.t, state.playing && !state.scrubbing, state.scrubbing)) {
+    notifyMotion();
+  }
   requestAnimationFrame(tick);
 }
 
