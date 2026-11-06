@@ -14,6 +14,10 @@ import { classifyOpenF1Failure, isNetworkFailure, OpenF1Error } from "./errors";
 
 type CacheEntry = { expires: number; body: unknown };
 
+/** Old live-era `f1pw.cache:` rows (empty or partial) must not survive a new build. */
+export const CACHE_PERSIST_PREFIX = "f1pw.cache.v3:";
+export const BUILD_CACHE_KEY = "f1pw.buildCache";
+
 const memory = new Map<string, CacheEntry>();
 const queue: Array<() => Promise<unknown>> = [];
 let lastSent = 0;
@@ -108,13 +112,71 @@ function isEmptyBody(body: unknown): boolean {
   return Array.isArray(body) && body.length === 0;
 }
 
+function persistKey(key: string): string {
+  return `${CACHE_PERSIST_PREFIX}${key}`;
+}
+
+function listLocalStorageKeys(): string[] {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k) keys.push(k);
+    }
+    return keys;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Drop OpenF1 HTTP snapshots left over from a previous build (or the old
+ * `f1pw.cache:` prefix). Rich cannot open DevTools, so a new deploy has to
+ * forget the live-session empties by itself.
+ */
+export function purgeStaleClientCache(buildVersion: string): void {
+  try {
+    const prev = localStorage.getItem(BUILD_CACHE_KEY);
+    const bump = prev !== buildVersion;
+    for (const k of listLocalStorageKeys()) {
+      const oldGen = k.startsWith("f1pw.cache:") && !k.startsWith(CACHE_PERSIST_PREFIX);
+      const thisGen = k.startsWith(CACHE_PERSIST_PREFIX);
+      if (oldGen || (bump && thisGen)) localStorage.removeItem(k);
+    }
+    if (bump) localStorage.setItem(BUILD_CACHE_KEY, buildVersion);
+  } catch {
+    /* private mode / node tests */
+  }
+}
+
+/** Unregister a leftover SW / Cache Storage and wipe stale OpenF1 rows. */
+export function dropStaleAppCaches(buildVersion: string): void {
+  purgeStaleClientCache(buildVersion);
+  try {
+    const sw = (globalThis as { navigator?: Navigator }).navigator?.serviceWorker;
+    void sw?.getRegistrations?.().then((regs) => {
+      for (const r of regs) void r.unregister();
+    });
+  } catch {
+    /* ignore */
+  }
+  try {
+    const store = (globalThis as { caches?: CacheStorage }).caches;
+    void store?.keys?.().then((keys) => {
+      for (const k of keys) void store.delete(k);
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 async function persistGet(key: string): Promise<unknown | null> {
   try {
-    const raw = localStorage.getItem(`f1pw.cache:${key}`);
+    const raw = localStorage.getItem(persistKey(key));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CacheEntry;
     if (parsed.expires < Date.now() || isEmptyBody(parsed.body)) {
-      localStorage.removeItem(`f1pw.cache:${key}`);
+      localStorage.removeItem(persistKey(key));
       return null;
     }
     return parsed.body;
@@ -128,7 +190,7 @@ function persistSet(key: string, entry: CacheEntry): void {
   try {
     const raw = JSON.stringify(entry);
     if (raw.length > 400_000) return;
-    localStorage.setItem(`f1pw.cache:${key}`, raw);
+    localStorage.setItem(persistKey(key), raw);
   } catch {
     /* quota — ignore */
   }

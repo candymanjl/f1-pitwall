@@ -2,7 +2,6 @@ import { parseTs } from "../lib/time";
 import { distToTrack } from "./pitlane";
 import { polylineLength } from "./track";
 import { apiGet } from "./client";
-import { isLiveLock } from "./errors";
 import type { Driver, LocationSample } from "./types";
 
 export const LOCATION_MAX_AGE_MS = 10_000;
@@ -138,8 +137,7 @@ export async function loadDriverLocations(
           "date>": from,
           "date<": to,
         });
-      } catch (err) {
-        if (isLiveLock(err)) throw err;
+      } catch {
         return [];
       } finally {
         onChunk?.(d);

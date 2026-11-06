@@ -1,6 +1,5 @@
 import { parseTs } from "../lib/time";
 import { apiGet } from "./client";
-import { isLiveLock } from "./errors";
 import {
   cachedAsFrom,
   readCachedOutline,
@@ -84,8 +83,7 @@ export async function loadSessionOutline(
       "date<": win.to,
     });
     return { track: buildOutline(samples), sectorFracs: sectorDistanceFractions(samples, preferred) };
-  } catch (err) {
-    if (isLiveLock(err)) throw err;
+  } catch {
     return { track: [], sectorFracs: null };
   }
 }
@@ -94,16 +92,16 @@ async function loadCircuitSessions(session: Session): Promise<Session[]> {
   if (session.circuit_key != null) {
     try {
       return await apiGet<Session[]>("sessions", { circuit_key: session.circuit_key });
-    } catch (err) {
-      if (isLiveLock(err)) throw err;
+    } catch {
+      /* try the name fallback */
     }
   }
   const name = (session.circuit_short_name || "").trim();
   if (name) {
     try {
       return await apiGet<Session[]>("sessions", { circuit_short_name: name });
-    } catch (err) {
-      if (isLiveLock(err)) throw err;
+    } catch {
+      /* no circuit list */
     }
   }
   return [];
@@ -116,8 +114,7 @@ async function loadDonorOutline(donor: Session): Promise<{ track: [number, numbe
       apiGet<Lap[]>("laps", { session_key: donor.session_key }),
     ]);
     return loadSessionOutline(donor.session_key, laps, drivers);
-  } catch (err) {
-    if (isLiveLock(err)) throw err;
+  } catch {
     return { track: [], sectorFracs: null };
   }
 }
@@ -147,8 +144,8 @@ export async function resolveFallbackOutline(opts: {
   let listed: Session[] = [];
   try {
     listed = await loadCircuitSessions(opts.session);
-  } catch (err) {
-    if (isLiveLock(err)) throw err;
+  } catch {
+    listed = [];
   }
   const donors = preferOutlineDonors(opts.session, [...opts.weekendSessions, ...listed]);
   for (const donor of donors.slice(0, 3)) {

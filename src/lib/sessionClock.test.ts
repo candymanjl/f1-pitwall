@@ -242,6 +242,36 @@ describe("isFinishedSession", () => {
       ),
     ).toBe(true);
   });
+
+  it("treats a finished practice as done in live mode even when OpenF1 still calls it latest", () => {
+    const now = Date.parse("2026-11-06T18:20:00.000Z");
+    const fp1 = bundle({
+      session: {
+        ...bundle().session,
+        session_name: "Practice 1",
+        session_type: "Practice",
+        date_start: "2026-11-06T15:30:00+00:00",
+        date_end: "2026-11-06T16:30:00+00:00",
+      },
+      laps: [],
+      intervals: [],
+    });
+    expect(isFinishedSession(fp1, now, { live: true, lastIngestAt: 0, latestMs: Number.NaN })).toBe(true);
+    expect(
+      isFinishedSession(fp1, now, {
+        live: true,
+        lastIngestAt: 0,
+        latestMs: Date.parse("2026-11-06T16:33:20.508Z"),
+      }),
+    ).toBe(true);
+    expect(
+      isFinishedSession(fp1, Date.parse("2026-11-06T16:35:00.000Z"), {
+        live: true,
+        lastIngestAt: Date.parse("2026-11-06T16:34:00.000Z"),
+        latestMs: Date.parse("2026-11-06T16:33:20.508Z"),
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("followLiveFromSlider", () => {

@@ -351,6 +351,152 @@ describe("loadBundle", () => {
     expect(bundle.laps[0].lap_duration).toBeCloseTo(73.661, 5);
   });
 
+  it("does not fetch /intervals for practice and keeps laps when pit 404s", async () => {
+    mockStorage();
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
+    const live = {
+      ...fp1,
+      session_key: 11405,
+      meeting_key: 1299,
+      session_name: "Practice 1",
+      session_type: "Practice",
+      date_start: "2026-11-06T15:30:00+00:00",
+      date_end: "2026-11-06T16:30:00+00:00",
+      year: 2026,
+    };
+    const gp: Meeting = {
+      ...meeting,
+      meeting_key: 1299,
+      meeting_name: "São Paulo Grand Prix",
+      year: 2026,
+    };
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: RequestInfo | URL) => {
+        const href = String(url);
+        seen.push(href);
+        if (href.includes("/drivers")) {
+          return jsonRes(200, [
+            {
+              driver_number: 1,
+              broadcast_name: "NOR",
+              full_name: "Lando Norris",
+              name_acronym: "NOR",
+              team_name: "McLaren",
+              team_colour: "FF8000",
+              first_name: "Lando",
+              last_name: "Norris",
+            },
+          ]);
+        }
+        if (href.includes("/laps")) {
+          return jsonRes(200, [
+            {
+              driver_number: 1,
+              lap_number: 2,
+              date_start: "2026-11-06T15:32:52.806000+00:00",
+              lap_duration: 73.661,
+              duration_sector_1: 18.926,
+              duration_sector_2: 36.2,
+              duration_sector_3: 18.535,
+              is_pit_out_lap: false,
+              segments_sector_1: null,
+              segments_sector_2: null,
+              segments_sector_3: null,
+              i1_speed: null,
+              i2_speed: null,
+              st_speed: null,
+            },
+          ]);
+        }
+        if (href.includes("/pit")) return new Response(JSON.stringify({ detail: "No results found." }), { status: 404 });
+        if (href.includes("/intervals")) return new Response(JSON.stringify({ detail: "No results found." }), { status: 404 });
+        return jsonRes(200, []);
+      }),
+    );
+
+    const bundle = await loadBundle(11405, {
+      meeting: gp,
+      weekendSessions: [live],
+      page: "timing",
+    });
+    expect(seen.some((u) => u.includes("/intervals"))).toBe(false);
+    expect(bundle.laps).toHaveLength(1);
+    expect(bundle.intervals).toEqual([]);
+    expect(bundle.pits).toEqual([]);
+  });
+
+  it("keeps practice laps when /location is 401 live-lock", async () => {
+    mockStorage();
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
+    const live = {
+      ...fp1,
+      session_key: 11405,
+      meeting_key: 1299,
+      session_name: "Practice 1",
+      session_type: "Practice",
+      date_start: "2026-11-06T15:30:00+00:00",
+      date_end: "2026-11-06T16:30:00+00:00",
+      year: 2026,
+    };
+    const gp: Meeting = { ...meeting, meeting_key: 1299, meeting_name: "São Paulo Grand Prix", year: 2026 };
+    const lock = {
+      detail:
+        "Live F1 session in progress. Global API access (including past sessions) is restricted to authenticated users until the session ends.",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: RequestInfo | URL) => {
+        const href = String(url);
+        if (href.includes("/drivers")) {
+          return jsonRes(200, [
+            {
+              driver_number: 1,
+              broadcast_name: "NOR",
+              full_name: "Lando Norris",
+              name_acronym: "NOR",
+              team_name: "McLaren",
+              team_colour: "FF8000",
+              first_name: "Lando",
+              last_name: "Norris",
+            },
+          ]);
+        }
+        if (href.includes("/laps")) {
+          return jsonRes(200, [
+            {
+              driver_number: 1,
+              lap_number: 2,
+              date_start: "2026-11-06T15:32:52.806000+00:00",
+              lap_duration: 73.661,
+              duration_sector_1: 18.926,
+              duration_sector_2: 36.2,
+              duration_sector_3: 18.535,
+              is_pit_out_lap: false,
+              segments_sector_1: null,
+              segments_sector_2: null,
+              segments_sector_3: null,
+              i1_speed: null,
+              i2_speed: null,
+              st_speed: null,
+            },
+          ]);
+        }
+        if (href.includes("/location")) return jsonRes(401, lock);
+        return jsonRes(200, []);
+      }),
+    );
+
+    const bundle = await loadBundle(11405, {
+      meeting: gp,
+      weekendSessions: [live],
+      page: "timing",
+    });
+    expect(bundle.laps).toHaveLength(1);
+    expect(bundle.locations).toEqual([]);
+  });
+
   it("uses a cached same-circuit outline when this session has no /location lap yet", async () => {
     mockStorage();
     writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");

@@ -2,7 +2,6 @@ import { DEFAULT_MEETING_KEY, DEFAULT_SESSION_KEY, DEFAULT_YEAR } from "../confi
 import { parseTs } from "../lib/time";
 import { apiGet } from "./client";
 import { fillMissingLapStarts, timingLooksSparse } from "./lapStarts";
-import { isLiveLock } from "./errors";
 import { snapshotAt } from "./derive";
 import { isRaceOrSprint } from "./grid";
 import { loadDriverLocations } from "./carLocation";
@@ -106,8 +105,7 @@ async function loadWeekendStints(
         try {
           const extra = await apiGet<Stint[]>("stints", { session_key: s.session_key });
           return extra.map((row) => ({ ...row, session_key: s.session_key }));
-        } catch (err) {
-          if (isLiveLock(err)) throw err;
+        } catch {
           return [] as Stint[];
         } finally {
           onSession?.(s);
@@ -157,20 +155,14 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
         ? trackJob(
             tracker,
             "intervals",
-            apiGet<Interval[]>("intervals", { session_key: sessionKey }).catch((err) => {
-              if (isLiveLock(err)) throw err;
-              return [] as Interval[];
-            }),
+            apiGet<Interval[]>("intervals", { session_key: sessionKey }).catch(() => [] as Interval[]),
           )
         : Promise.resolve([] as Interval[]),
       isRaceOrSprint(session)
         ? trackJob(
             tracker,
             "starting grid",
-            apiGet<StartingGrid[]>("starting_grid", { session_key: sessionKey }).catch((err) => {
-              if (isLiveLock(err)) throw err;
-              return [] as StartingGrid[];
-            }),
+            apiGet<StartingGrid[]>("starting_grid", { session_key: sessionKey }).catch(() => [] as StartingGrid[]),
           )
         : Promise.resolve([] as StartingGrid[]),
     ]);
@@ -216,10 +208,7 @@ export async function loadBundle(sessionKey: number, opts: LoadBundleOpts = {}):
   if (sortedDrivers.length) tracker.add(sortedDrivers.length);
   const locP = loadDriverLocations(sessionKey, sortedDrivers, session.date_start, session.date_end, (d) => {
     tracker.mark(`location · ${d.name_acronym || d.driver_number}`);
-  }).catch((err) => {
-    if (isLiveLock(err)) throw err;
-    return [] as LocationSample[];
-  });
+  }).catch(() => [] as LocationSample[]);
   /** Outline fetch starts with timing data — never waits for the Track map tab, pit marks, or all-driver GPS. */
   const trackP = (async () => {
     const loaded = await trackJob(tracker, "track outline", loadSessionOutline(sessionKey, laps, sortedDrivers));
@@ -323,8 +312,7 @@ async function loadPitMarks(
       "date<": new Date(t + dur + 20000).toISOString(),
     });
     return detectPitLane(track, samples) ?? fallback;
-  } catch (err) {
-    if (isLiveLock(err)) throw err;
+  } catch {
     return fallback;
   }
 }
@@ -388,10 +376,7 @@ export async function refreshTimingData(bundle: SessionBundle): Promise<SessionB
     apiGet<RaceControl[]>("race_control", { session_key: sessionKey }, FORCE),
     apiGet<Position[]>("position", { session_key: sessionKey }, FORCE),
     raceLike
-      ? apiGet<Interval[]>("intervals", { session_key: sessionKey }, FORCE).catch((err) => {
-          if (isLiveLock(err)) throw err;
-          return bundle.intervals;
-        })
+      ? apiGet<Interval[]>("intervals", { session_key: sessionKey }, FORCE).catch(() => bundle.intervals)
       : Promise.resolve(bundle.intervals),
   ]);
   let locations = bundle.locations;
@@ -402,8 +387,8 @@ export async function refreshTimingData(bundle: SessionBundle): Promise<SessionB
       bundle.session.date_start,
       bundle.session.date_end,
     );
-  } catch (err) {
-    if (isLiveLock(err)) throw err;
+  } catch {
+    /* GPS is optional after a finished session — keep the timing snapshot */
   }
   return {
     ...bundle,

@@ -4,6 +4,7 @@ export const API_BASE = "https://api.openf1.org/v1";
 export const TOKEN_URL = "https://api.openf1.org/token";
 export const MQTT_URL = "wss://mqtt.openf1.org:8084/mqtt";
 export const RELAY_STORAGE_KEY = "f1pitwall.openf1Relay";
+export const DEFAULT_RELAY_URL = "https://f1-pitwall-relay-11686.azurewebsites.net";
 /** Refresh the OAuth token this long before expiry (OpenF1 tokens last 3600s). */
 export const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
 
@@ -132,6 +133,17 @@ export function readRelayUrl(): string {
     return normalizeRelayUrl(localStorage.getItem(RELAY_STORAGE_KEY) ?? "");
   } catch {
     return "";
+  }
+}
+
+/** GitHub Pages cannot send OpenF1's live-lock CORS preflight; seed the Azure relay once. */
+export function ensureDefaultRelay(): void {
+  try {
+    if (localStorage.getItem(RELAY_STORAGE_KEY) != null) return;
+    const host = globalThis.location?.hostname ?? "";
+    if (host.endsWith("github.io")) writeRelayUrl(DEFAULT_RELAY_URL);
+  } catch {
+    /* node tests / private mode */
   }
 }
 
