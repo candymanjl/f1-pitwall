@@ -54,6 +54,7 @@ describe("track map zoom", () => {
     state.snap = null;
     state.selectedDrivers = [];
     state.selectedDriver = null;
+    state.mode = "historical";
     document.body.replaceChildren();
   });
 
@@ -368,6 +369,86 @@ describe("track map zoom", () => {
     expect(fracs[0]).not.toBeCloseTo(fracs[2], 2);
     expect(root.querySelector("tr[data-driver='14'] td.c-stat")?.textContent).toBe("GARAGE");
     expect(root.querySelector("tr[data-driver='18'] .status.garage")).toBeTruthy();
+  });
+
+  it("notes when live OpenF1 GPS has not arrived yet", () => {
+    const ant = driver(12, "ANT");
+    const now = Date.parse("2026-11-06T19:37:00.000Z");
+    state.mode = "live";
+    state.bundle = {
+      meeting: {
+        meeting_key: 1299,
+        meeting_name: "São Paulo Grand Prix",
+        circuit_short_name: "Interlagos",
+        country_name: "Brazil",
+        location: "São Paulo",
+        date_start: "2026-11-06T19:00:00.000Z",
+        year: 2026,
+      },
+      session: {
+        session_key: 11406,
+        meeting_key: 1299,
+        session_name: "Practice 2",
+        session_type: "Practice",
+        date_start: "2026-11-06T19:00:00.000Z",
+        date_end: "2026-11-06T20:00:00.000Z",
+        circuit_short_name: "Interlagos",
+        country_name: "Brazil",
+        location: "São Paulo",
+        year: 2026,
+      },
+      weekendSessions: [],
+      drivers: [ant],
+      laps: [],
+      intervals: [],
+      positions: [],
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [
+        [0, 0],
+        [120, 0],
+        [120, 80],
+        [0, 80],
+        [0, 0],
+      ],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+      locations: [],
+    } as SessionBundle;
+    state.snap = {
+      now,
+      rows: [row(ant, 1, 0.4, { lapActive: false, currentLap: 3, status: "ON TRACK" })],
+      leaderLap: 3,
+      medianGreenLap: 72,
+      weather: null,
+      bestSectors: { s1: null, s2: null, s3: null },
+      flagMode: "green",
+      scBands: [],
+      raceLaps: 3,
+    } as TimingSnapshot;
+
+    const root = document.createElement("div");
+    document.body.append(root);
+    const api = mountTrackMap(root);
+    const svg = root.querySelector("svg.track") as SVGSVGElement;
+    Object.defineProperty(svg, "clientWidth", { value: 800 });
+    Object.defineProperty(svg, "clientHeight", { value: 600 });
+    api.update();
+    expect(svg.querySelector(".map-gps-note")?.textContent).toBe("Waiting for live positions from OpenF1");
+    const mapErr = [...root.querySelectorAll(".panel-error")].at(-1) as HTMLElement;
+    expect(mapErr.hidden).toBe(false);
+    expect(mapErr.textContent).toMatch(/Waiting for live positions from OpenF1/);
+
+    state.bundle = {
+      ...state.bundle!,
+      locations: [{ date: new Date(now).toISOString(), driver_number: 12, x: 40, y: 0 }],
+    };
+    api.update();
+    expect(svg.querySelector(".map-gps-note")).toBeNull();
+    expect(svg.querySelector("[data-driver='12']")?.getAttribute("data-place")).toBe("location");
   });
 
   it("labels a same-circuit fallback outline and keeps sector colours", () => {

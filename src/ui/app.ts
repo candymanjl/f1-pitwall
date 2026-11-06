@@ -145,7 +145,17 @@ export function boot(root: HTMLElement): void {
       playing: state.playing,
       speed: state.speed,
       liveSource: state.liveSource,
+      streamMode: state.liveDebug.mode,
+      streamAgeMs: state.liveDebug.lastMessageAgeMs,
     });
+    const liveFollow = state.mode === "live" && state.followLive;
+    const mqttFresh =
+      state.liveSource === "mqtt" &&
+      state.liveDebug.mode === "STREAM" &&
+      state.liveDebug.lastMessageAgeMs != null &&
+      state.liveDebug.lastMessageAgeMs <= 5_000;
+    elapsed.classList.toggle("live-ok", liveFollow && mqttFresh);
+    elapsed.classList.toggle("live-weak", liveFollow && !mqttFresh);
     for (const btn of nav.querySelectorAll("button")) {
       btn.classList.toggle("active", btn.getAttribute("data-page") === state.page);
     }

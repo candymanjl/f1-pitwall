@@ -21,6 +21,7 @@ import {
   MAP_SECTOR_R,
 } from "../lib/mapMarks";
 import { followViewBox, MAP_FOLLOW_ZOOM } from "../lib/mapZoom";
+import { liveLocationWaitNote } from "../lib/mapCarsNote";
 import { placeTrackCar } from "../lib/pitcircle";
 import { appendDriverDot } from "../lib/svgcar";
 import { panel } from "../ui/panel";
@@ -160,6 +161,20 @@ function drawMap(svg: SVGSVGElement, bundle: SessionBundle, snap: TimingSnapshot
     dot.dataset.place = placed.source;
   }
   svg.dataset.cars = String(running);
+  const waitNote = liveLocationWaitNote({
+    live: state.mode === "live",
+    locations: bundle.locations,
+    now: snap.now,
+  });
+  if (waitNote) {
+    const note = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    note.setAttribute("class", "map-gps-note");
+    note.setAttribute("x", "12");
+    note.setAttribute("y", "22");
+    note.setAttribute("fill", "#fde68a");
+    note.textContent = waitNote;
+    svg.append(note);
+  }
 
   if (followZoom && pts.length >= 2) {
     const box = followViewBox(followPx, followPy, w, h, MAP_FOLLOW_ZOOM);
@@ -234,9 +249,11 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
     draw();
     const fromLabel = formatOutlineLabel(bundle?.outlineFrom);
     right.setTitle(fromLabel ? `Track map  ·  ${fromLabel}` : "Track map  ·  outline from OpenF1 /location");
+    const gpsNote = svg.querySelector(".map-gps-note")?.textContent ?? "";
     const trackErr =
       state.panelErrors.track ||
-      (bundle && bundle.track.length < 2 ? "Track outline could not be loaded from OpenF1 /location." : "");
+      (bundle && bundle.track.length < 2 ? "Track outline could not be loaded from OpenF1 /location." : "") ||
+      gpsNote;
     right.setError(state.lock ? null : trackErr || null);
     if (!snap && state.error && !state.lock) {
       left.setError(state.error);
