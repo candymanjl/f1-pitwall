@@ -637,6 +637,8 @@ async function refreshFinishedTiming(): Promise<void> {
   }
 }
 
+let liveHandle: LiveHandle | null = null;
+
 /** Pull the cursor to the newest sample only when the user is actually live-following. */
 export function applyLiveClock(_source: "poll" | "mqtt" | "ingest" = "ingest"): void {
   if (state.mode !== "live" || !state.bundle) return;
@@ -644,7 +646,14 @@ export function applyLiveClock(_source: "poll" | "mqtt" | "ingest" = "ingest"): 
   if (Number.isFinite(state.latestMs) && state.latestMs > state.start) {
     state.end = Math.max(state.end, state.latestMs);
   }
-  if (sessionIsFinished()) void refreshFinishedTiming();
+  if (sessionIsFinished()) {
+    if (liveHandle) {
+      liveHandle.stop();
+      liveHandle = null;
+      state.liveSource = "off";
+    }
+    void refreshFinishedTiming();
+  }
   if (state.scrubbing || !state.followLive) {
     state.t = Math.min(state.end, Math.max(state.start, held));
     return;
@@ -680,8 +689,6 @@ export function ingestLive(topic: string, payload: unknown, mode: "merge" | "rep
   }
 }
 
-let liveHandle: LiveHandle | null = null;
-
 export function syncLiveFeed(): void {
   liveHandle?.stop();
   liveHandle = null;
@@ -689,11 +696,13 @@ export function syncLiveFeed(): void {
   const auth = peekAuth();
   const sessionKey = loadedSessionKey();
   if (state.mode !== "live" || !state.bundle || !sessionKey) return;
+  if (sessionIsFinished()) return;
   const relay = Boolean(readRelayUrl());
   if (!relay && !auth.signedIn && auth.source !== "manual") return;
   liveHandle = startLiveFeed({
     username: auth.username || "pitwall",
     sessionKey: loadedSessionKey,
+    sessionName: () => state.bundle?.session.session_name,
     cursors: seedLiveCursors(state.bundle),
     page: () => state.page,
     onMessage: (topic, payload, mode) => {

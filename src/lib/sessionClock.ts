@@ -128,15 +128,19 @@ export function isFinishedSession(
 ): boolean {
   if (!bundle) return false;
   const latest = opts?.latestMs ?? latestSampleMs(bundle);
+  const scheduled = parseTs(bundle.session.date_end);
   if (opts?.live) {
     if (opts.lastIngestAt && now - opts.lastIngestAt <= LIVE_POLL_FRESH_MS) return false;
     if (Number.isFinite(latest) && now - latest <= LIVE_POLL_FRESH_MS) return false;
     const chequered = hasChequered(bundle);
     if (!chequered && Number.isFinite(latest) && now - latest <= LIVE_SESSION_GRACE_MS) return false;
+    if (Number.isFinite(latest) && latest + LIVE_SESSION_GRACE_MS < now) return true;
+    // Practice has no chequered flag, and OpenF1 keeps `session_key=latest` on
+    // a finished FP1 until the next session starts. Don't stay in live-follow.
+    if (Number.isFinite(scheduled) && scheduled + LIVE_SESSION_GRACE_MS < now) return true;
     if (chequered) return !Number.isFinite(latest) || latest + LIVE_SESSION_GRACE_MS < now;
-    return Number.isFinite(latest) && latest + LIVE_SESSION_GRACE_MS < now;
+    return false;
   }
-  const scheduled = parseTs(bundle.session.date_end);
   const hints: number[] = [];
   if (Number.isFinite(scheduled)) hints.push(scheduled);
   if (Number.isFinite(latest)) hints.push(latest);

@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   API_BASE,
+  DEFAULT_RELAY_URL,
   RELAY_STORAGE_KEY,
   TOKEN_URL,
+  ensureDefaultRelay,
   normalizeRelayUrl,
   readRelayUrl,
   restBase,
@@ -56,5 +58,18 @@ describe("OpenF1 relay URL", () => {
     expect(localStorage.getItem(RELAY_STORAGE_KEY)).toBeNull();
     expect(restBase()).toBe(API_BASE);
     expect(tokenUrl()).toBe(TOKEN_URL);
+  });
+
+  it("seeds the Azure relay on GitHub Pages when none is saved", () => {
+    mockStorage();
+    const prev = globalThis.location;
+    Object.defineProperty(globalThis, "location", {
+      value: { hostname: "candymanjl.github.io" },
+      configurable: true,
+    });
+    ensureDefaultRelay();
+    expect(readRelayUrl()).toBe(DEFAULT_RELAY_URL);
+    expect(restBase()).toBe(`${DEFAULT_RELAY_URL}/v1`);
+    Object.defineProperty(globalThis, "location", { value: prev, configurable: true });
   });
 });

@@ -4,8 +4,12 @@ import { configureAuth, memoryStore, resetAuthForTests } from "./auth";
 import {
   activeRateLimits,
   apiGet,
+  BUILD_CACHE_KEY,
+  CACHE_PERSIST_PREFIX,
+  dropStaleAppCaches,
   isRetryableAuthFailure,
   parseRetryAfterMs,
+  purgeStaleClientCache,
   resetClientForTests,
   shouldRetryWithoutAuth,
 } from "./client";
@@ -214,7 +218,7 @@ describe("empty live snapshots", () => {
       }),
     );
     await expect(apiGet("laps", { session_key: 11405 })).resolves.toEqual([]);
-    expect([...memory.keys()].some((k) => k.startsWith("f1pw.cache:laps"))).toBe(false);
+    expect([...memory.keys()].some((k) => k.includes("laps"))).toBe(false);
     resetClientForTests();
     await expect(apiGet("laps", { session_key: 11405 })).resolves.toEqual([{ driver_number: 1, lap_number: 2 }]);
     expect(calls).toBe(2);
@@ -255,5 +259,57 @@ describe("isRetryableAuthFailure", () => {
     expect(isRetryableAuthFailure(new TypeError("Failed to fetch"))).toBe(true);
     expect(isRetryableAuthFailure(new OpenF1Error("http", "boom", 500))).toBe(false);
     expect(isRetryableAuthFailure(new Error("nope"))).toBe(false);
+  });
+});
+
+describe("stale OpenF1 cache", () => {
+  function mockFullStorage(init: Record<string, string> = {}): Map<string, string> {
+    const memory = new Map<string, string>(Object.entries(init));
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (k: string) => memory.get(k) ?? null,
+        setItem: (k: string, v: string) => void memory.set(k, v),
+        removeItem: (k: string) => void memory.delete(k),
+        key: (i: number) => [...memory.keys()][i] ?? null,
+        get length() {
+          return memory.size;
+        },
+      },
+      configurable: true,
+    });
+    return memory;
+  }
+
+  it("drops old f1pw.cache: rows and this-build snapshots when the stamp changes", () => {
+    const memory = mockFullStorage({
+      "f1pw.cache:laps?session_key=11405": JSON.stringify({
+        expires: Date.now() + 86_400_000,
+        body: [],
+      }),
+      [`${CACHE_PERSIST_PREFIX}laps?session_key=11405`]: JSON.stringify({
+        expires: Date.now() + 86_400_000,
+        body: [{ driver_number: 1, lap_number: 1 }],
+      }),
+      [BUILD_CACHE_KEY]: "v old",
+      "f1pitwall.dataMode": "live",
+    });
+    dropStaleAppCaches("v new · Nov 6 1:20 PM ET");
+    expect(memory.get("f1pw.cache:laps?session_key=11405")).toBeUndefined();
+    expect(memory.get(`${CACHE_PERSIST_PREFIX}laps?session_key=11405`)).toBeUndefined();
+    expect(memory.get("f1pitwall.dataMode")).toBe("live");
+    expect(memory.get(BUILD_CACHE_KEY)).toBe("v new · Nov 6 1:20 PM ET");
+  });
+
+  it("keeps the current generation when the stamp matches, but still removes the old prefix", () => {
+    const stamp = "v abc1234 · Nov 6 1:20 PM ET";
+    const keep = JSON.stringify({ expires: Date.now() + 86_400_000, body: [{ n: 1 }] });
+    const memory = mockFullStorage({
+      "f1pw.cache:laps?session_key=11405": JSON.stringify({ expires: Date.now() + 1, body: [] }),
+      [`${CACHE_PERSIST_PREFIX}laps?session_key=11405`]: keep,
+      [BUILD_CACHE_KEY]: stamp,
+    });
+    purgeStaleClientCache(stamp);
+    expect(memory.get("f1pw.cache:laps?session_key=11405")).toBeUndefined();
+    expect(memory.get(`${CACHE_PERSIST_PREFIX}laps?session_key=11405`)).toBe(keep);
   });
 });

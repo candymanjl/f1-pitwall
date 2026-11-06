@@ -88,6 +88,8 @@ export function startLiveFeed(opts: {
   sessionKey: number | (() => number);
   cursors?: Record<string, string>;
   page?: () => PageId | undefined;
+  /** Practice/Qualifying skip /intervals (OpenF1 404s; would burn the rate budget). */
+  sessionName?: () => string | undefined;
   onMessage: (topic: string, payload: unknown, mode: "merge" | "replace") => void;
   onStatus: (source: LiveSource, detail?: string) => void;
   onDebug?: (debug: LivePollDebug) => void;
@@ -124,6 +126,7 @@ export function startLiveFeed(opts: {
     const key = typeof opts.sessionKey === "function" ? opts.sessionKey() : opts.sessionKey;
     return Number(key) || 0;
   };
+  const loadedName = (): string | undefined => opts.sessionName?.();
 
   const report = (next: Partial<LivePollDebug>) => {
     const now = clock();
@@ -241,7 +244,7 @@ export function startLiveFeed(opts: {
     const sessionKey = loadedKey();
     if (!sessionKey) return;
     const started = clock();
-    const specs = pollSpecsForPage(opts.page?.());
+    const specs = pollSpecsForPage(opts.page?.(), loadedName());
     const since = fallbackSinceIso(started);
     const { added, lastError } = await runDueSpecs(specs, sessionKey, since);
     if (stopped) return;
@@ -265,7 +268,7 @@ export function startLiveFeed(opts: {
         return;
       }
       const started = clock();
-      const specs = duePollSpecs(opts.page?.(), lastRan, started);
+      const specs = duePollSpecs(opts.page?.(), lastRan, started, loadedName());
       const since = fallbackSinceIso(started);
       const { added, lastError, hardError, retryAfterMs } = await runDueSpecs(specs, sessionKey, since);
 
@@ -284,7 +287,7 @@ export function startLiveFeed(opts: {
       }
       failures = 0;
       opts.onStatus("poll", detail || "REST fallback");
-      schedule(nextDueInMs(opts.page?.(), lastRan, clock()), detail || "REST fallback");
+      schedule(nextDueInMs(opts.page?.(), lastRan, clock(), loadedName()), detail || "REST fallback");
     };
     void tick();
   };

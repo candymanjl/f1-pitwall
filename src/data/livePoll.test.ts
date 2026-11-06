@@ -87,6 +87,12 @@ describe("live incremental poll helpers", () => {
   it("only polls car_data on the Telemetry page and formats STREAM/POLLING debug", () => {
     expect(pollSpecsForPage("trackmap").some((s) => s.path === "car_data")).toBe(false);
     expect(pollSpecsForPage("telemetry").some((s) => s.path === "car_data")).toBe(true);
+    expect(pollSpecsForPage("trackmap", "Practice 1").some((s) => s.path === "intervals")).toBe(false);
+    expect(pollSpecsForPage("trackmap", "Race").some((s) => s.path === "intervals")).toBe(true);
+    expect(duePollSpecs("trackmap", seedLastRan(1_700_000_000_000), 1_700_000_000_000, "Practice 1").map((s) => s.path)).toEqual([
+      "location",
+      "position",
+    ]);
     expect(mqttTopicsForPage("trackmap")).not.toContain("v1/car_data");
     expect(mqttTopicsForPage("telemetry")).toContain("v1/car_data");
     expect(

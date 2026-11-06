@@ -194,8 +194,18 @@ export function livePollParams(
   return params;
 }
 
-export function pollSpecsForPage(page?: PageId): LivePollSpec[] {
-  return LIVE_POLL_SPECS.filter((spec) => spec.path !== "car_data" || page === "telemetry");
+function sessionWantsIntervals(sessionName?: string | null): boolean {
+  if (!sessionName) return true;
+  return /race|sprint/i.test(sessionName);
+}
+
+export function pollSpecsForPage(page?: PageId, sessionName?: string | null): LivePollSpec[] {
+  const intervals = sessionWantsIntervals(sessionName);
+  return LIVE_POLL_SPECS.filter((spec) => {
+    if (spec.path === "car_data") return page === "telemetry";
+    if (spec.path === "intervals") return intervals;
+    return true;
+  });
 }
 
 export function mqttTopicsForPage(page?: PageId): string[] {
@@ -212,13 +222,23 @@ export function seedLastRan(now: number, specs: LivePollSpec[] = LIVE_POLL_SPECS
   return last;
 }
 
-export function duePollSpecs(page: PageId | undefined, lastRan: Record<string, number>, now: number): LivePollSpec[] {
-  return pollSpecsForPage(page).filter((spec) => now - (lastRan[spec.path] ?? 0) >= spec.everyMs);
+export function duePollSpecs(
+  page: PageId | undefined,
+  lastRan: Record<string, number>,
+  now: number,
+  sessionName?: string | null,
+): LivePollSpec[] {
+  return pollSpecsForPage(page, sessionName).filter((spec) => now - (lastRan[spec.path] ?? 0) >= spec.everyMs);
 }
 
-export function nextDueInMs(page: PageId | undefined, lastRan: Record<string, number>, now: number): number {
+export function nextDueInMs(
+  page: PageId | undefined,
+  lastRan: Record<string, number>,
+  now: number,
+  sessionName?: string | null,
+): number {
   let min = FAST_POLL_MS;
-  for (const spec of pollSpecsForPage(page)) {
+  for (const spec of pollSpecsForPage(page, sessionName)) {
     const wait = (lastRan[spec.path] ?? 0) + spec.everyMs - now;
     if (wait > 0 && wait < min) min = wait;
   }
