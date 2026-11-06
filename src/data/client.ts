@@ -101,12 +101,19 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
+/** Empty live snapshots must not stick in localStorage for a week. */
+export const EMPTY_BODY_TTL_MS = 15_000;
+
+function isEmptyBody(body: unknown): boolean {
+  return Array.isArray(body) && body.length === 0;
+}
+
 async function persistGet(key: string): Promise<unknown | null> {
   try {
     const raw = localStorage.getItem(`f1pw.cache:${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CacheEntry;
-    if (parsed.expires < Date.now()) {
+    if (parsed.expires < Date.now() || isEmptyBody(parsed.body)) {
       localStorage.removeItem(`f1pw.cache:${key}`);
       return null;
     }
@@ -117,6 +124,7 @@ async function persistGet(key: string): Promise<unknown | null> {
 }
 
 function persistSet(key: string, entry: CacheEntry): void {
+  if (isEmptyBody(entry.body)) return;
   try {
     const raw = JSON.stringify(entry);
     if (raw.length > 400_000) return;
@@ -246,9 +254,10 @@ export async function apiGet<T>(
     }
   });
 
-  const entry = { expires: Date.now() + ttl, body };
+  const keepMs = isEmptyBody(body) ? EMPTY_BODY_TTL_MS : ttl;
+  const entry = { expires: Date.now() + keepMs, body };
   memory.set(key, entry);
-  persistSet(key, entry);
+  persistSet(key, { ...entry, expires: Date.now() + ttl });
   return body as T;
 }
 

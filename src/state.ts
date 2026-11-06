@@ -25,7 +25,8 @@ import {
 } from "./data/lapTiming";
 import { emptyLiveDebug, seedLiveCursors, type LivePollDebug } from "./data/livePoll";
 import { emptyFetchProgress, type FetchProgress } from "./data/loadProgress";
-import { loadBundle, loadMeetings, loadSessions } from "./data/loadSession";
+import { loadBundle, loadMeetings, loadSessions, refreshTimingData } from "./data/loadSession";
+import { fillMissingLapStarts, timingLooksSparse } from "./data/lapStarts";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
 import { historicalStartMs, isFinishedSession, latestSampleMs, playableEndMs } from "./lib/sessionClock";
 import { nextSelection } from "./lib/select";
@@ -521,6 +522,7 @@ export async function loadSelectedSession(): Promise<void> {
     };
     stopLockRetry();
     syncLiveFeed();
+    void refreshFinishedTiming();
   } catch (err) {
     if (gen !== loadGen) return;
     applyFetchError(err);
@@ -531,8 +533,11 @@ export async function loadSelectedSession(): Promise<void> {
 
 function applyPartialBundle(bundle: SessionBundle, first: boolean): void {
   const firstApply = first || !state.bundle || state.bundle.session.session_key !== bundle.session.session_key;
-  state.bundle = bundle;
+  const start = parseTs(bundle.session.date_start);
+  const laps = fillMissingLapStarts(bundle.laps, start);
+  state.bundle = laps === bundle.laps ? bundle : { ...bundle, laps };
   if (firstApply) {
+    finishedRefreshKey = 0;
     state.lastIngestAt = 0;
     state.lapTimingDrivers = [];
     state.start = parseTs(bundle.session.date_start);
@@ -604,6 +609,34 @@ export function startClock(): void {
   }, LIVE_POLL_MS);
 }
 
+let finishedRefreshKey = 0;
+let finishedRefreshInFlight = false;
+
+async function refreshFinishedTiming(): Promise<void> {
+  const bundle = state.bundle;
+  if (!bundle) return;
+  const key = bundle.session.session_key;
+  if (finishedRefreshKey === key || finishedRefreshInFlight) return;
+  if (!sessionIsFinished(bundle)) return;
+  if (!timingLooksSparse(bundle)) return;
+  finishedRefreshInFlight = true;
+  try {
+    const next = await refreshTimingData(bundle);
+    if (loadedSessionKey() !== key) return;
+    finishedRefreshKey = key;
+    const held = state.t;
+    state.bundle = next;
+    syncPlayableRange(true);
+    state.t = Math.min(state.end, Math.max(state.start, held));
+    refreshSnap();
+    emit(true);
+  } catch {
+    /* live-lock or network — the next poll retries */
+  } finally {
+    finishedRefreshInFlight = false;
+  }
+}
+
 /** Pull the cursor to the newest sample only when the user is actually live-following. */
 export function applyLiveClock(_source: "poll" | "mqtt" | "ingest" = "ingest"): void {
   if (state.mode !== "live" || !state.bundle) return;
@@ -611,6 +644,7 @@ export function applyLiveClock(_source: "poll" | "mqtt" | "ingest" = "ingest"): 
   if (Number.isFinite(state.latestMs) && state.latestMs > state.start) {
     state.end = Math.max(state.end, state.latestMs);
   }
+  if (sessionIsFinished()) void refreshFinishedTiming();
   if (state.scrubbing || !state.followLive) {
     state.t = Math.min(state.end, Math.max(state.start, held));
     return;
@@ -626,6 +660,9 @@ export function ingestLive(topic: string, payload: unknown, mode: "merge" | "rep
   if (result.added === 0) return;
   const topicName = topic.replace(/^\//, "");
   let next = result.bundle;
+  if (topicName === "v1/laps") {
+    next = { ...next, laps: fillMissingLapStarts(next.laps, parseTs(next.session.date_start)) };
+  }
   if (topicName === "v1/location" || topicName === "v1/laps") {
     const promoted = maybePromoteLiveOutline(next);
     if (promoted) {

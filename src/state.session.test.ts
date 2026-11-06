@@ -9,6 +9,7 @@ vi.mock("./data/loadSession", () => ({
   loadMeetings: (...args: unknown[]) => loadMeetings(...args),
   loadSessions: (...args: unknown[]) => loadSessions(...args),
   loadBundle: (...args: unknown[]) => loadBundle(...args),
+  refreshTimingData: async (bundle: unknown) => bundle,
 }));
 
 import { OpenF1Error } from "./data/errors";

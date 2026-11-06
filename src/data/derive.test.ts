@@ -380,6 +380,74 @@ describe("snapshotAt race order without intervals", () => {
     expect(onTrack.every((r) => r.status !== "GARAGE")).toBe(true);
     expect(onTrack.every((r) => r.gap == null || (typeof r.gap === "number" && r.gap < 100))).toBe(true);
   });
+
+  it("does not leave São Paulo FP1 cars in the garage at 00:45 when OpenF1 uses microseconds", () => {
+    const start = parseTs("2026-11-06T15:30:00+00:00");
+    const snap = snapshotAt(
+      bundle({
+        session: session("Practice 1"),
+        drivers: [driver(1, "NOR"), driver(62, "MIN")],
+        weather: [
+          {
+            date: "2026-11-06T15:15:20.741000+00:00",
+            air_temperature: 22.1,
+            track_temperature: 38.4,
+            wind_speed: 1.2,
+            wind_direction: 210,
+            humidity: 55,
+            rainfall: 0,
+            pressure: 1013,
+          },
+        ],
+        stints: [
+          { driver_number: 1, stint_number: 1, lap_start: 1, lap_end: 33, compound: "MEDIUM", tyre_age_at_start: 0 },
+        ],
+        laps: [
+          {
+            driver_number: 1,
+            lap_number: 2,
+            date_start: "2026-11-06T15:32:52.806000",
+            lap_duration: 73.661,
+            duration_sector_1: 18.926,
+            duration_sector_2: 36.2,
+            duration_sector_3: 18.535,
+            is_pit_out_lap: false,
+            segments_sector_1: null,
+            segments_sector_2: null,
+            segments_sector_3: null,
+            i1_speed: 280,
+            i2_speed: 300,
+            st_speed: 312,
+          },
+          {
+            driver_number: 1,
+            lap_number: 20,
+            date_start: "2026-11-06T16:10:00.000000+00:00",
+            lap_duration: 74.2,
+            duration_sector_1: 19.1,
+            duration_sector_2: 36.0,
+            duration_sector_3: 19.1,
+            is_pit_out_lap: false,
+            segments_sector_1: null,
+            segments_sector_2: null,
+            segments_sector_3: null,
+            i1_speed: 282,
+            i2_speed: 301,
+            st_speed: 318,
+          },
+        ],
+      }),
+      start + (45 * 60 + 29) * 1000,
+    );
+    const nor = snap.rows.find((r) => r.driver.driver_number === 1)!;
+    expect(nor.status).not.toBe("GARAGE");
+    expect(nor.inGarage).toBe(false);
+    expect(nor.bestLap).toBeCloseTo(73.661, 5);
+    expect(snap.weather?.air_temperature).toBeCloseTo(22.1, 5);
+    expect(snap.bestSectors.s1?.time).toBeCloseTo(18.926, 5);
+    const min = snap.rows.find((r) => r.driver.driver_number === 62)!;
+    expect(min.status).toBe("GARAGE");
+  });
 });
 
 describe("previous lap delta", () => {

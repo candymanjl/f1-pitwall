@@ -1,6 +1,19 @@
+const HAS_TZ = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+/**
+ * OpenF1 timestamps are UTC. MQTT/live often omit the offset and send
+ * microseconds (`…02.019000+00:00`). `Date.parse` of a naive ISO string is
+ * local time, which shifts practice samples hours past the session clock
+ * and blanks Timing / Lap Timing / weather / map cars.
+ */
 export function parseTs(value: string | null | undefined): number {
   if (!value) return NaN;
-  const t = Date.parse(value);
+  let s = String(value).trim();
+  if (!s) return NaN;
+  if (/^\d{4}-\d{2}-\d{2} /.test(s)) s = s.replace(" ", "T");
+  s = s.replace(/(\.\d{3})\d+/, "$1");
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s) && !HAS_TZ.test(s)) s += "Z";
+  const t = Date.parse(s);
   return Number.isFinite(t) ? t : NaN;
 }
 
