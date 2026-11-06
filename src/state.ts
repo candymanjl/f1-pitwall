@@ -15,6 +15,7 @@ import { applyUiScale, readUiScale, writeUiScale, type UiScalePref } from "./lib
 import { snapshotAt } from "./data/derive";
 import { classifyOpenF1Failure, OpenF1Error } from "./data/errors";
 import { applyLiveUpdate } from "./data/liveMerge";
+import { maybePromoteLiveOutline } from "./data/outlineFallback";
 import { startLiveFeed, type LiveHandle, type LiveSource } from "./data/live";
 import {
   clampLapTimingDrivers,
@@ -515,7 +516,7 @@ export async function loadSelectedSession(): Promise<void> {
     state.lock = null;
     state.error = "";
     state.panelErrors = {
-      track: bundle.track.length ? "" : "Track outline could not be loaded from OpenF1 /location.",
+      track: bundle.track.length >= 2 ? "" : "Track outline could not be loaded from OpenF1 /location.",
       telemetry: "",
     };
     stopLockRetry();
@@ -623,7 +624,16 @@ export function ingestLive(topic: string, payload: unknown, mode: "merge" | "rep
   if (!state.bundle) return;
   const result = applyLiveUpdate(state.bundle, topic, payload, loadedSessionKey() || undefined, mode);
   if (result.added === 0) return;
-  state.bundle = result.bundle;
+  const topicName = topic.replace(/^\//, "");
+  let next = result.bundle;
+  if (topicName === "v1/location" || topicName === "v1/laps") {
+    const promoted = maybePromoteLiveOutline(next);
+    if (promoted) {
+      next = promoted;
+      state.panelErrors = { ...state.panelErrors, track: "" };
+    }
+  }
+  state.bundle = next;
   applyLatestMs(result.latestMs);
   state.lastIngestAt = Date.now();
   applyLiveClock("mqtt");

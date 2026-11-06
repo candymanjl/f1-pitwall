@@ -361,6 +361,12 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
   letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; color: var(--text);
 }
 .map-zoom.on { background: #f4d20c; color: #1a1400; border-color: #f4d20c; }
+.map-outline-note {
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--cond);
+}
 .page.strategy { grid-template-columns: 1.15fr 1fr; grid-template-rows: auto 1fr; }
 
 .panel {

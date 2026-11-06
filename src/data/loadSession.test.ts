@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeRelayUrl } from "../config";
 import { resetClientForTests } from "./client";
 import { cachedMeeting, cachedSession, loadBundle, mapPagesFirst } from "./loadSession";
+import { writeCachedOutline } from "./outlineCache";
 import type { Meeting, Session } from "./types";
 
 function jsonRes(status: number, body: unknown): Response {
@@ -116,7 +117,7 @@ describe("loadBundle", () => {
     });
 
     expect(seen.some((u) => u.includes("/meetings"))).toBe(false);
-    expect(seen.some((u) => /\/sessions\?/.test(u) || u.includes("/sessions?"))).toBe(false);
+    expect(seen.some((u) => u.includes("meeting_key="))).toBe(false);
     expect(phases[0]).toBe("timing");
     expect(phases.indexOf("map")).toBeLessThan(phases.indexOf("weekend"));
     expect(fetches.some((row) => row.startsWith("drivers:"))).toBe(true);
@@ -269,5 +270,77 @@ describe("loadBundle", () => {
     expect(outlineFracs).toBeTruthy();
     expect(outlineFracs![0]).toBeCloseTo(0.25, 1);
     expect(outlineFracs![1]).toBeCloseTo(0.375, 1);
+  });
+
+  it("uses a cached same-circuit outline when this session has no /location lap yet", async () => {
+    mockStorage();
+    writeRelayUrl("https://f1-pitwall-relay-11686.azurewebsites.net");
+    const track = Array.from({ length: 24 }, (_, i) => {
+      const a = (i / 23) * Math.PI * 2;
+      return [Math.cos(a) * 4000, Math.sin(a) * 2200] as [number, number];
+    });
+    const live = {
+      ...race,
+      session_key: 11405,
+      meeting_key: 1299,
+      session_name: "Practice 1",
+      session_type: "Practice",
+      circuit_key: 14,
+      circuit_short_name: "Interlagos",
+      date_start: "2026-11-06T15:30:00.000Z",
+      date_end: "2026-11-06T16:30:00.000Z",
+      year: 2026,
+    };
+    const gp: Meeting = {
+      ...meeting,
+      meeting_key: 1299,
+      meeting_name: "São Paulo Grand Prix",
+      circuit_key: 14,
+      circuit_short_name: "Interlagos",
+      location: "São Paulo",
+      country_name: "Brazil",
+      year: 2026,
+    };
+    writeCachedOutline(live, {
+      track,
+      sectorFracs: [0.26, 0.5, 0.24],
+      year: 2025,
+      meetingName: "São Paulo Grand Prix",
+      sessionName: "Race",
+      sessionKey: 9869,
+    });
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: RequestInfo | URL) => {
+        const href = String(url);
+        seen.push(href);
+        if (href.includes("/drivers")) return jsonRes(200, [{ driver_number: 1, name_acronym: "VER" }]);
+        return jsonRes(200, []);
+      }),
+    );
+
+    const phases: Array<{ phase: string; from: string | null; n: number }> = [];
+    const bundle = await loadBundle(11405, {
+      meeting: gp,
+      weekendSessions: [live],
+      page: "trackmap",
+      onProgress: (phase, partial) => {
+        phases.push({
+          phase,
+          from: partial.outlineFrom ? `${partial.outlineFrom.year}` : null,
+          n: partial.track.length,
+        });
+      },
+    });
+
+    expect(bundle.track.length).toBeGreaterThan(8);
+    expect(bundle.outlineFrom?.year).toBe(2025);
+    expect(bundle.outlineFrom?.meetingName).toBe("São Paulo Grand Prix");
+    const outline = phases.find((p) => p.phase === "outline");
+    expect(outline?.from).toBe("2025");
+    expect(outline?.n).toBeGreaterThan(8);
+    expect(seen.some((u) => u.includes("/location"))).toBe(true);
+    expect(seen.some((u) => u.includes("circuit_key="))).toBe(false);
   });
 });

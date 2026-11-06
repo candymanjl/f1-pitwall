@@ -2,6 +2,7 @@ import { indexLocations, type LocHit } from "../data/carLocation";
 import { emptyTrackFlag } from "../data/trackFlag";
 import { isRaceOrSprint } from "../data/grid";
 import { pitLaneFracs } from "../data/pitlane";
+import { formatOutlineLabel } from "../data/outlineFallback";
 import { project, windArrowScreen } from "../data/track";
 import { appendSectorOutline } from "../lib/trackOutline";
 import type { TimingSnapshot } from "../data/types";
@@ -135,6 +136,9 @@ function drawWind(svg: SVGSVGElement): void {
   const pts = state.bundle?.track ?? [];
   const dir = state.snap?.weather?.wind_direction;
   svg.dataset.outline = pts.length >= 2 ? "ready" : "empty";
+  const fromLabel = formatOutlineLabel(state.bundle?.outlineFrom);
+  svg.dataset.outlineSrc = pts.length >= 2 ? (fromLabel ? "fallback" : "live") : "empty";
+  svg.setAttribute("title", fromLabel ?? (pts.length >= 2 ? "Track outline" : "No outline"));
   if (pts.length < 2) {
     svg.replaceChildren();
     const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
