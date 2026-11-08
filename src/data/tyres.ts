@@ -1,5 +1,6 @@
 import { median, linReg, parseTs, clamp } from "../lib/time";
 import { safetyCarBands } from "./derive";
+import { resolveStint } from "./stintResolve";
 import type { Interval, Lap, Pit, RaceControl, Stint } from "./types";
 
 export const COMPOUNDS = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"] as const;
@@ -67,6 +68,7 @@ export function defaultTyreModel(): TyreModel {
 }
 
 export function compoundLetter(compound: string): string {
+  if (compound === "UPDATING") return "·";
   if (compound === "INTERMEDIATE") return "I";
   if (compound === "WET") return "W";
   return (compound || "?").slice(0, 1).toUpperCase();
@@ -701,10 +703,11 @@ export function fitLapsFromSession(data: {
   const out: FitLapInput[] = [];
   for (const lap of data.laps) {
     const start = parseTs(lap.date_start);
-    const stint =
-      (stintsByDriver.get(lap.driver_number) ?? []).find(
-        (s) => lap.lap_number >= (s.lap_start ?? 1) && lap.lap_number <= (s.lap_end ?? 9999),
-      ) ?? null;
+    const stint = resolveStint({
+      stints: stintsByDriver.get(lap.driver_number) ?? [],
+      driver: lap.driver_number,
+      lap: lap.lap_number,
+    }).stint;
     const inSc =
       Number.isFinite(start) && bands.some((band) => start >= band.start && start <= band.end);
     out.push({

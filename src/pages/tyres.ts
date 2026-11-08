@@ -450,7 +450,8 @@ function renderFeed(host: HTMLElement, store: TyreStore): void {
     windows = brief.windows;
     rule = brief.rule;
     const left = Math.max(0, snap.raceLaps - (row.currentLap ?? 1));
-    title = `${row.driver.name_acronym} · ${left} laps left · pit loss ${loss.toFixed(1)}s · ${row.compound ?? "—"} age ${row.tyreAge ?? "—"}`;
+    const compoundLabel = row.compound === "UPDATING" ? "updating" : (row.compound ?? "—");
+    title = `${row.driver.name_acronym} · ${left} laps left · pit loss ${loss.toFixed(1)}s · ${compoundLabel} age ${row.tyreAge ?? "—"}`;
   } else {
     const searched = buildStopPlans({
       model: store.model,

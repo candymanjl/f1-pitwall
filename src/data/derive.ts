@@ -1,4 +1,5 @@
 import { asNumber, latestBefore, median, parseTs } from "../lib/time";
+import { resolveStint, TYRE_UPDATING } from "./stintResolve";
 import { gridByDriver, isRaceOrSprint, positionChange } from "./grid";
 import { scheduledRaceLaps } from "./raceDistance";
 import { trackFlagAt } from "./trackFlag";
@@ -236,7 +237,7 @@ function flagAt(t: number, bands: TimingSnapshot["scBands"]): FlagMode {
   return hit.kind === "VSC" ? "vsc" : "sc";
 }
 
-export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
+export function snapshotAt(bundle: SessionBundle, now: number, opts?: { live?: boolean }): TimingSnapshot {
   const drivers = bundle.drivers;
   const lapsBy = new Map<number, Lap[]>();
   for (const lap of bundle.laps) {
@@ -321,25 +322,24 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
     const driverPits = pits.filter((r) => r.driver_number === driver.driver_number);
     const lastPit = latestBefore(driverPits, now, (r: Pit) => parseTs(r.date));
     const pitCount = countPitsAt(driverPits, now);
-
-    const stint = bundle.stints
-      .filter((s) => s.driver_number === driver.driver_number)
-      .sort((a, b) => (a.lap_start ?? 0) - (b.lap_start ?? 0))
-      .reduce<(typeof bundle.stints)[number] | null>((acc, s) => {
-        const startLap = s.lap_start ?? 1;
-        const endLap = s.lap_end ?? 999;
-        const lapNo = cur?.lap_number ?? last?.lap_number ?? 1;
-        return lapNo >= startLap && lapNo <= endLap ? s : acc ?? s;
-      }, null);
-
-    const tyreAge =
-      stint && stint.tyre_age_at_start != null
-        ? stint.tyre_age_at_start + Math.max(0, (cur?.lap_number ?? last?.lap_number ?? stint.lap_start ?? 1) - (stint.lap_start ?? 1))
-        : null;
-
     const lastStart = parseTs(cur?.date_start ?? last?.date_start);
     const laneS = Math.min(Math.max(lastPit?.lane_duration ?? 28, 0), PIT_LANE_CAP_S);
     const inPit = !!lastPit && now - parseTs(lastPit.date) < laneS * 1000 + 4000;
+    const lapNo = cur?.lap_number ?? last?.lap_number ?? 1;
+    const tyre = resolveStint({
+      stints: bundle.stints,
+      driver: driver.driver_number,
+      lap: lapNo,
+      live: opts?.live,
+      pits: driverPits,
+      inPitLane: inPit,
+    });
+    const stint = tyre.updating ? null : tyre.stint;
+
+    const tyreAge =
+      stint && stint.tyre_age_at_start != null
+        ? stint.tyre_age_at_start + Math.max(0, lapNo - (stint.lap_start ?? 1))
+        : null;
     const stale = Number.isFinite(lastStart) && now - lastStart > medianGreenLap * 2500;
     const retired = isRace && stale && !inPit && (cur?.lap_number ?? 0) + 2 < leaderLap;
     const lapActive =
@@ -366,7 +366,7 @@ export function snapshotAt(bundle: SessionBundle, now: number): TimingSnapshot {
     drafts.push({
       pos: posEvt?.position ?? 99,
       driver,
-      compound: stint?.compound ?? null,
+      compound: tyre.updating ? TYRE_UPDATING : stint?.compound ?? null,
       tyreAge,
       lastLap: displayLapTime(last?.lap_duration, medianGreenLap),
       lastLapDelta: previousLapDelta(completedBefore(dlaps, now), pitInLaps(driverPits, driver.driver_number, now), medianGreenLap),

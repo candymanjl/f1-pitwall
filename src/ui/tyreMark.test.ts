@@ -14,6 +14,11 @@ describe("tyreAgeMark", () => {
     expect(one.querySelector(".tyre-age-n")?.textContent).toBe("4");
     expect(two.querySelector(".tyre-age-n")?.textContent).toBe("12");
     expect(none.querySelector(".tyre-age-n")?.textContent).toBe("—");
+    const updating = tyreAgeMark("UPDATING", 12);
+    expect(updating.querySelector(".tyre")?.textContent).toBe("·");
+    expect(updating.querySelector(".tyre")?.className).toContain("updating");
+    expect(updating.querySelector(".tyre")?.getAttribute("aria-label")).toBe("tyre updating");
+    expect(updating.querySelector(".tyre-age-n")?.textContent).toBe("—");
     expect(one.querySelector(".tyre-age-n")?.textContent?.length).toBeLessThan(2);
     expect(two.querySelector(".tyre-age-n")?.textContent?.length).toBe(2);
   });
