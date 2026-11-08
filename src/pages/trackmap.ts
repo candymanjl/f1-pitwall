@@ -217,14 +217,14 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
 
   const draw = () => {
     const bundle = state.bundle;
-    const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t) : null);
+    const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t, { live: state.mode === "live" }) : null);
     if (bundle && snap) drawMap(svg, bundle, snap, followZoom);
   };
 
   const paintMotion = () => {
     if (!svg.isConnected) return;
     const bundle = state.bundle;
-    const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t) : null);
+    const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t, { live: state.mode === "live" }) : null);
     if (!bundle || !snap || bundle.track.length < 2) return;
     const w = svg.clientWidth || 800;
     const h = svg.clientHeight || 600;
@@ -270,7 +270,7 @@ export function mountTrackMap(parent: HTMLElement): { update: () => void } {
 
   const update = () => {
     const bundle = state.bundle;
-    const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t) : null);
+    const snap = state.snap ?? (bundle ? snapshotAt(bundle, state.t, { live: state.mode === "live" }) : null);
     left.body.replaceChildren();
     if (snap) {
       left.body.append(

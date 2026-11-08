@@ -645,6 +645,7 @@ svg.wx-track { width: 100%; flex: 1; min-height: 8rem; display: block; }
   box-sizing: border-box;
   flex: 0 0 1rem;
 }
+.tyre.updating { border-style: dashed; }
 .tyre-age {
   display: inline-flex;
   align-items: center;

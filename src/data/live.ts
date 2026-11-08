@@ -12,6 +12,7 @@ import {
   lastMessageAgeMs,
   lastSeenIso,
   livePollParams,
+  LIVE_POLL_SPECS,
   LOCATION_POLL_MS,
   locationLiveSinceIso,
   MQTT_CAR_DATA_TOPIC,
@@ -22,6 +23,7 @@ import {
   pollSpecsForPage,
   recordTopicHit,
   seedLastRan,
+  STINTS_POLL_MS,
   topicRates,
   type LivePollDebug,
   type LivePollSpec,
@@ -67,6 +69,17 @@ async function defaultConnectMqtt(
 
 function mqttUsername(raw: string): string {
   return raw.trim() || "pitwall";
+}
+
+/** Wait for OpenF1 to publish the new stint after a pit in, pit out, or lane change. */
+export const STINT_AFTER_PIT_MS = 5_000;
+
+function pitLaneEvent(topic: string, payload: unknown): boolean {
+  const name = topic.replace(/^\//, "");
+  if (name === "v1/pit") return true;
+  if (name !== "v1/laps") return false;
+  const rows = Array.isArray(payload) ? payload : payload && typeof payload === "object" ? [payload] : [];
+  return rows.some((row) => !!row && typeof row === "object" && Boolean((row as { is_pit_out_lap?: boolean }).is_pit_out_lap));
 }
 
 function payloadFromMqtt(buf: unknown): unknown {
@@ -115,6 +128,7 @@ export function startLiveFeed(opts: {
   let holdPoll = false;
   let carDataSub = false;
   let lastMqttAt = 0;
+  let stintRushAt = 0;
   const cursors: Record<string, string> = { ...(opts.cursors ?? {}) };
   const lastRan: Record<string, number> = seedLastRan(Date.now());
   let failures = 0;
@@ -257,9 +271,19 @@ export function startLiveFeed(opts: {
     return !Number.isFinite(at) || clock() - at > LOCATION_POLL_MS * 2;
   };
 
+  const stintsWanted = (now: number) => {
+    if (stintRushAt && now >= stintRushAt) return true;
+    return now - (lastRan.stints ?? 0) >= STINTS_POLL_MS;
+  };
+
+  const armStintRush = () => {
+    const when = clock() + STINT_AFTER_PIT_MS;
+    if (!stintRushAt || when < stintRushAt) stintRushAt = when;
+  };
+
   const startPoll = (detail?: string) => {
     if (stopped || polling) return;
-    if (holdPoll && !locationMqttStale()) {
+    if (holdPoll && !locationMqttStale() && !stintsWanted(clock())) {
       if (!pollTimer) schedule(LOCATION_POLL_MS, detail);
       return;
     }
@@ -279,14 +303,24 @@ export function startLiveFeed(opts: {
         schedule(FAST_POLL_MS, "Relay live");
         return;
       }
-      if (holdPoll && !locationMqttStale()) {
-        report({ mode: "STREAM" });
-        schedule(LOCATION_POLL_MS, detail);
-        return;
-      }
       const started = clock();
       const specs = duePollSpecs(opts.page?.(), lastRan, started, loadedName());
-      const due = holdPoll ? specs.filter((spec) => spec.path === "location") : specs;
+      let due = specs;
+      if (holdPoll) {
+        const keep = new Set<string>();
+        if (locationMqttStale()) keep.add("location");
+        if (stintsWanted(started)) keep.add("stints");
+        due = pollSpecsForPage(opts.page?.(), loadedName()).filter((spec) => keep.has(spec.path));
+        if (keep.has("stints") && !due.some((spec) => spec.path === "stints")) {
+          const spec = LIVE_POLL_SPECS.find((row) => row.path === "stints");
+          if (spec) due.push(spec);
+        }
+        if (!due.length) {
+          report({ mode: "STREAM" });
+          schedule(LOCATION_POLL_MS, detail);
+          return;
+        }
+      }
       if (!due.length) {
         schedule(holdPoll ? LOCATION_POLL_MS : nextDueInMs(opts.page?.(), lastRan, clock(), loadedName()), detail);
         return;
@@ -296,6 +330,7 @@ export function startLiveFeed(opts: {
 
       if (stopped) return;
       if (holdPoll) {
+        if (due.some((spec) => spec.path === "stints")) stintRushAt = 0;
         report({ mode: "STREAM", lastPollAt: clock(), lastCycleMs: clock() - started, added, lastError });
         schedule(LOCATION_POLL_MS, detail);
         return;
@@ -426,6 +461,7 @@ export function startLiveFeed(opts: {
         lastMqttAt = clock();
         noteIncoming(String(topic));
         enterStream();
+        if (pitLaneEvent(String(topic), payload)) armStintRush();
         opts.onMessage(String(topic), payload, "merge");
         armSilence();
       });

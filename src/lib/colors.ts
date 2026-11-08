@@ -7,6 +7,7 @@ export const TYRE: Record<string, string> = {
   INTERMEDIATE: "#43b02a",
   WET: "#0072de",
   UNKNOWN: "#6b7280",
+  UPDATING: "#94a3b8",
 };
 
 export const SEGMENT: Record<number, string> = {

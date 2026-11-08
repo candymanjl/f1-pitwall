@@ -212,7 +212,7 @@ function refreshSnap(): void {
     resetCircleMotion();
     return;
   }
-  state.snap = snapshotAt(state.bundle, state.t);
+  state.snap = snapshotAt(state.bundle, state.t, { live: state.mode === "live" });
   const moving = state.playing && !state.scrubbing;
   syncCarMotion(state.bundle, state.snap, state.t, moving);
   syncCircleMotion(state.bundle, state.snap, state.t, moving);
