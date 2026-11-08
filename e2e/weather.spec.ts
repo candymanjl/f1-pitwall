@@ -17,6 +17,55 @@ type Hooks = {
 
 const MEXICO = Date.parse("2025-10-26T20:00:00.000Z");
 const AUSTIN = Date.parse("2025-10-19T19:00:00.000Z");
+/** Resampled bacinger Sao Paulo outline in local metres (e2e OpenF1 stand-in). */
+const INTERLAGOS_METRES: [number, number][] = [
+  [-189.9, -308.5],
+  [-145, -481.2],
+  [-52.1, -590.3],
+  [103.5, -589.2],
+  [243.3, -497.4],
+  [293.2, -326.1],
+  [337, -153.1],
+  [382.7, 19.4],
+  [360.2, 166.2],
+  [191.6, 147.2],
+  [83.2, 5.6],
+  [-22.6, -138.1],
+  [-172.5, -102.6],
+  [-159.2, 49.3],
+  [-66.6, 96.5],
+  [-153.4, 245.7],
+  [-39.9, 192.8],
+  [112.6, 230.9],
+  [196.6, 385],
+  [33.3, 434],
+  [-131.5, 369.5],
+  [-209.8, 214.6],
+  [-249.5, 40.7],
+  [-232, -135],
+];
+const PENTAGON: [number, number][] = [
+  [0, 0],
+  [140, 10],
+  [160, 90],
+  [40, 110],
+  [-20, 50],
+  [0, 0],
+];
+/** Long enough to attempt a fit, wrong shape so RMS is withheld. */
+const BAD_TRACK: [number, number][] = [
+  [0, 0],
+  [80, 8],
+  [140, 10],
+  [155, 50],
+  [160, 90],
+  [100, 100],
+  [40, 110],
+  [10, 80],
+  [-20, 50],
+  [-10, 25],
+  [0, 0],
+];
 const PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAAAhUlEQVR4nO3BMQEAAADCoPVP7WsIoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAMBPAAB2kNHhQAAAABJRU5ErkJggg==",
   "base64",
@@ -96,20 +145,35 @@ async function loadSession(
     country: string;
     mode: "historical" | "live";
     sessionKey: number;
+    track?: [number, number][];
+    withCar?: boolean;
   },
 ): Promise<void> {
   const weather = Array.from({ length: 12 }, (_, i) => wx(opts.start + i * 5 * 60_000, i >= 6 && i < 9 ? 1 : 0));
   await page.evaluate(
-    ({ start, circuit, location, country, mode, weather, sessionKey }) => {
+    ({ start, circuit, location, country, mode, weather, sessionKey, track, withCar }) => {
       const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
-      const track: [number, number][] = [
-        [0, 0],
-        [140, 10],
-        [160, 90],
-        [40, 110],
-        [-20, 50],
-        [0, 0],
-      ];
+      const t = start + 40 * 60_000;
+      const drivers = withCar
+        ? [
+            {
+              driver_number: 1,
+              broadcast_name: "VER",
+              full_name: "Max Verstappen",
+              name_acronym: "VER",
+              team_name: "Red Bull Racing",
+              team_colour: "3671C6",
+              first_name: "Max",
+              last_name: "Verstappen",
+            },
+          ]
+        : [];
+      const locations = withCar
+        ? [
+            { driver_number: 1, x: track[0][0], y: track[0][1], date: new Date(t - 400).toISOString() },
+            { driver_number: 1, x: track[1][0], y: track[1][1], date: new Date(t + 400).toISOString() },
+          ]
+        : [];
       Object.assign(api.state, {
         bundle: {
           meeting: {
@@ -134,7 +198,8 @@ async function loadSession(
             year: 2025,
           },
           weekendSessions: [],
-          drivers: [],
+          drivers,
+          locations,
           laps: [],
           intervals: [],
           positions: [],
@@ -159,7 +224,7 @@ async function loadSession(
       });
       api.setClock(start + 40 * 60_000, "code");
     },
-    { ...opts, weather },
+    { ...opts, weather, track: opts.track ?? PENTAGON, withCar: opts.withCar ?? false },
   );
 }
 
@@ -232,10 +297,18 @@ test("Weather page live: RainViewer radar panel", async ({ page }) => {
     country: "Brazil",
     mode: "live",
     sessionKey: 11405,
+    track: INTERLAGOS_METRES,
+    withCar: true,
   });
   await page.locator("nav button[data-page='weather']").click();
   await expect(page.locator(".page.weather")).toHaveAttribute("data-mode", "live");
   await expect(page.locator(".wx-mosaic.on")).toBeVisible();
+  await expect(page.locator(".wx-radar")).toHaveAttribute("data-radar-overlay", "on");
+  await expect(page.locator("[data-radar-outline]")).toBeVisible();
+  await expect(page.locator("[data-radar-car='1']")).toBeVisible();
+  await expect(page.locator(".wx-radar")).toHaveAttribute("data-radar-view", "wide");
+  await expect(page.locator("button[data-radar-view='wide']")).toHaveClass(/on/);
+  await expect(page.getByRole("link", { name: /bacinger\/f1-circuits/i }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "RainViewer" }).first()).toBeVisible();
   await expect(page.getByText(/Forecast rain probability/i)).toBeVisible();
   await expect(page.getByText("Radar archive unavailable for this session")).toHaveCount(0);
@@ -243,10 +316,26 @@ test("Weather page live: RainViewer radar panel", async ({ page }) => {
   await expect(page.locator("[data-radar-time]")).toContainText("UTC");
   await expect(page.locator("[data-forecast='minute']")).toBeVisible();
   await expect(page.getByText(/Estimated 1 minute line, interpolated from Open-Meteo 15 minute forecast/)).toBeVisible();
+  await expect(page.locator("svg.wx-radar-overlay")).toHaveAttribute("data-fit", /Fit RMS /);
   await page.screenshot({
     path: "/opt/cursor/artifacts/screenshots/weather_e2e_live_1920.png",
     fullPage: true,
   });
+  await page.locator(".wx-radar-map").screenshot({
+    path: "/opt/cursor/artifacts/screenshots/weather_radar_overlay_wide_1920.png",
+  });
+  await page.locator("button[data-radar-view='track']").click();
+  await expect(page.locator(".wx-radar")).toHaveAttribute("data-radar-view", "track");
+  await expect(page.locator("[data-radar-outline]")).toBeVisible();
+  await page.screenshot({
+    path: "/opt/cursor/artifacts/screenshots/weather_radar_overlay_track_1920.png",
+    fullPage: true,
+  });
+  await page.locator(".wx-radar-map").screenshot({
+    path: "/opt/cursor/artifacts/screenshots/weather_radar_overlay_track_map_1920.png",
+  });
+  await page.locator("button[data-radar-view='wide']").click();
+  await expect(page.locator(".wx-radar")).toHaveAttribute("data-radar-view", "wide");
   await page.locator("[data-forecast='minute']").hover({ position: { x: 120, y: 40 } });
   await expect(page.locator(".wx-minute-tip.on")).toContainText("estimated");
   await page.screenshot({
@@ -272,4 +361,14 @@ test("Weather page live: RainViewer radar panel", async ({ page }) => {
     path: "/opt/cursor/artifacts/screenshots/weather_e2e_live_1366.png",
     fullPage: true,
   });
+
+  await page.evaluate((track) => {
+    const api = (window as unknown as { __f1pw: Hooks }).__f1pw;
+    if (api.state.bundle && typeof api.state.bundle === "object") {
+      (api.state.bundle as { track: [number, number][] }).track = track;
+    }
+    api.setClock(api.state.t, "code");
+  }, BAD_TRACK);
+  await expect(page.locator(".wx-radar")).toHaveAttribute("data-radar-overlay", "off");
+  await expect(page.locator(".wx-overlay-note")).toContainText("withheld");
 });
