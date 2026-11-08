@@ -178,4 +178,35 @@ describe("timing page", () => {
     s3row.querySelector(".seg")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
     expect(state.selectedDrivers).toEqual([1]);
   });
+
+  it("shows official /position numbers so a +2 LAPS car stays at P19", () => {
+    const now = parseTs("2026-11-08T18:16:20.000Z");
+    const tPos = "2026-11-08T18:16:00.000Z";
+    const b = bundle([
+      lap({ driver_number: 4, lap_number: 68, date_start: "2026-11-08T18:14:00.000Z" }),
+      lap({ driver_number: 5, lap_number: 67, date_start: "2026-11-08T18:14:40.000Z" }),
+      lap({ driver_number: 11, lap_number: 67, date_start: "2026-11-08T18:15:10.000Z" }),
+    ]);
+    b.drivers = [driver(4, "NOR"), driver(5, "BOR"), driver(11, "PER")];
+    b.intervals = [
+      { date: tPos, driver_number: 4, gap_to_leader: 0, interval: 0 },
+      { date: tPos, driver_number: 5, gap_to_leader: "+1 LAP", interval: "+1 LAP" },
+      { date: tPos, driver_number: 11, gap_to_leader: "+2 LAPS", interval: 28.14 },
+    ];
+    b.positions = [
+      { date: tPos, driver_number: 4, position: 1 },
+      { date: tPos, driver_number: 5, position: 10 },
+      { date: tPos, driver_number: 11, position: 19 },
+    ];
+    state.bundle = b;
+    state.snap = snapshotAt(b, now);
+    const root = document.createElement("div");
+    document.body.append(root);
+    const api = mountTiming(root);
+    api.update();
+    const rows = [...root.querySelectorAll("tbody tr")];
+    expect(rows.map((tr) => tr.getAttribute("data-driver"))).toEqual(["4", "5", "11"]);
+    expect(rows.map((tr) => tr.querySelector("td.c-pos")?.textContent)).toEqual(["1", "10", "19"]);
+    expect(rows[2].querySelectorAll("td.c-gap")[1]?.textContent).toMatch(/2 LAPS/i);
+  });
 });

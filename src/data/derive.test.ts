@@ -608,3 +608,166 @@ describe("pit stop count at current time", () => {
     expect(snap.rows[0].lastLapDelta).toBeNull();
   });
 });
+
+describe("snapshotAt race order with intervals uses /position", () => {
+  function raceLap(dn: number, n: number, startIso: string, dur = 80): Lap {
+    return {
+      driver_number: dn,
+      lap_number: n,
+      date_start: startIso,
+      lap_duration: dur,
+      duration_sector_1: 20,
+      duration_sector_2: 38,
+      duration_sector_3: 22,
+      is_pit_out_lap: false,
+      segments_sector_1: null,
+      segments_sector_2: null,
+      segments_sector_3: null,
+      i1_speed: null,
+      i2_speed: null,
+      st_speed: null,
+    };
+  }
+
+  const tPos = "2026-11-08T18:16:00.000Z";
+  const tNow = parseTs("2026-11-08T18:16:20.000Z");
+  const tLaterPos = "2026-11-08T18:16:25.000Z";
+
+  it("keeps a +2 LAPS car at official P19 below +1 LAP cars and does not renumber", () => {
+    const nor = driver(4, "NOR");
+    const bor = driver(5, "BOR");
+    const gas = driver(10, "GAS");
+    const per = driver(11, "PER");
+    const ham = driver(44, "HAM");
+    const snap = snapshotAt(
+      bundle({
+        drivers: [nor, bor, gas, per, ham],
+        laps: [
+          raceLap(4, 68, "2026-11-08T18:14:00.000Z"),
+          raceLap(44, 68, "2026-11-08T18:14:20.000Z"),
+          raceLap(5, 67, "2026-11-08T18:14:40.000Z"),
+          raceLap(10, 67, "2026-11-08T18:14:50.000Z"),
+          raceLap(11, 67, "2026-11-08T18:15:10.000Z"),
+        ],
+        intervals: [
+          { date: tPos, driver_number: 4, gap_to_leader: 0, interval: 0 },
+          { date: tPos, driver_number: 44, gap_to_leader: "+1 LAP", interval: 23.88 },
+          { date: tPos, driver_number: 5, gap_to_leader: "+1 LAP", interval: "+1 LAP" },
+          { date: tPos, driver_number: 10, gap_to_leader: "+1 LAP", interval: "+1 LAP" },
+          { date: tPos, driver_number: 11, gap_to_leader: "+2 LAPS", interval: 28.14 },
+        ],
+        positions: [
+          { date: tPos, driver_number: 4, position: 1 },
+          { date: tPos, driver_number: 44, position: 9 },
+          { date: tPos, driver_number: 5, position: 10 },
+          { date: tPos, driver_number: 10, position: 11 },
+          { date: tPos, driver_number: 11, position: 19 },
+        ],
+      }),
+      tNow,
+    );
+    expect(snap.rows.map((r) => r.driver.name_acronym)).toEqual(["NOR", "HAM", "BOR", "GAS", "PER"]);
+    expect(snap.rows.map((r) => r.pos)).toEqual([1, 9, 10, 11, 19]);
+    const p = snap.rows.find((r) => r.driver.name_acronym === "PER")!;
+    expect(p.pos).toBe(19);
+    expect(p.gap).toBe("+2 LAPS");
+    expect(p.interval).toBe(28.14);
+    const borRow = snap.rows.find((r) => r.driver.name_acronym === "BOR")!;
+    expect(borRow.gap).toBe("+1 LAP");
+    expect(snap.rows.findIndex((r) => r.driver.name_acronym === "PER")).toBeGreaterThan(
+      snap.rows.findIndex((r) => r.driver.name_acronym === "GAS"),
+    );
+  });
+
+  it("ignores a /position row after the clock so live delay is respected", () => {
+    const nor = driver(4, "NOR");
+    const per = driver(11, "PER");
+    const early = snapshotAt(
+      bundle({
+        drivers: [nor, per],
+        laps: [raceLap(4, 68, "2026-11-08T18:14:00.000Z"), raceLap(11, 67, "2026-11-08T18:15:10.000Z")],
+        intervals: [
+          { date: tPos, driver_number: 4, gap_to_leader: 0, interval: 0 },
+          { date: tPos, driver_number: 11, gap_to_leader: "+2 LAPS", interval: 28.14 },
+        ],
+        positions: [
+          { date: tPos, driver_number: 4, position: 1 },
+          { date: tPos, driver_number: 11, position: 11 },
+          { date: tLaterPos, driver_number: 11, position: 19 },
+        ],
+      }),
+      tNow,
+    );
+    expect(early.rows.map((r) => r.driver.name_acronym)).toEqual(["NOR", "PER"]);
+    expect(early.rows[1].pos).toBe(11);
+    expect(early.rows[1].gap).toBe("+2 LAPS");
+
+    const late = snapshotAt(
+      bundle({
+        drivers: [nor, per],
+        laps: [raceLap(4, 68, "2026-11-08T18:14:00.000Z"), raceLap(11, 67, "2026-11-08T18:15:10.000Z")],
+        intervals: [
+          { date: tPos, driver_number: 4, gap_to_leader: 0, interval: 0 },
+          { date: tPos, driver_number: 11, gap_to_leader: "+2 LAPS", interval: 28.14 },
+        ],
+        positions: [
+          { date: tPos, driver_number: 4, position: 1 },
+          { date: tPos, driver_number: 11, position: 11 },
+          { date: tLaterPos, driver_number: 11, position: 19 },
+        ],
+      }),
+      parseTs(tLaterPos),
+    );
+    expect(late.rows[1].pos).toBe(19);
+    expect(late.rows[1].gap).toBe("+2 LAPS");
+  });
+
+  it("appends a driver with no /position row at the bottom and keeps practice best-lap order", () => {
+    const nor = driver(4, "NOR");
+    const per = driver(11, "PER");
+    const str = driver(18, "STR");
+    const race = snapshotAt(
+      bundle({
+        drivers: [str, per, nor],
+        laps: [
+          raceLap(4, 68, "2026-11-08T18:14:00.000Z"),
+          raceLap(11, 67, "2026-11-08T18:15:10.000Z"),
+          raceLap(18, 66, "2026-11-08T18:15:00.000Z"),
+        ],
+        intervals: [
+          { date: tPos, driver_number: 4, gap_to_leader: 0, interval: 0 },
+          { date: tPos, driver_number: 11, gap_to_leader: "+2 LAPS", interval: 28.14 },
+          { date: tPos, driver_number: 18, gap_to_leader: "+1 LAP", interval: "+1 LAP" },
+        ],
+        positions: [
+          { date: tPos, driver_number: 4, position: 1 },
+          { date: tPos, driver_number: 11, position: 19 },
+        ],
+      }),
+      tNow,
+    );
+    expect(race.rows.map((r) => r.driver.name_acronym)).toEqual(["NOR", "PER", "STR"]);
+    expect(race.rows[2].pos).toBe(99);
+    expect(race.rows[1].pos).toBe(19);
+
+    const practice = snapshotAt(
+      bundle({
+        session: session("Practice 1"),
+        drivers: [driver(1, "AAA"), driver(44, "BBB")],
+        laps: [
+          raceLap(1, 2, "2025-10-26T20:04:05.000Z", 80),
+          raceLap(44, 2, "2025-10-26T20:04:00.000Z", 70),
+        ],
+        intervals: [],
+        positions: [
+          { date: T0, driver_number: 1, position: 1 },
+          { date: T0, driver_number: 44, position: 2 },
+        ],
+      }),
+      parseTs("2025-10-26T20:08:00.000Z"),
+    );
+    expect(practice.rows[0].driver.driver_number).toBe(44);
+    expect(practice.rows[0].pos).toBe(1);
+    expect(practice.rows[1].gap).toBeCloseTo(10);
+  });
+});

@@ -301,7 +301,7 @@ export function snapshotAt(bundle: SessionBundle, now: number, opts?: { live?: b
     if (!prevLast || lap.lap_number >= prevLast.lap_number) lastByDriver.set(lap.driver_number, lap);
   }
 
-  type Draft = TowerRow & { bestForSort: number };
+  type Draft = TowerRow & { bestForSort: number; officialPos: number | null };
   const drafts: Draft[] = [];
 
   for (const driver of drivers) {
@@ -319,6 +319,10 @@ export function snapshotAt(bundle: SessionBundle, now: number, opts?: { live?: b
       now,
       (r) => parseTs(r.date),
     );
+    const officialPos =
+      posEvt != null && Number.isFinite(Number(posEvt.position)) && Number(posEvt.position) > 0
+        ? Number(posEvt.position)
+        : null;
     const driverPits = pits.filter((r) => r.driver_number === driver.driver_number);
     const lastPit = latestBefore(driverPits, now, (r: Pit) => parseTs(r.date));
     const pitCount = countPitsAt(driverPits, now);
@@ -364,7 +368,8 @@ export function snapshotAt(bundle: SessionBundle, now: number, opts?: { live?: b
       s3: overallBest.s3 === Infinity ? null : overallBest.s3,
     };
     drafts.push({
-      pos: posEvt?.position ?? 99,
+      pos: officialPos ?? 99,
+      officialPos,
       driver,
       compound: tyre.updating ? TYRE_UPDATING : stint?.compound ?? null,
       tyreAge,
@@ -413,6 +418,25 @@ export function snapshotAt(bundle: SessionBundle, now: number, opts?: { live?: b
     drafts.sort((a, b) => {
       if (a.retired !== b.retired) return a.retired ? 1 : -1;
       return a.pos - b.pos;
+    });
+  } else if (isRaceOrSprint(bundle.session)) {
+    const compareIntervalGaps = (a: Draft, b: Draft): number => {
+      const ga = asNumber(a.gap);
+      const gb = asNumber(b.gap);
+      if (a.gap == null && typeof a.gap !== "string" && !a.retired && a.officialPos === 1) return -1;
+      if (b.gap == null && typeof b.gap !== "string" && !b.retired && b.officialPos === 1) return 1;
+      if (typeof a.gap === "string") return 1;
+      if (typeof b.gap === "string") return -1;
+      if (ga != null && gb != null && ga !== gb) return ga - gb;
+      return a.driver.driver_number - b.driver.driver_number;
+    };
+    drafts.sort((a, b) => {
+      if (a.retired !== b.retired) return a.retired ? 1 : -1;
+      const aMiss = a.officialPos == null;
+      const bMiss = b.officialPos == null;
+      if (aMiss !== bMiss) return aMiss ? 1 : -1;
+      if (!aMiss && !bMiss) return a.officialPos! - b.officialPos!;
+      return compareIntervalGaps(a, b);
     });
   } else {
     drafts.sort((a, b) => {
@@ -481,7 +505,7 @@ export function snapshotAt(bundle: SessionBundle, now: number, opts?: { live?: b
 
   return {
     now,
-    rows: drafts.map(({ bestForSort: _b, ...row }) => row),
+    rows: drafts.map(({ bestForSort: _b, officialPos: _p, ...row }) => row),
     leaderLap,
     medianGreenLap,
     weather: weatherNow,
