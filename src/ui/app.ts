@@ -14,6 +14,7 @@ import { mountFlagSheet } from "./flagIcon";
 import { mountStatusBar } from "./statusbar";
 import { mountPitCircle } from "../pages/pitcircle";
 import { mountRaceTrace } from "../pages/racetrace";
+import { mountWeather } from "../pages/weather";
 import { mountStrategy } from "../pages/strategy";
 import { mountTelemetry } from "../pages/telemetry";
 import { mountTyres } from "../pages/tyres";
@@ -52,6 +53,7 @@ const mounts: Record<string, (parent: HTMLElement) => PageMount> = {
   laptiming: mountLapTiming,
   telemetry: mountTelemetry,
   racetrace: mountRaceTrace,
+  weather: mountWeather,
   pitcircle: mountPitCircle,
   tyres: mountTyres,
   strategy: mountStrategy,
