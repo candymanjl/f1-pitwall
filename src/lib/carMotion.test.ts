@@ -3,8 +3,10 @@ import {
   MOTION_MAX_LEAD,
   displayedFrac,
   forwardDelta,
+  motionFade,
   motionJumpSummary,
   resetCarMotion,
+  setMotionLiveDelay,
   signedTrackDelta,
   stepCarMotion,
   syncCarMotion,
@@ -13,6 +15,7 @@ import type { Driver, SessionBundle, TimingSnapshot, TowerRow } from "../data/ty
 
 afterEach(() => {
   resetCarMotion();
+  setMotionLiveDelay(0);
 });
 
 function driver(n: number, code: string): Driver {
@@ -235,6 +238,16 @@ describe("car motion", () => {
     expect(displayedFrac(12)).toBeCloseTo(frozen, 5);
     stepCarMotion(t + 80_000, true, true);
     expect(displayedFrac(12)).toBeCloseTo(0.33, 5);
+  });
+
+  it("waits out a live delay plus a batch pause before dimming", () => {
+    const t0 = 80_000;
+    syncCarMotion(bundle(), snap(t0, 0.4), t0, true);
+    setMotionLiveDelay(3000);
+    expect(motionFade(12, t0 + 5_000)).toBe(1);
+    expect(motionFade(12, t0 + 7_000)).toBeLessThan(1);
+    setMotionLiveDelay(0);
+    expect(motionFade(12, t0 + 3_000)).toBeLessThan(1);
   });
 
   it("drops garage cars", () => {

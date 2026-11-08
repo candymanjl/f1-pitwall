@@ -191,7 +191,7 @@ test("4x catch-up latches to live polling and never stops as new rows arrive", a
   expect(live.state.sessionKey).toBe(5555);
   expect(live.state.bundle?.session.session_key).toBe(99);
   await expect(page.locator(".live-btn")).toHaveClass(/on/);
-  await expect(page.locator(".replay .badge")).toHaveText("live polling");
+  await expect(page.locator(".replay .badge")).toHaveText("LIVE · 3s delay");
   await expect(page.locator(".session-clock")).toContainText("Lap 66 / 71");
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/live_poll_following_1920.png" });
 
@@ -231,16 +231,18 @@ test("4x catch-up latches to live polling and never stops as new rows arrive", a
   await expect.poll(async () => (await hooks(page)).state.followLive).toBe(true);
   const latched = await hooks(page);
   expect(latched.state.playing).toBe(true);
-  expect(latched.state.t).toBe(later);
+  expect(latched.state.t).toBeGreaterThan(LIVE_EDGE);
+  expect(latched.state.t).toBeLessThan(later);
   await expect(page.locator(".live-btn")).toHaveClass(/on/);
-  await expect(page.locator(".replay .badge")).toHaveText("live polling");
+  await expect(page.locator(".replay .badge")).toHaveText("LIVE · 3s delay");
 
   const evenLater = later + 4000;
   await ingestNextTick(page, evenLater);
   const following = await hooks(page);
   expect(following.state.followLive).toBe(true);
   expect(following.state.playing).toBe(true);
-  expect(following.state.t).toBe(evenLater);
+  expect(following.state.t).toBeGreaterThan(LIVE_EDGE);
+  expect(following.state.t).toBeLessThan(evenLater);
   expect(following.state.end).toBe(evenLater);
   await page.screenshot({ path: "/opt/cursor/artifacts/screenshots/live_poll_caught_up_1920.png" });
 

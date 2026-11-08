@@ -6,9 +6,12 @@ import {
   TOKEN_URL,
   ensureDefaultRelay,
   normalizeRelayUrl,
+  parseLiveDelay,
+  readLiveDelay,
   readRelayUrl,
   restBase,
   tokenUrl,
+  writeLiveDelay,
   writeRelayUrl,
 } from "./config";
 
@@ -30,6 +33,20 @@ afterEach(() => {
   } catch {
     /* ignore */
   }
+});
+
+describe("live delay", () => {
+  it("defaults to 3 s and remembers Off or 5 s", () => {
+    mockStorage();
+    expect(readLiveDelay()).toBe(3000);
+    expect(parseLiveDelay(null)).toBe(3000);
+    expect(parseLiveDelay("nope")).toBe(3000);
+    writeLiveDelay(0);
+    expect(readLiveDelay()).toBe(0);
+    writeLiveDelay(5000);
+    expect(readLiveDelay()).toBe(5000);
+    expect(localStorage.getItem("f1pitwall.liveDelay")).toBe("5000");
+  });
 });
 
 describe("OpenF1 relay URL", () => {

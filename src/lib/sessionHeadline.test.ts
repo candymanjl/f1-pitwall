@@ -89,5 +89,39 @@ describe("formatReplayBadge", () => {
         liveSource: "off",
       }),
     ).toBe("replay 8×");
+    expect(
+      formatReplayBadge({
+        mode: "live",
+        followLive: true,
+        playing: true,
+        speed: 1,
+        liveSource: "mqtt",
+        streamMode: "STREAM",
+        streamAgeMs: 400,
+        liveDelayMs: 3000,
+      }),
+    ).toBe("LIVE · 3s delay");
+    expect(
+      formatReplayBadge({
+        mode: "live",
+        followLive: true,
+        playing: true,
+        speed: 1,
+        liveSource: "poll",
+        liveDelayMs: 5000,
+      }),
+    ).toBe("LIVE · 5s delay");
+    expect(
+      formatReplayBadge({
+        mode: "live",
+        followLive: true,
+        playing: true,
+        speed: 1,
+        liveSource: "mqtt",
+        streamMode: "STREAM",
+        streamAgeMs: 12_000,
+        liveDelayMs: 3000,
+      }),
+    ).toBe("LIVE · 3s delay · silent");
   });
 });

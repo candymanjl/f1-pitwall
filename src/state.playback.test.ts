@@ -81,6 +81,8 @@ afterEach(() => {
   state.start = 0;
   state.end = 1;
   state.latestMs = Number.NaN;
+  state.latestLocationMs = Number.NaN;
+  state.liveDelayMs = 3000;
   state.lastIngestAt = 0;
 });
 
@@ -223,9 +225,25 @@ describe("scrub vs live ingest", () => {
     const later = "2026-10-31T21:28:08.000Z";
     ingestLive("v1/location", [{ date: later, driver_number: 1, x: 10, y: 20, session_key: 99 }]);
     expect(state.end).toBe(Date.parse(later));
-    expect(state.t).toBe(Date.parse(later));
+    expect(state.t).toBe(Date.parse(LAP66));
     expect(state.followLive).toBe(true);
     expect(state.playing).toBe(true);
+  });
+
+  it("Off still pins follow-live to each new sample", () => {
+    state.mode = "live";
+    state.liveDelayMs = 0;
+    state.bundle = fixture();
+    state.start = Date.parse(START);
+    state.end = Date.parse(LAP66);
+    state.latestMs = Date.parse(LAP66);
+    state.t = Date.parse(LAP66);
+    state.followLive = true;
+    state.playing = true;
+    const later = "2026-10-31T21:28:08.000Z";
+    ingestLive("v1/location", [{ date: later, driver_number: 1, x: 10, y: 20, session_key: 99 }]);
+    expect(state.t).toBe(Date.parse(later));
+    expect(state.followLive).toBe(true);
   });
 
   it("live follow advances past date_end plus grace while rows arrive", () => {
@@ -245,7 +263,7 @@ describe("scrub vs live ingest", () => {
     const later = now - 1000;
     ingestLive("v1/location", [{ date: new Date(later).toISOString(), driver_number: 1, x: 8, y: 9, session_key: 99 }]);
     expect(state.end).toBe(later);
-    expect(state.t).toBe(later);
+    expect(state.t).toBe(later - 3_000);
     expect(state.end).toBeGreaterThan(dateEnd);
     expect(state.lastIngestAt).toBeGreaterThan(0);
   });

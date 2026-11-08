@@ -132,6 +132,87 @@ describe("stepPlayback", () => {
     expect(next.playing).toBe(true);
   });
 
+  it("walks in wall time behind the newest GPS fix instead of jumping to the end", () => {
+    const location = END;
+    let t = location - 3_000;
+    let maxStep = 0;
+    for (let i = 0; i < 90; i++) {
+      const next = stepPlayback({
+        t,
+        start: START,
+        end: END,
+        playing: true,
+        speed: 8,
+        dt: 16,
+        mode: "live",
+        followLive: true,
+        now: END + 8_000,
+        liveDelayMs: 3_000,
+        locationMs: location,
+      });
+      maxStep = Math.max(maxStep, next.t - t);
+      t = next.t;
+      expect(next.followLive).toBe(true);
+      expect(next.playing).toBe(true);
+    }
+    expect(maxStep).toBeLessThan(20);
+    expect(t).toBeGreaterThan(location - 3_000);
+    expect(t).toBeLessThan(location - 1_000);
+  });
+
+  it("eases toward a GPS burst and hard-resyncs only on a long hole", () => {
+    const eased = stepPlayback({
+      t: END - 3_000,
+      start: START,
+      end: END + 400,
+      playing: true,
+      speed: 1,
+      dt: 16,
+      mode: "live",
+      followLive: true,
+      now: END,
+      liveDelayMs: 3_000,
+      locationMs: END + 400,
+    });
+    expect(eased.t - (END - 3_000)).toBeGreaterThan(16);
+    expect(eased.t - (END - 3_000)).toBeLessThan(30);
+
+    const snapped = stepPlayback({
+      t: END - 30_000,
+      start: START,
+      end: END,
+      playing: true,
+      speed: 1,
+      dt: 16,
+      mode: "live",
+      followLive: true,
+      now: END,
+      liveDelayMs: 3_000,
+      locationMs: END,
+    });
+    expect(snapped.t).toBe(END - 3_000);
+  });
+
+  it("latches catch-up at the delayed live point", () => {
+    const target = END - 3_000;
+    const next = stepPlayback({
+      t: target - 10,
+      start: START,
+      end: END,
+      playing: true,
+      speed: 4,
+      dt: 20,
+      mode: "live",
+      followLive: false,
+      now: END,
+      liveDelayMs: 3_000,
+      locationMs: END,
+    });
+    expect(next.t).toBe(target);
+    expect(next.followLive).toBe(true);
+    expect(next.playing).toBe(true);
+  });
+
   it("stops at the recorded end in historical mode", () => {
     const next = stepPlayback({
       t: END - 10,

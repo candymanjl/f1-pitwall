@@ -37,6 +37,12 @@ export const MODE_STORAGE_KEY = "f1pitwall.dataMode";
 export const PIT_LOSS_STORAGE_KEY = "f1pitwall.pitLoss";
 export const LIVE_DEBUG_STORAGE_KEY = "f1pitwall.liveDebug";
 export const LAP_TIMING_VIEW_STORAGE_KEY = "f1pitwall.lapTimingView";
+export const LIVE_DELAY_STORAGE_KEY = "f1pitwall.liveDelay";
+
+/** Live playback hold-back. 0 keeps the old "pin to the newest sample" edge. */
+export const LIVE_DELAY_OPTIONS = [0, 3000, 5000] as const;
+export type LiveDelayMs = (typeof LIVE_DELAY_OPTIONS)[number];
+export const DEFAULT_LIVE_DELAY_MS: LiveDelayMs = 3000;
 
 export const DEFAULT_PIT_LOSS = {
   green: 22,
@@ -114,6 +120,35 @@ export function writeLiveDebug(on: boolean): void {
   } catch {
     /* quota / node tests */
   }
+}
+
+export function parseLiveDelay(raw: string | null | undefined): LiveDelayMs {
+  if (raw == null || raw.trim() === "") return DEFAULT_LIVE_DELAY_MS;
+  const n = Number(raw);
+  if (n === 0 || n === 3000 || n === 5000) return n;
+  return DEFAULT_LIVE_DELAY_MS;
+}
+
+export function readLiveDelay(): LiveDelayMs {
+  try {
+    return parseLiveDelay(localStorage.getItem(LIVE_DELAY_STORAGE_KEY));
+  } catch {
+    return DEFAULT_LIVE_DELAY_MS;
+  }
+}
+
+export function writeLiveDelay(ms: LiveDelayMs): void {
+  try {
+    localStorage.setItem(LIVE_DELAY_STORAGE_KEY, String(ms));
+  } catch {
+    /* quota / node tests */
+  }
+}
+
+export function liveDelayLabel(ms: number): string {
+  if (ms === 5000) return "5 s";
+  if (ms === 3000) return "3 s";
+  return "Off";
 }
 
 export function normalizeRelayUrl(raw: string): string {

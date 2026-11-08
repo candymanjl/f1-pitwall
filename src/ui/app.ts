@@ -30,6 +30,7 @@ import {
   ingestLive,
   loadSelectedSession,
   pinToLive,
+  setLiveDelay,
   reloadAll,
   retryNow,
   sessionPickerDirty,
@@ -150,7 +151,9 @@ export function boot(root: HTMLElement): void {
       liveSource: state.liveSource,
       streamMode: state.liveDebug.mode,
       streamAgeMs: state.liveDebug.lastMessageAgeMs,
+      liveDelayMs: state.followLive ? state.liveDelayMs : 0,
     });
+    elapsed.classList.toggle("delay", state.mode === "live" && state.followLive && state.liveDelayMs > 0);
     const liveFollow = state.mode === "live" && state.followLive;
     const mqttFresh =
       state.liveSource === "mqtt" &&
@@ -291,6 +294,7 @@ export function boot(root: HTMLElement): void {
     setPlaying,
     setScrubbing,
     pinToLive,
+    setLiveDelay,
     ingestLive,
     setSpeed,
     applyLoadedClock,

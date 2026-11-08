@@ -1,4 +1,4 @@
-import { DEFAULT_PIT_LOSS, readRelayUrl, readToken, writeRelayUrl } from "../config";
+import { DEFAULT_PIT_LOSS, LIVE_DELAY_OPTIONS, liveDelayLabel, parseLiveDelay, readRelayUrl, readToken, writeRelayUrl } from "../config";
 import { peekAuth, signIn, signOut, writeManualToken } from "../data/auth";
 import { BUILD_VERSION } from "../lib/buildInfo";
 import { el } from "../lib/dom";
@@ -7,6 +7,7 @@ import {
   clearLiveLock,
   retryNow,
   setDataMode,
+  setLiveDelay,
   setPitLoss,
   setShowLiveDebug,
   setUiScale,
@@ -53,6 +54,11 @@ export function openSettings(): void {
   mode.append(el("option", { value: "historical", text: "Historical replay (REST)" }));
   mode.append(el("option", { value: "live", text: "Live (MQTT stream, REST poll fallback)" }));
   mode.value = state.mode;
+  const delay = el("select", { id: "live-delay" }) as HTMLSelectElement;
+  for (const opt of LIVE_DELAY_OPTIONS) {
+    delay.append(el("option", { value: String(opt), text: liveDelayLabel(opt) }));
+  }
+  delay.value = String(state.liveDelayMs);
   const scale = el("select") as HTMLSelectElement;
   for (const opt of UI_SCALE_OPTIONS) {
     const label = opt === "auto" ? "Auto (fit viewport)" : `${opt}%`;
@@ -130,6 +136,11 @@ export function openSettings(): void {
       }),
       el("label", { text: "Data mode" }),
       mode,
+      el("label", { text: "Live delay" }),
+      delay,
+      el("p", {
+        text: "Holds the live picture a few seconds behind the newest car GPS so the icons glide. Off keeps the old live edge.",
+      }),
       el("label", { text: "UI scale" }),
       scale,
       el("label", { class: "check" }, [liveDebug, " Show live stream debug"]),
@@ -156,6 +167,7 @@ export function openSettings(): void {
     writeManualToken(token.value);
     writeRelayUrl(relay.value);
     setDataMode(mode.value === "live" ? "live" : "historical");
+    setLiveDelay(parseLiveDelay(delay.value));
     setPitLoss({ green: Number(g.value), vsc: Number(v.value), sc: Number(s.value) });
     const pref = scale.value === "auto" ? "auto" : (Number(scale.value) as UiScalePref);
     setUiScale(pref);

@@ -11,10 +11,21 @@ export function formatReplayBadge(opts: {
   /** Age of the newest MQTT/REST live message. Null = nothing received yet. */
   streamAgeMs?: number | null;
   streamMode?: "STREAM" | "POLLING" | "OFF";
+  /** Chosen live hold-back. 0 or omitted keeps the plain live label. */
+  liveDelayMs?: number;
 }): string {
   if (opts.mode !== "live") return `replay ${opts.speed}×`;
   if (!opts.followLive) {
     return opts.playing ? `catch-up ${opts.speed}×` : `paused ${opts.speed}×`;
+  }
+  const delayMs = opts.liveDelayMs ?? 0;
+  if (delayMs > 0) {
+    const label = `LIVE · ${Math.round(delayMs / 1000)}s delay`;
+    const silent =
+      opts.streamMode != null && opts.streamMode !== "STREAM"
+        ? opts.liveSource === "mqtt"
+        : opts.liveSource === "mqtt" && (opts.streamAgeMs == null || opts.streamAgeMs > 5_000);
+    return silent ? `${label} · silent` : label;
   }
   if (opts.liveSource === "mqtt") {
     const silent =

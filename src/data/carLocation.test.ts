@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { downsampleLocations, indexLocations, isRecentLocation, locationOnTrack, nearestIndexed } from "./carLocation";
+import { bracketIndexed, downsampleLocations, indexLocations, isRecentLocation, locationOnTrack, nearestIndexed } from "./carLocation";
 import type { LocationSample } from "./types";
 
 function sample(driver: number, date: string, x: number, y: number): LocationSample {
@@ -21,6 +21,20 @@ describe("car locations", () => {
     expect(hit?.x).toBe(10);
     expect(isRecentLocation(hit, Date.parse("2026-01-16T20:00:00.550Z"))).toBe(true);
     expect(isRecentLocation(hit, Date.parse("2026-01-16T20:00:30.000Z"))).toBe(false);
+  });
+
+  it("brackets the playhead between two GPS fixes", () => {
+    const idx = indexLocations([
+      sample(1, "2026-01-16T20:00:00.000Z", 0, 0),
+      sample(1, "2026-01-16T20:00:00.270Z", 10, 0),
+      sample(1, "2026-01-16T20:00:00.540Z", 20, 0),
+    ]);
+    const mid = Date.parse("2026-01-16T20:00:00.135Z");
+    const bracket = bracketIndexed(idx.get(1), mid);
+    expect(bracket?.prev.x).toBe(0);
+    expect(bracket?.next.x).toBe(10);
+    expect(bracket?.u).toBeCloseTo(0.5, 2);
+    expect(bracketIndexed(idx.get(1), Date.parse("2026-01-16T20:00:02.000Z"))).toBeNull();
   });
 
   it("treats points far from the racing line as off-track", () => {
