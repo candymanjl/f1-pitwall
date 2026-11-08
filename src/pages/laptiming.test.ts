@@ -539,5 +539,96 @@ describe("Lap timing page", () => {
     expect(cells).toContain("25.112");
     expect(cells).toContain("25.401");
     expect(cells.filter((t) => t === "—").length).toBe(4);
+    expect(host.querySelector("th.lt-drv-h")?.getAttribute("colspan")).toBe("6");
+    const s1Headers = host.querySelectorAll("thead th[data-lt-col='s1']");
+    expect(s1Headers.length).toBe(2);
+    expect([...s1Headers].every((n) => n.textContent?.trim() === "S1")).toBe(true);
+    expect(compare.querySelectorAll("td[data-lt-col='s1']").length).toBe(2);
+  });
+
+  it("shows a dash on a finished lap that is still missing S3, not a live ellipsis", () => {
+    const start = Date.parse("2026-11-08T17:00:00.000Z");
+    const nor = driver(4, "NOR", "McLaren", "FF8000");
+    const ver = driver(1, "VER", "Red Bull", "3671C6");
+    const mkLap = (n: number, lapNo: number, extra: Partial<Lap> = {}) =>
+      lap({
+        driver_number: n,
+        lap_number: lapNo,
+        date_start: new Date(start + (lapNo - 1) * 80_000).toISOString(),
+        ...extra,
+      });
+    const bundle: SessionBundle = {
+      meeting: {
+        meeting_key: 1300,
+        meeting_name: "São Paulo Grand Prix",
+        circuit_short_name: "Interlagos",
+        country_name: "Brazil",
+        location: "São Paulo",
+        date_start: new Date(start).toISOString(),
+        year: 2026,
+      },
+      session: {
+        session_key: 12000,
+        meeting_key: 1300,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: new Date(start).toISOString(),
+        date_end: new Date(start + 90 * 60_000).toISOString(),
+        circuit_short_name: "Interlagos",
+        country_name: "Brazil",
+        location: "São Paulo",
+        year: 2026,
+      },
+      weekendSessions: [],
+      drivers: [nor, ver],
+      laps: [4, 1].flatMap((n) => [
+        mkLap(n, 56, { lap_duration: null, duration_sector_1: 19.2, duration_sector_2: 38.8, duration_sector_3: null }),
+        mkLap(n, 57, { lap_duration: null, duration_sector_1: 19.3, duration_sector_2: 38.7, duration_sector_3: null }),
+        mkLap(n, 58, { lap_duration: null, duration_sector_1: 19.1, duration_sector_2: null, duration_sector_3: null }),
+      ]),
+      intervals: [],
+      positions: [
+        { date: new Date(start).toISOString(), driver_number: 4, position: 1 },
+        { date: new Date(start).toISOString(), driver_number: 1, position: 2 },
+      ],
+      stints: [
+        { driver_number: 4, stint_number: 1, lap_start: 1, lap_end: 71, compound: "SOFT", tyre_age_at_start: 0 },
+        { driver_number: 1, stint_number: 1, lap_start: 1, lap_end: 71, compound: "SOFT", tyre_age_at_start: 0 },
+      ],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+    };
+    state.bundle = bundle;
+    state.mode = "live";
+    state.t = start + 57 * 80_000 + 20_000;
+    state.snap = snapshotAt(bundle, state.t);
+    state.lapTimingDrivers = [4, 1];
+    state.lapTimingView = "table";
+    const host = document.createElement("div");
+    document.body.append(host);
+    const api = mountLapTiming(host);
+    api.update();
+    expect(host.querySelector("th.lt-drv-h")?.getAttribute("colspan")).toBe("6");
+    const row56 = host.querySelector("tr[data-lt-lap='56']") as HTMLElement;
+    const row58 = host.querySelector("tr[data-lt-lap='58']") as HTMLElement;
+    expect(row56.classList.contains("lt-progress")).toBe(false);
+    expect(row58.classList.contains("lt-progress")).toBe(true);
+    const times = [...row56.querySelectorAll("[data-lt-col='time']")].map((n) => n.textContent?.trim());
+    expect(times).toEqual(["—", "—"]);
+    expect(row56.querySelector("[data-lt-col='s1']")?.textContent?.trim()).toBe("19.200");
+    expect(row58.querySelector("[data-lt-col='time']")?.textContent?.trim()).toBe("…");
+
+    const nor56 = bundle.laps.find((l) => l.driver_number === 4 && l.lap_number === 56)!;
+    nor56.duration_sector_3 = 16.4;
+    nor56.lap_duration = 74.4;
+    api.update();
+    expect(host.querySelector("tr[data-lt-lap='56'] [data-lt-col='s3']")?.textContent?.trim()).toBe("16.400");
+    expect(host.querySelector("tr[data-lt-lap='56'] [data-lt-col='time']")?.textContent?.trim()).toBe("1:14.400");
+    expect(host.querySelector("tr[data-lt-lap='56']")?.classList.contains("lt-progress")).toBe(false);
   });
 });

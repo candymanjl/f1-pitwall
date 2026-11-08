@@ -1,5 +1,6 @@
 import { asNumber, latestBefore, parseTs } from "../lib/time";
 import { safetyCarBands, visibleLapTiming } from "./derive";
+import { mergeLiveRows } from "./liveMerge";
 import type {
   Driver,
   Interval,
@@ -279,7 +280,7 @@ export function buildLapTimingModel(opts: {
   const intervals = [...bundle.intervals].sort((a, b) => parseTs(a.date) - parseTs(b.date));
 
   const driverLaps = new Map<number, Lap[]>();
-  for (const lap of bundle.laps) {
+  for (const lap of mergeLiveRows([], bundle.laps) as Lap[]) {
     const listL = driverLaps.get(lap.driver_number) ?? [];
     listL.push(lap);
     driverLaps.set(lap.driver_number, listL);
@@ -326,12 +327,18 @@ export function buildLapTimingModel(opts: {
     const cleanTimes: number[] = [];
     let topSpeed: number | null = null;
     let topSpeedLap: number | null = null;
+    let latestStarted = 0;
+    for (const lap of laps) {
+      const start = parseTs(lap.date_start);
+      if (Number.isFinite(start) && start <= until) latestStarted = Math.max(latestStarted, lap.lap_number);
+    }
 
     for (const lap of laps) {
       const isDone = completed(lap, until);
       const start = parseTs(lap.date_start);
-      const inProgress = !isDone && Number.isFinite(start) && start <= until;
-      if (!isDone && !inProgress) continue;
+      const begun = Number.isFinite(start) && start <= until;
+      if (!begun) continue;
+      const inProgress = !isDone && lap.lap_number === latestStarted;
       maxLap = Math.max(maxLap, lap.lap_number);
       if (inProgress) inProgressLap = Math.max(inProgressLap ?? 0, lap.lap_number);
 

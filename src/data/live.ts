@@ -13,6 +13,7 @@ import {
   lastSeenIso,
   livePollParams,
   LIVE_POLL_SPECS,
+  LAPS_POLL_MS,
   LOCATION_POLL_MS,
   locationLiveSinceIso,
   MQTT_CAR_DATA_TOPIC,
@@ -276,6 +277,8 @@ export function startLiveFeed(opts: {
     return now - (lastRan.stints ?? 0) >= STINTS_POLL_MS;
   };
 
+  const lapsWanted = (now: number) => now - (lastRan.laps ?? 0) >= LAPS_POLL_MS;
+
   const armStintRush = () => {
     const when = clock() + STINT_AFTER_PIT_MS;
     if (!stintRushAt || when < stintRushAt) stintRushAt = when;
@@ -283,7 +286,7 @@ export function startLiveFeed(opts: {
 
   const startPoll = (detail?: string) => {
     if (stopped || polling) return;
-    if (holdPoll && !locationMqttStale() && !stintsWanted(clock())) {
+    if (holdPoll && !locationMqttStale() && !stintsWanted(clock()) && !lapsWanted(clock())) {
       if (!pollTimer) schedule(LOCATION_POLL_MS, detail);
       return;
     }
@@ -310,9 +313,14 @@ export function startLiveFeed(opts: {
         const keep = new Set<string>();
         if (locationMqttStale()) keep.add("location");
         if (stintsWanted(started)) keep.add("stints");
+        if (lapsWanted(started)) keep.add("laps");
         due = pollSpecsForPage(opts.page?.(), loadedName()).filter((spec) => keep.has(spec.path));
         if (keep.has("stints") && !due.some((spec) => spec.path === "stints")) {
           const spec = LIVE_POLL_SPECS.find((row) => row.path === "stints");
+          if (spec) due.push(spec);
+        }
+        if (keep.has("laps") && !due.some((spec) => spec.path === "laps")) {
+          const spec = LIVE_POLL_SPECS.find((row) => row.path === "laps");
           if (spec) due.push(spec);
         }
         if (!due.length) {

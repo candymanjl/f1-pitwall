@@ -57,7 +57,7 @@ export const LIVE_POLL_SPECS: LivePollSpec[] = [
   { path: "position", topic: "v1/position", dateField: "date", everyMs: POSITION_POLL_MS },
   { path: "intervals", topic: "v1/intervals", dateField: "date", everyMs: INTERVALS_POLL_MS },
   { path: "race_control", topic: "v1/race_control", dateField: "date", everyMs: RACE_CONTROL_POLL_MS },
-  { path: "laps", topic: "v1/laps", dateField: "date_start", everyMs: LAPS_POLL_MS },
+  { path: "laps", topic: "v1/laps", dateField: null, everyMs: LAPS_POLL_MS },
   { path: "pit", topic: "v1/pit", dateField: "date", everyMs: PIT_POLL_MS },
   { path: "stints", topic: "v1/stints", dateField: null, everyMs: STINTS_POLL_MS },
   { path: "weather", topic: "v1/weather", dateField: "date", everyMs: WEATHER_POLL_MS },

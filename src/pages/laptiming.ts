@@ -231,7 +231,7 @@ function paintTable(model: LapTimingModel, wrap: HTMLElement, jumpLap: number | 
   for (const sum of model.selected) {
     const th = el("th", {
       class: `lt-drv-h${sum.striped ? " lt-stripe" : ""}`,
-      colspan: String(one ? 12 : 7),
+      colspan: String(one ? 12 : 6),
     });
     th.style.setProperty("--team", teamColor(sum.driver.team_colour));
     th.append(
@@ -249,12 +249,32 @@ function paintTable(model: LapTimingModel, wrap: HTMLElement, jumpLap: number | 
   h1.append(el("th", { class: "lt-notes", rowspan: "2", text: "NOTES" }));
   thead.append(h1);
   const h2 = el("tr");
-  const sub = one
-    ? ["LAP TIME", "S1", "S2", "S3", "I1", "I2", "TRAP", "TYRE", "POS", "GAP", "INT", "Δ BEST"]
-    : ["LAP TIME", "S1", "S2", "S3", "TYRE", "POS", ""];
+  const sub: Array<[string, string]> = one
+    ? [
+        ["LAP TIME", "time"],
+        ["S1", "s1"],
+        ["S2", "s2"],
+        ["S3", "s3"],
+        ["I1", "i1"],
+        ["I2", "i2"],
+        ["TRAP", "st"],
+        ["TYRE", "tyre"],
+        ["POS", "pos"],
+        ["GAP", "gap"],
+        ["INT", "int"],
+        ["Δ BEST", "dbest"],
+      ]
+    : [
+        ["LAP TIME", "time"],
+        ["S1", "s1"],
+        ["S2", "s2"],
+        ["S3", "s3"],
+        ["TYRE", "tyre"],
+        ["POS", "pos"],
+      ];
   for (const _ of model.selected) {
-    for (const label of one ? sub : ["LAP TIME", "S1", "S2", "S3", "TYRE", "POS"]) {
-      h2.append(el("th", { text: label, class: label === "TYRE" ? "lt-tyre-col" : undefined }));
+    for (const [label, col] of sub) {
+      h2.append(el("th", { text: label, class: label === "TYRE" ? "lt-tyre-col" : undefined, "data-lt-col": col }));
     }
   }
   thead.append(h2);
@@ -584,7 +604,19 @@ export function mountLapTiming(parent: HTMLElement): { update: () => void } {
             })
             .join(",")
         : "";
-      const key = `${selected.join(",")}:${view}:${model.laps.join(",")}:${model.inProgressLap}:${progress}:${live}:${state.t}`;
+      const fills = model.selected
+        .map((s) => {
+          const byLap = model.cells.get(s.driver.driver_number);
+          return model.laps
+            .map((n) => {
+              const cell = byLap?.get(n);
+              if (!cell) return "";
+              return `${cell.time ?? ""}/${cell.s1 ?? ""}/${cell.s2 ?? ""}/${cell.s3 ?? ""}`;
+            })
+            .join(",");
+        })
+        .join("|");
+      const key = `${selected.join(",")}:${view}:${model.laps.join(",")}:${model.inProgressLap}:${progress}:${fills}:${live}:${state.t}`;
       if (key !== lastKey || tableEmpty()) {
         paintVisibleTable(true);
         lastKey = key;
