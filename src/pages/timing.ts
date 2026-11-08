@@ -9,6 +9,7 @@ import { state } from "../state";
 import {
   driverTimingAt,
   formatSectorDelta,
+  gpsProgressForMinis,
   segmentClass,
   segmentLabel,
   sessionMiniSlots,
@@ -68,6 +69,7 @@ export function mountTiming(parent: HTMLElement): { update: () => void } {
     legendSwatch("personal", "Personal best"),
     legendSwatch("other", "Other"),
     legendSwatch("pit", "Pit lane"),
+    legendSwatch("provisional", "In progress"),
   ]);
   const tablePanel = panel("Live timing  ·  2025-style sectors  ·  no team radio", "", legend);
   const page = el("div", { class: "page timing" }, [tablePanel.root]);
@@ -102,7 +104,10 @@ export function mountTiming(parent: HTMLElement): { update: () => void } {
       for (const tr of table.querySelectorAll<HTMLTableRowElement>("tbody tr")) {
         const driver = Number(tr.dataset.driver);
         if (!Number.isFinite(driver)) continue;
-        const view = driverTimingAt(bundle.laps, driver, snap.now, slots);
+        const view = driverTimingAt(bundle.laps, driver, snap.now, slots, {
+          progress: gpsProgressForMinis(driver, snap.now),
+          sectorFracs: bundle.sectorFracs,
+        });
         const cells = tr.querySelectorAll<HTMLElement>("td.c-sec");
         if (cells[0]) paintSector(cells[0], view.s1);
         if (cells[1]) paintSector(cells[1], view.s2);
