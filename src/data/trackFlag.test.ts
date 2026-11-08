@@ -111,14 +111,117 @@ describe("trackFlagAt", () => {
     expect(trackFlagAt(events, at("2025-10-26T20:01:01.000Z")).kind).toBe("green");
   });
 
-  it("shows a blue flag with a CAR badge", () => {
+  it("keeps GREEN when a lapped car gets a blue flag", () => {
     const flag = trackFlagAt(
-      [rc({ date: T0, flag: "BLUE", scope: "Driver", driver_number: 44, message: "BLUE FLAG" })],
-      at(T0, 1),
+      [
+        rc({ date: T0, flag: "GREEN", scope: "Track", message: "GREEN FLAG" }),
+        rc({
+          date: "2025-10-26T20:00:05.000Z",
+          flag: "BLUE",
+          scope: "Driver",
+          driver_number: 44,
+          message: "BLUE FLAG",
+        }),
+      ],
+      at("2025-10-26T20:00:06.000Z"),
     );
-    expect(flag.kind).toBe("blue");
-    expect(flag.label).toBe("BLUE");
-    expect(flag.badge).toBe("CAR 44");
+    expect(flag.kind).toBe("green");
+    expect(flag.badge).toBeNull();
+  });
+
+  it("keeps SAFETY CAR when a blue flag arrives during SC", () => {
+    const flag = trackFlagAt(
+      [
+        rc({ date: T0, category: "SafetyCar", message: "SAFETY CAR DEPLOYED" }),
+        rc({
+          date: "2025-10-26T20:00:04.000Z",
+          flag: "BLUE",
+          scope: "Driver",
+          driver_number: 22,
+          message: "BLUE FLAG FOR CAR 22",
+        }),
+      ],
+      at("2025-10-26T20:00:05.000Z"),
+    );
+    expect(flag.kind).toBe("sc");
+    expect(flag.label).toBe("SAFETY CAR");
+  });
+
+  it("ignores black and white and other car-only flags even with missing scope", () => {
+    const events = [
+      rc({ date: T0, flag: "GREEN", scope: "Track", message: "GREEN FLAG" }),
+      rc({ date: "2025-10-26T20:00:03.000Z", flag: "BLACK AND WHITE", message: "BLACK AND WHITE FLAG" }),
+      rc({ date: "2025-10-26T20:00:04.000Z", flag: "BLACK AND ORANGE", message: "BLACK AND ORANGE" }),
+      rc({ date: "2025-10-26T20:00:05.000Z", flag: "BLACK", message: "BLACK FLAG" }),
+    ];
+    expect(trackFlagAt(events, at("2025-10-26T20:00:06.000Z")).kind).toBe("green");
+  });
+
+  it("ignores a yellow that carries a driver_number", () => {
+    const flag = trackFlagAt(
+      [
+        rc({ date: T0, flag: "GREEN", scope: "Track", message: "GREEN FLAG" }),
+        rc({
+          date: "2025-10-26T20:00:04.000Z",
+          flag: "YELLOW",
+          driver_number: 16,
+          message: "YELLOW FLAG",
+        }),
+      ],
+      at("2025-10-26T20:00:05.000Z"),
+    );
+    expect(flag.kind).toBe("green");
+  });
+
+  it("ignores penalty and admin messages so they do not blank the track flag", () => {
+    const flag = trackFlagAt(
+      [
+        rc({ date: T0, category: "SafetyCar", message: "SAFETY CAR DEPLOYED" }),
+        rc({
+          date: "2025-10-26T20:00:04.000Z",
+          category: "Other",
+          message: "10 SECOND TIME PENALTY FOR CAR 44",
+        }),
+        rc({
+          date: "2025-10-26T20:00:05.000Z",
+          category: "Penalty",
+          message: "DRIVE THROUGH PENALTY",
+        }),
+      ],
+      at("2025-10-26T20:00:06.000Z"),
+    );
+    expect(flag.kind).toBe("sc");
+  });
+
+  it("clears only that sector on a Sector GREEN FLAG, not all sectors", () => {
+    const events = [
+      rc({ date: T0, flag: "YELLOW", scope: "Sector", sector: 1, message: "YELLOW S1" }),
+      rc({ date: "2025-10-26T20:00:10.000Z", flag: "DOUBLE YELLOW", scope: "Sector", sector: 2, message: "DY S2" }),
+      rc({
+        date: "2025-10-26T20:00:20.000Z",
+        flag: "GREEN",
+        scope: "Sector",
+        sector: 2,
+        message: "GREEN FLAG IN SECTOR 2",
+      }),
+    ];
+    const afterSectorGreen = trackFlagAt(events, at("2025-10-26T20:00:21.000Z"));
+    expect(afterSectorGreen.kind).toBe("yellow");
+    expect(afterSectorGreen.badge).toBe("S1");
+  });
+
+  it("still applies missing-scope red, chequered, and SC deploy", () => {
+    expect(trackFlagAt([rc({ date: T0, flag: "RED", message: "RED FLAG" })], at(T0, 1)).kind).toBe("red");
+    expect(trackFlagAt([rc({ date: T0, flag: "CHEQUERED", message: "CHEQUERED FLAG" })], at(T0, 1)).kind).toBe(
+      "chequered",
+    );
+    expect(
+      trackFlagAt([rc({ date: T0, category: "SafetyCar", message: "SAFETY CAR DEPLOYED" })], at(T0, 1)).kind,
+    ).toBe("sc");
+    expect(
+      trackFlagAt([rc({ date: T0, category: "VSC", message: "VIRTUAL SAFETY CAR DEPLOYED" })], at(T0, 1)).kind,
+    ).toBe("vsc");
+    expect(trackFlagAt([rc({ date: T0, flag: "GREEN", message: "GREEN FLAG" })], at(T0, 1)).kind).toBe("green");
   });
 
   it("does not treat pit-exit green lights as a track clear", () => {
@@ -137,15 +240,8 @@ describe("trackFlagAt", () => {
     expect(flag.badge).toBe("S2");
   });
 
-  it("recognizes chequered, black and white, meatball, and slippery aliases", () => {
+  it("recognizes chequered and slippery aliases on the track indicator", () => {
     expect(trackFlagAt([rc({ date: T0, flag: "CHEQUERED", scope: "Track" })], at(T0, 1)).kind).toBe("chequered");
-    expect(trackFlagAt([rc({ date: T0, flag: "BLACK AND WHITE", scope: "Driver", driver_number: 1 })], at(T0, 1))).toMatchObject({
-      kind: "blackWhite",
-      badge: "CAR 1",
-    });
-    expect(trackFlagAt([rc({ date: T0, flag: "BLACK AND ORANGE", scope: "Driver", driver_number: 16 })], at(T0, 1)).kind).toBe(
-      "blackOrange",
-    );
     expect(trackFlagAt([rc({ date: T0, flag: "YELLOW AND RED", scope: "Track" })], at(T0, 1)).kind).toBe("slippery");
   });
 });

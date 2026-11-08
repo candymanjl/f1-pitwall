@@ -109,10 +109,52 @@ function isPitGreen(msg: string): boolean {
   return msg.includes("GREEN LIGHT") && (msg.includes("PIT") || msg.includes("EXIT"));
 }
 
-function isTrackGreen(ev: RaceControl, msg: string, flag: string): boolean {
+function isTrackGreen(msg: string, flag: string, scope: string): boolean {
+  if (scope === "SECTOR") return false;
   if (isPitGreen(msg)) return false;
   if (msg.includes("GREEN FLAG") || msg.includes("TRACK CLEAR")) return true;
-  if (flag === "GREEN" && up(ev.scope) !== "SECTOR") return true;
+  if (flag === "GREEN") return true;
+  return false;
+}
+
+function isSectorClear(kind: TrackFlagKind | "clear" | null, msg: string, flag: string): boolean {
+  if (kind === "clear" || kind === "green") return true;
+  if (flag === "GREEN" || flag === "CLEAR") return true;
+  if (msg.includes("GREEN FLAG") || msg.includes("TRACK CLEAR")) return true;
+  return false;
+}
+
+const CAR_ONLY_FLAGS = new Set([
+  "BLUE",
+  "BLACK",
+  "BLACK AND WHITE",
+  "BLACK WHITE",
+  "BLACK AND ORANGE",
+  "BLACK ORANGE",
+  "MEATBALL",
+]);
+
+function isPenaltyOrAdmin(cat: string, msg: string): boolean {
+  if (cat === "PENALTY" || cat === "CAR EVENT" || cat === "CAEVENT" || cat === "STEWARDS") return true;
+  return /\b(TIME PENALTY|DRIVE THROUGH|STOP GO|STOP AND GO|REPRIMAND|INVESTIGATION|NO FURTHER ACTION|DISQUALIFIED)\b/.test(
+    msg,
+  );
+}
+
+/** Driver-scoped, car-number, and penalty/admin rows never change the all-cars indicator. */
+function ignoreForTrackIndicator(
+  ev: RaceControl,
+  msg: string,
+  cat: string,
+  flag: string,
+  scope: string,
+): boolean {
+  if (scope === "DRIVER") return true;
+  if (ev.driver_number != null) return true;
+  if (CAR_ONLY_FLAGS.has(flag)) return true;
+  const kind = kindFromFlag(flag);
+  if (kind === "blue" || kind === "black" || kind === "blackWhite" || kind === "blackOrange") return true;
+  if (isPenaltyOrAdmin(cat, msg)) return true;
   return false;
 }
 
@@ -161,8 +203,8 @@ export function emptyTrackFlag(): TrackFlagState {
 
 /**
  * Current flag at `now`: track-wide state plus uncleared sector yellows.
- * CLEAR for that sector, or a later track GREEN, drops the local yellow.
- * The most severe remaining flag is shown.
+ * Driver-scoped / car-number / penalty rows are skipped and leave this state
+ * unchanged. Sector GREEN/CLEAR drops only that sector; track GREEN clears all.
  */
 export function trackFlagAt(events: RaceControl[] | null | undefined, now: number): TrackFlagState {
   const sorted = [...(events ?? [])]
@@ -173,8 +215,6 @@ export function trackFlagAt(events: RaceControl[] | null | undefined, now: numbe
   let track: TrackFlagKind = "green";
   let trackDriver: number | null = null;
   const sectors = new Map<number, "yellow" | "doubleYellow">();
-  let driverKind: TrackFlagKind | null = null;
-  let driverNumber: number | null = null;
 
   for (const { ev } of sorted) {
     const msg = up(ev.message);
@@ -183,6 +223,9 @@ export function trackFlagAt(events: RaceControl[] | null | undefined, now: numbe
     const scope = up(ev.scope);
     const sector = racingSector(ev);
     const kind = kindFromFlag(flag);
+
+    if (ignoreForTrackIndicator(ev, msg, cat, flag, scope)) continue;
+
     const vsc = isVscMessage(msg, cat);
     const sc = isScMessage(msg, cat);
 
@@ -193,24 +236,22 @@ export function trackFlagAt(events: RaceControl[] | null | undefined, now: numbe
       if (track === "sc" || track === "vsc") track = "green";
     }
 
-    if (kind === "clear") {
-      if (scope === "SECTOR" && sector) sectors.delete(sector);
-      else if (scope !== "DRIVER") {
-        sectors.clear();
-        if (track === "yellow" || track === "doubleYellow") track = "green";
-      }
+    if (scope === "SECTOR" && isSectorClear(kind, msg, flag)) {
+      if (sector) sectors.delete(sector);
       continue;
     }
 
-    if (isTrackGreen(ev, msg, flag)) {
+    if (kind === "clear") {
+      sectors.clear();
+      if (track === "yellow" || track === "doubleYellow") track = "green";
+      continue;
+    }
+
+    if (isTrackGreen(msg, flag, scope)) {
       sectors.clear();
       if (track !== "chequered") {
         track = "green";
         trackDriver = null;
-      }
-      if (driverKind === "blue" || driverKind === "white") {
-        driverKind = null;
-        driverNumber = null;
       }
       continue;
     }
@@ -222,17 +263,11 @@ export function trackFlagAt(events: RaceControl[] | null | undefined, now: numbe
       continue;
     }
 
-    if (scope === "DRIVER" || (ev.driver_number != null && ["blue", "black", "blackWhite", "blackOrange", "white"].includes(kind))) {
-      driverKind = kind;
-      driverNumber = ev.driver_number != null ? Number(ev.driver_number) : null;
-      continue;
-    }
-
     if (kind === "red" || kind === "chequered" || kind === "yellow" || kind === "doubleYellow" || kind === "slippery") {
       const holdSc = (track === "sc" || track === "vsc") && kind !== "red" && kind !== "chequered";
       if (!holdSc) {
         track = kind;
-        trackDriver = ev.driver_number != null ? Number(ev.driver_number) : null;
+        trackDriver = null;
       }
       if (kind === "red" || kind === "chequered") sectors.clear();
     }
@@ -261,17 +296,6 @@ export function trackFlagAt(events: RaceControl[] | null | undefined, now: numbe
       scope: "Sector",
       sector,
       driverNumber: null,
-      badge: null,
-    };
-  }
-
-  if (driverKind && SEVERITY[driverKind] > SEVERITY[best.kind]) {
-    best = {
-      kind: driverKind,
-      label: FLAG_LABEL[driverKind],
-      scope: "Driver",
-      sector: null,
-      driverNumber,
       badge: null,
     };
   }
