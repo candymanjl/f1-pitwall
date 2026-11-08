@@ -1,13 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { visibleLapTiming } from "../data/derive";
-import type { Lap } from "../data/types";
+import type { Lap, SessionBundle, TimingSnapshot } from "../data/types";
+import { pointAt } from "../data/track";
+import { resetCarMotion, syncCarMotion } from "../lib/carMotion";
 import { parseTs } from "../lib/time";
 import {
   SEG_OVERALL,
   SEG_PERSONAL,
   SEG_PIT,
+  SEG_PROVISIONAL,
   SEG_YELLOW,
   driverTimingAt,
+  gpsProgressForMinis,
   segmentClass,
   sessionMiniSlots,
 } from "./timingSectors";
@@ -218,7 +222,266 @@ describe("driverTimingAt", () => {
     expect(segmentClass(SEG_PERSONAL)).toBe("seg-personal");
     expect(segmentClass(SEG_YELLOW)).toBe("seg-yellow");
     expect(segmentClass(SEG_PIT)).toBe("seg-pit");
+    expect(segmentClass(SEG_PROVISIONAL)).toBe("seg-provisional");
     expect(segmentClass(0)).toBe("seg-none");
     expect(segmentClass(null)).toBe("seg-none");
+  });
+});
+
+/**
+ * Mexico-style live lap: sector times and colours stay empty until each sector
+ * finishes. GPS progress (the smoothed on-track fraction) lights the blocks.
+ * Outline split matches a typical Mexico sector balance.
+ */
+const LIVE_SPLIT: [number, number, number] = [0.3, 0.42, 0.28];
+
+describe("live mini-sectors from GPS, with a lap-time backup", () => {
+  afterEach(() => {
+    resetCarMotion();
+  });
+
+  const t0 = parseTs("2025-10-26T20:00:00.000Z");
+  const lap2 = t0 + 90_000;
+  const slots = { s1: 3, s2: 2, s3: 2 };
+
+  function liveRows(extra: Partial<Lap> = {}): Lap[] {
+    return [
+      lap({
+        driver_number: 1,
+        lap_number: 1,
+        date_start: new Date(t0).toISOString(),
+        duration_sector_1: 30,
+        duration_sector_2: 40,
+        duration_sector_3: 20,
+        lap_duration: 90,
+        segments_sector_1: [SEG_PERSONAL, SEG_YELLOW, SEG_YELLOW],
+        segments_sector_2: [SEG_YELLOW, SEG_OVERALL],
+        segments_sector_3: [SEG_YELLOW, SEG_YELLOW],
+      }),
+      lap({
+        driver_number: 1,
+        lap_number: 2,
+        date_start: new Date(lap2).toISOString(),
+        duration_sector_1: null,
+        duration_sector_2: null,
+        duration_sector_3: null,
+        lap_duration: null,
+        segments_sector_1: null,
+        segments_sector_2: null,
+        segments_sector_3: null,
+        ...extra,
+      }),
+    ];
+  }
+
+  function at(progress: number | null, now: number, rows = liveRows()) {
+    return driverTimingAt(rows, 1, now, slots, { progress, sectorFracs: LIVE_SPLIT });
+  }
+
+  it("lights S1, S2, and S3 one block at a time from track progress", () => {
+    const seen = (progress: number) => at(progress, lap2 + progress * 90_000);
+    expect(seen(0.05).minis.s1).toEqual([SEG_PERSONAL, SEG_YELLOW, SEG_YELLOW]);
+    expect(seen(0.12).minis.s1).toEqual([SEG_PROVISIONAL, null, null]);
+    expect(seen(0.22).minis.s1).toEqual([SEG_PROVISIONAL, SEG_PROVISIONAL, null]);
+    expect(seen(0.31).minis.s1).toEqual([SEG_PROVISIONAL, SEG_PROVISIONAL, SEG_PROVISIONAL]);
+    expect(seen(0.31).minis.s2.every((code) => code == null)).toBe(true);
+
+    const intoS2 = seen(0.55);
+    expect(intoS2.minis.s1.every((code) => code === SEG_PROVISIONAL)).toBe(true);
+    expect(intoS2.minis.s2).toEqual([SEG_PROVISIONAL, null]);
+    expect(intoS2.minis.s3.every((code) => code == null)).toBe(true);
+
+    const intoS3 = seen(0.9);
+    expect(intoS3.minis.s2).toEqual([SEG_PROVISIONAL, SEG_PROVISIONAL]);
+    expect(intoS3.minis.s3).toEqual([SEG_PROVISIONAL, null]);
+  });
+
+  it("recolours a sector when OpenF1 sends the real segment codes", () => {
+    const now = lap2 + 20_000;
+    const plain = at(0.55, now);
+    expect(plain.minis.s1.every((code) => code === SEG_PROVISIONAL)).toBe(true);
+    expect(plain.minis.s2).toEqual([SEG_PROVISIONAL, null]);
+
+    const coloured = liveRows({
+      duration_sector_1: 29.4,
+      segments_sector_1: [SEG_OVERALL, SEG_YELLOW, SEG_PERSONAL],
+    });
+    const next = at(0.55, lap2 + 30_000, coloured);
+    expect(next.minis.s1).toEqual([SEG_OVERALL, SEG_YELLOW, SEG_PERSONAL]);
+    expect(next.minis.s2).toEqual([SEG_PROVISIONAL, null]);
+    expect(next.s1).toMatchObject({ time: 29.4, held: false });
+  });
+
+  it("holds every S3 block through the line, then opens the next lap at the first S1 mini", () => {
+    const lap3 = lap2 + 90_000;
+    const finished = liveRows({
+      duration_sector_1: 29.2,
+      duration_sector_2: 39.5,
+      duration_sector_3: 19.4,
+      lap_duration: 90,
+      segments_sector_1: [SEG_YELLOW, SEG_YELLOW, SEG_OVERALL],
+      segments_sector_2: [SEG_PERSONAL, SEG_YELLOW],
+      segments_sector_3: [SEG_OVERALL, SEG_YELLOW],
+    });
+    finished.push(
+      lap({
+        driver_number: 1,
+        lap_number: 3,
+        date_start: new Date(lap3).toISOString(),
+        duration_sector_1: null,
+        duration_sector_2: null,
+        duration_sector_3: null,
+        lap_duration: null,
+        segments_sector_1: null,
+        segments_sector_2: null,
+        segments_sector_3: null,
+      }),
+    );
+    const wide = sessionMiniSlots(finished);
+    const onTheLine = driverTimingAt(finished, 1, lap3 + 400, wide, { progress: 0.99, sectorFracs: LIVE_SPLIT });
+    expect(onTheLine.minis.s3).toEqual([SEG_OVERALL, SEG_YELLOW]);
+    expect(onTheLine.minis.s1).toEqual([SEG_YELLOW, SEG_YELLOW, SEG_OVERALL]);
+    expect(onTheLine.s3.held).toBe(true);
+
+    const justAfter = driverTimingAt(finished, 1, lap3 + 800, wide, { progress: 0.03, sectorFracs: LIVE_SPLIT });
+    expect(justAfter.minis.s3).toEqual([SEG_OVERALL, SEG_YELLOW]);
+
+    const opened = driverTimingAt(finished, 1, lap3 + 2_000, wide, { progress: 0.12, sectorFracs: LIVE_SPLIT });
+    expect(opened.minis.s1).toEqual([SEG_PROVISIONAL, null, null]);
+    expect(opened.minis.s2.every((code) => code == null)).toBe(true);
+    expect(opened.minis.s3.every((code) => code == null)).toBe(true);
+  });
+
+  it("falls back to the driver's last sector time when GPS is missing", () => {
+    const early = at(null, lap2 + 12_000);
+    expect(early.minis.s1).toEqual([SEG_PROVISIONAL, null, null]);
+    expect(early.minis.s2.every((code) => code == null)).toBe(true);
+
+    const later = at(null, lap2 + 25_000);
+    expect(later.minis.s1).toEqual([SEG_PROVISIONAL, SEG_PROVISIONAL, null]);
+
+    const s2 = at(null, lap2 + 55_000);
+    expect(s2.minis.s1.every((code) => code === SEG_PROVISIONAL)).toBe(true);
+    expect(s2.minis.s2[0]).toBe(SEG_PROVISIONAL);
+
+    const lap3 = lap2 + 90_000;
+    const rows = liveRows({
+      duration_sector_1: 29.2,
+      duration_sector_2: 39.5,
+      duration_sector_3: 19.4,
+      lap_duration: 90,
+      segments_sector_1: [SEG_PERSONAL, SEG_YELLOW, SEG_YELLOW],
+      segments_sector_2: [SEG_YELLOW, SEG_OVERALL],
+      segments_sector_3: [SEG_YELLOW, SEG_YELLOW],
+    });
+    rows.push(
+      lap({
+        driver_number: 1,
+        lap_number: 3,
+        date_start: new Date(lap3).toISOString(),
+        duration_sector_1: null,
+        duration_sector_2: null,
+        duration_sector_3: null,
+        lap_duration: null,
+        segments_sector_1: null,
+        segments_sector_2: null,
+        segments_sector_3: null,
+      }),
+    );
+    const held = driverTimingAt(rows, 1, lap3 + 2_000, slots, { progress: null, sectorFracs: LIVE_SPLIT });
+    expect(held.minis.s1).toEqual([SEG_PERSONAL, SEG_YELLOW, SEG_YELLOW]);
+    expect(held.minis.s3).toEqual([SEG_YELLOW, SEG_YELLOW]);
+    const released = driverTimingAt(rows, 1, lap3 + 12_000, slots, { progress: null, sectorFracs: null });
+    expect(released.minis.s1[0]).toBe(SEG_PROVISIONAL);
+    expect(released.minis.s1.slice(1).every((code) => code == null)).toBe(true);
+  });
+
+  it("walks a 3.7 Hz trace through every sector without lighting a block early", () => {
+    const step = 1000 / 3.7;
+    let prev = 0;
+    let sawS1 = false;
+    let sawS2 = false;
+    let sawS3 = false;
+    for (let elapsed = 0; elapsed < 88_000; elapsed += step) {
+      const progress = elapsed / 90_000;
+      const view = at(progress, lap2 + elapsed);
+      if (progress < 0.1) continue;
+      const lit = [...view.minis.s1, ...view.minis.s2, ...view.minis.s3].filter((code) => code != null).length;
+      expect(lit).toBeGreaterThanOrEqual(prev);
+      prev = lit;
+      if (view.minis.s1.some((code) => code === SEG_PROVISIONAL)) sawS1 = true;
+      if (view.minis.s2.some((code) => code === SEG_PROVISIONAL)) sawS2 = true;
+      if (view.minis.s3.some((code) => code === SEG_PROVISIONAL)) sawS3 = true;
+    }
+    expect(sawS1 && sawS2 && sawS3).toBe(true);
+    expect(prev).toBeGreaterThanOrEqual(slots.s1 + slots.s2 + 1);
+  });
+
+  it("keeps replay colours when GPS is present and the segment codes already exist", () => {
+    const start = parseTs("2025-10-26T20:00:00.000Z");
+    const view = driverTimingAt(laps, 1, start + 20_000, sessionMiniSlots(laps), {
+      progress: 0.22,
+      sectorFracs: LIVE_SPLIT,
+    });
+    expect(view.minis.s1).toEqual([SEG_YELLOW, SEG_YELLOW, null]);
+    expect(view.minis.s1).not.toContain(SEG_PROVISIONAL);
+  });
+
+  it("reads the smoothed on-track fraction and ignores a stale fix", () => {
+    const track: [number, number][] = [
+      [0, 0],
+      [300, 0],
+      [300, 200],
+      [0, 200],
+      [0, 0],
+    ];
+    const frac = 0.22;
+    const [x, y] = pointAt(track, frac);
+    const now = lap2 + 5_000;
+    const rows = liveRows();
+    const bundle = {
+      meeting: {
+        meeting_key: 1272,
+        meeting_name: "Mexico City Grand Prix",
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        date_start: "",
+        year: 2025,
+      },
+      session: {
+        session_key: 9877,
+        meeting_key: 1272,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: "",
+        date_end: "",
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        year: 2025,
+      },
+      weekendSessions: [],
+      drivers: [],
+      laps: rows,
+      intervals: [],
+      positions: [],
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track,
+      corners: [],
+      sectorFracs: LIVE_SPLIT,
+      locations: [{ date: new Date(now).toISOString(), driver_number: 1, x, y, t: now }],
+    } as SessionBundle;
+    const snap = { now, rows: [{ driver: { driver_number: 1 }, progress: frac, inPit: false }] } as TimingSnapshot;
+    syncCarMotion(bundle, snap, now, true);
+    const progress = gpsProgressForMinis(1, now);
+    expect(progress).toBeCloseTo(frac, 2);
+    const view = driverTimingAt(rows, 1, now, slots, { progress, sectorFracs: LIVE_SPLIT });
+    expect(view.minis.s1.filter((code) => code === SEG_PROVISIONAL).length).toBeGreaterThan(0);
+    expect(gpsProgressForMinis(1, now + 6_000)).toBeNull();
   });
 });
