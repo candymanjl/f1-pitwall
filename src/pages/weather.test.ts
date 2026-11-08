@@ -89,14 +89,32 @@ describe("weather page", () => {
           return new Response(
             JSON.stringify({
               host: "https://tilecache.rainviewer.com",
-              radar: { past: [{ time: 1700000000, path: "/v2/radar/test" }] },
+              radar: {
+                past: [
+                  { time: 1700000000, path: "/v2/radar/a" },
+                  { time: 1700000600, path: "/v2/radar/b" },
+                  { time: 1700001200, path: "/v2/radar/c" },
+                  { time: 1700001800, path: "/v2/radar/d" },
+                ],
+              },
             }),
             { status: 200, headers: { "content-type": "application/json" } },
           );
         }
         if (url.includes("forecast")) {
+          const t0 = Math.floor(Date.now() / (15 * 60_000)) * 15 * 60_000;
           return new Response(
-            JSON.stringify({ hourly: { time: ["2026-11-08T18:00"], precipitation_probability: [42] } }),
+            JSON.stringify({
+              hourly: {
+                time: Array.from({ length: 8 }, (_, i) => new Date(t0 + i * 3600_000).toISOString().slice(0, 16)),
+                precipitation_probability: [12, 24, 36, 48, 40, 28, 18, 10],
+              },
+              minutely_15: {
+                time: Array.from({ length: 8 }, (_, i) => new Date(t0 + i * 15 * 60_000).toISOString().slice(0, 16)),
+                precipitation: [0, 0.2, 0.4, 0.6, 0.5, 0.3, 0.1, 0],
+                precipitation_probability: [10, 22, 38, 55, 48, 30, 18, 8],
+              },
+            }),
             { status: 200 },
           );
         }
@@ -150,16 +168,67 @@ describe("weather page", () => {
     const api = mountWeather(root);
     api.update();
     expect(root.querySelector(".page.weather")?.getAttribute("data-mode")).toBe("replay");
-    expect(root.querySelector("[data-radar='iem'], .wx-iem")).toBeTruthy();
+    expect(root.querySelector("[data-radar='iem'], img.wx-iem")).toBeTruthy();
 
     state.mode = "live";
     api.update();
     await vi.waitFor(() => {
-      expect(root.querySelector(".wx-mosaic, [data-radar='rainviewer']")).toBeTruthy();
+      expect(root.querySelector(".wx-mosaic.on, .wx-mosaic[data-radar='rainviewer']")).toBeTruthy();
     });
     expect(root.querySelector(".page.weather")?.getAttribute("data-mode")).toBe("live");
     expect(root.textContent).toMatch(/RainViewer/);
     expect(root.textContent).toMatch(/HEADWIND|TAILWIND|CROSSWIND/);
     expect(root.querySelector("[data-radar='none']")).toBeNull();
+  });
+
+  it("loops RainViewer frames from Play and interpolates the next-hour forecast line", async () => {
+    state.mode = "live";
+    state.bundle = bundle("Interlagos", "São Paulo", "Brazil");
+    state.start = Date.now() - 30 * 60_000;
+    state.end = Date.now() + 60 * 60_000;
+    state.t = Date.now();
+    state.snap = snap(state.t);
+    const root = document.createElement("div");
+    document.body.append(root);
+    const api = mountWeather(root);
+    api.update();
+    await vi.waitFor(() => {
+      expect(root.querySelector(".wx-mosaic.wx-radar-layer")).toBeTruthy();
+    });
+    const player = root.querySelector(".wx-radar") as HTMLElement;
+    expect(player.dataset.radarPlaying).toBe("false");
+    expect(player.dataset.radarIndex).toBe("3");
+    expect(root.querySelector("[data-radar-time]")?.textContent).toMatch(/UTC/);
+    (root.querySelector("[data-radar-play]") as HTMLButtonElement).click();
+    expect(player.dataset.radarPlaying).toBe("true");
+    expect(player.dataset.radarIndex).toBe("0");
+    const scrub = root.querySelector("[data-radar-scrub]") as HTMLInputElement;
+    scrub.value = "2";
+    scrub.dispatchEvent(new Event("input"));
+    expect(player.dataset.radarPlaying).toBe("false");
+    expect(player.dataset.radarIndex).toBe("2");
+    await vi.waitFor(() => {
+      expect(root.querySelector("[data-forecast='minute']")).toBeTruthy();
+    });
+    expect(root.querySelector("[data-forecast-note='minute']")?.textContent).toMatch(/Estimated 1 minute line/);
+    expect(root.querySelector("[data-forecast-note='minute']")?.textContent).toMatch(/Model data, not radar/);
+    expect(root.textContent).toMatch(/Later hours/);
+    expect(root.textContent).toMatch(/Open-Meteo/);
+  });
+
+  it("offers an IEM play/pause loop on an Austin replay", () => {
+    state.mode = "historical";
+    state.bundle = bundle("Austin", "Austin", "United States");
+    state.start = START;
+    state.end = START + 2 * 3600_000;
+    state.t = START + 20 * 60_000;
+    state.snap = snap();
+    const root = document.createElement("div");
+    document.body.append(root);
+    const api = mountWeather(root);
+    api.update();
+    expect(root.querySelector("[data-radar-play]")).toBeTruthy();
+    expect(root.querySelectorAll("img.wx-iem.wx-radar-layer").length).toBeGreaterThan(2);
+    expect(root.querySelector(".wx-radar")?.getAttribute("data-radar-playing")).toBe("false");
   });
 });

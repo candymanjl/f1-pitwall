@@ -441,17 +441,37 @@ svg.wx-track { width: 100%; flex: 1; min-height: 8rem; display: block; }
 .wx-wind-lab, .wx-n, .wx-sf { fill: #7dd3fc; font: 700 11px var(--cond); letter-spacing: 0.08em; }
 .wx-sf { fill: #94a3b8; }
 .wx-side { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.wx-radar { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 11rem; background: #070b12; }
+.wx-radar { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; background: #070b12; }
 .wx-radar-map, .wx-iem-wrap {
-  position: relative; flex: 1; min-height: 11rem; overflow: hidden;
+  position: relative; flex: 1; min-height: 5.5rem; overflow: hidden;
 }
+.wx-radar-stack { position: absolute; inset: 0; }
+.wx-radar-layer {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; pointer-events: none;
+}
+.wx-radar-layer.on { opacity: 1; z-index: 1; }
+.wx-radar-layer.wx-mosaic, .wx-radar-layer.wx-iem { min-height: 0; }
 .wx-mosaic {
-  display: grid; width: 100%; height: 100%; min-height: 11rem; background:
+  display: grid; width: 100%; height: 100%; min-height: 0; background:
     repeating-linear-gradient(0deg, transparent, transparent 23px, #152033 24px),
     repeating-linear-gradient(90deg, transparent, transparent 23px, #152033 24px),
     #0a1018;
 }
 .wx-mosaic img { width: 100%; height: 100%; object-fit: cover; mix-blend-mode: screen; }
+.wx-radar-ctrl {
+  display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.55rem; color: var(--muted); font-size: 0.72rem;
+}
+.wx-radar-btn {
+  background: #1e293b; border: 1px solid #334155; color: #e8edf7;
+  font: 700 0.72rem var(--cond); letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.18rem 0.48rem; border-radius: 0.25rem; cursor: pointer;
+}
+.wx-radar-btn.on, .wx-radar-btn[aria-pressed="true"] { background: #1d4ed8; border-color: #3b82f6; }
+.wx-radar-time { margin-left: auto; font-variant-numeric: tabular-nums; color: #cbd5e1; }
+.wx-radar-ctrl[hidden], .wx-scrub-row[hidden], .wx-scale[hidden], .wx-pin[hidden], .wx-radar-map[hidden] {
+  display: none !important;
+}
 .wx-pin {
   position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 99px;
   background: #f8fafc; box-shadow: 0 0 0 3px #e10600; z-index: 1;
@@ -477,7 +497,18 @@ svg.wx-track { width: 100%; flex: 1; min-height: 8rem; display: block; }
   margin: 0 0 0.35rem; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
 }
 .wx-confidence p { margin: 0.2rem 0; font-size: 0.8rem; color: #cbd5e1; }
+.wx-minute-wrap {
+  position: relative; flex: 1; min-height: 7.2rem; margin: 0 0.35rem;
+}
+.wx-minute { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+.wx-minute-tip {
+  display: none; position: absolute; z-index: 2; pointer-events: none;
+  background: #0b1018; border: 1px solid #2a3144; border-radius: 0.25rem;
+  padding: 0.22rem 0.4rem; font-size: 0.72rem; color: #e8edf7; white-space: nowrap;
+}
+.wx-minute-tip.on { display: block; }
 .wx-bars { display: flex; align-items: flex-end; gap: 0.45rem; height: 8.5rem; padding: 0.4rem 0.7rem 0.6rem; }
+.wx-minute-wrap ~ .wx-bars { height: 4.8rem; }
 .wx-bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 0.25rem; }
 .wx-bar i { display: block; width: 100%; max-width: 1.6rem; background: #2563eb; border-radius: 0.15rem 0.15rem 0 0; min-height: 4px; }
 .wx-bar span { font-size: 0.68rem; color: var(--muted); }
@@ -514,7 +545,9 @@ svg.wx-track { width: 100%; flex: 1; min-height: 8rem; display: block; }
   .wx-main { grid-template-rows: minmax(7.5rem, 1.1fr) minmax(6.5rem, 0.9fr); }
   svg.wx-track { min-height: 7.5rem; }
   .wx-radar, .wx-radar-map, .wx-iem-wrap { min-height: 7rem; }
+  .wx-minute-wrap { min-height: 5.5rem; }
   .wx-bars { height: 6.2rem; padding: 0.2rem 0.55rem 0.4rem; }
+  .wx-minute-wrap ~ .wx-bars { height: 3.8rem; }
   .wx-credits { font-size: 0.65rem; margin: 0 0.15rem; }
 }
 
