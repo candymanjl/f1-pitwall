@@ -160,7 +160,17 @@ test("headline uses scheduled 71 laps and debug line reports poll rows", async (
     api.ingestLive("v1/intervals", [{ date: iso, driver_number: 1, gap_to_leader: 0, interval: 0, session_key: 99 }]);
   }, new Date(later).toISOString());
 
-  await expect.poll(async () => page.evaluate(() => (window as unknown as { __f1pw: Hooks }).__f1pw.state.t)).toBe(later);
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        ({ lap12, later }) => {
+          const t = (window as unknown as { __f1pw: Hooks }).__f1pw.state.t;
+          return t > lap12 && t < later;
+        },
+        { lap12: LAP12, later },
+      ),
+    )
+    .toBe(true);
   await expect(page.locator(".session-clock")).toContainText("Lap 12 / 71");
 
   await page.setViewportSize({ width: 1366, height: 768 });

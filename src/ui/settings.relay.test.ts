@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 import { afterEach, describe, expect, it } from "vitest";
-import { readRelayUrl, writeRelayUrl } from "../config";
-import { state } from "../state";
+import { readLiveDelay, readRelayUrl, writeRelayUrl } from "../config";
+import { setLiveDelay, state } from "../state";
 import { BUILD_VERSION } from "../lib/buildInfo";
 import { closeAllModals } from "./overlays";
 import { openSettings } from "./settings";
@@ -9,6 +9,7 @@ import { openSettings } from "./settings";
 afterEach(() => {
   closeAllModals();
   writeRelayUrl("");
+  setLiveDelay(3000);
 });
 
 describe("Settings relay field", () => {
@@ -31,6 +32,20 @@ describe("Settings relay field", () => {
     expect(save).toBeTruthy();
     save!.click();
     expect(readRelayUrl()).toBe("https://f1-pitwall-relay-11686.azurewebsites.net");
+  });
+
+  it("offers Off, 3 s, and 5 s for the live delay and saves the choice", () => {
+    openSettings();
+    const select = document.querySelector("#live-delay") as HTMLSelectElement | null;
+    expect(select).toBeTruthy();
+    expect([...select!.options].map((opt) => opt.text)).toEqual(["Off", "3 s", "5 s"]);
+    expect(select!.value).toBe("3000");
+    select!.value = "5000";
+    const save = [...document.querySelectorAll("button")].find((b) => b.textContent === "Save");
+    expect(save).toBeTruthy();
+    save!.click();
+    expect(readLiveDelay()).toBe(5000);
+    expect(state.liveDelayMs).toBe(5000);
   });
 
   it("saves the live poll debug toggle", () => {

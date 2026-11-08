@@ -147,7 +147,7 @@ test("live map explains missing OpenF1 GPS then shows dots once samples arrive",
   await waitForApp(page);
   await loadLiveFp2(page, false);
 
-  await expect(page.locator(".replay .badge")).toContainText("live mqtt · silent");
+  await expect(page.locator(".replay .badge")).toContainText("LIVE · 3s delay · silent");
   await expect(page.locator(".replay .badge.live-weak")).toBeVisible();
   await expect(page.locator("svg.track .map-gps-note")).toContainText("Waiting for live positions from OpenF1");
   await page.screenshot({
@@ -180,7 +180,7 @@ test("live map explains missing OpenF1 GPS then shows dots once samples arrive",
 
   await expect(page.locator("svg.track")).toHaveAttribute("data-cars", "3");
   await expect(page.locator("svg.track .map-gps-note")).toHaveCount(0);
-  await expect(page.locator(".replay .badge")).toContainText("live mqtt");
+  await expect(page.locator(".replay .badge")).toContainText("LIVE · 3s delay");
   await expect(page.locator(".replay .badge")).not.toContainText("silent");
   await expect(page.locator(".replay .badge.live-ok")).toBeVisible();
   await page.screenshot({

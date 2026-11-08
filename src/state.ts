@@ -2,13 +2,16 @@ import {
   LIVE_LOCK_RETRY_MS,
   LIVE_POLL_MS,
   readLiveDebug,
+  readLiveDelay,
   readMode,
   readPitLoss,
   readRelayUrl,
   SPEEDS,
   writeLiveDebug,
+  writeLiveDelay,
   writeMode,
   writePitLoss,
+  type LiveDelayMs,
 } from "./config";
 import { hasUsableAuth, peekAccessToken, peekAuth } from "./data/auth";
 import { applyUiScale, readUiScale, writeUiScale, type UiScalePref } from "./lib/scale";
@@ -27,10 +30,10 @@ import { emptyLiveDebug, seedLiveCursors, type LivePollDebug } from "./data/live
 import { emptyFetchProgress, type FetchProgress } from "./data/loadProgress";
 import { loadBundle, loadMeetings, loadSessions, refreshTimingData } from "./data/loadSession";
 import { fillMissingLapStarts, timingLooksSparse } from "./data/lapStarts";
-import { notifyMotion, resetCarMotion, stepCarMotion, syncCarMotion } from "./lib/carMotion";
+import { notifyMotion, resetCarMotion, setMotionLiveDelay, stepCarMotion, syncCarMotion } from "./lib/carMotion";
 import { resetCircleMotion, stepCircleMotion, syncCircleMotion } from "./lib/circleMotion";
-import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
-import { historicalStartMs, isFinishedSession, latestSampleMs, playableEndMs } from "./lib/sessionClock";
+import { LIVE_DELAY_HARD_MS, followLiveFromScrub, followLiveOnPlay, liveDelayTarget, stepPlayback } from "./lib/playback";
+import { historicalStartMs, isFinishedSession, latestLocationMs, latestSampleMs, playableEndMs } from "./lib/sessionClock";
 import { nextSelection } from "./lib/select";
 import { parseTs } from "./lib/time";
 import type { DataMode } from "./config";
@@ -80,6 +83,10 @@ export type AppState = {
   lapTimingView: LapTimingView;
   /** Newest sample time, maintained on ingest. Full scan only after a bundle load. */
   latestMs: number;
+  /** Newest GPS sample. The live delay sits behind this, not behind laps or intervals. */
+  latestLocationMs: number;
+  /** 0 = pin to the newest sample. 3000 and 5000 hold the picture back. */
+  liveDelayMs: LiveDelayMs;
   /** Wall clock of the last poll/MQTT batch that added rows. */
   lastIngestAt: number;
 };
@@ -127,6 +134,8 @@ export const state: AppState = {
   lapTimingDrivers: [],
   lapTimingView: readLapTimingView(),
   latestMs: Number.NaN,
+  latestLocationMs: Number.NaN,
+  liveDelayMs: readLiveDelay(),
   lastIngestAt: 0,
 };
 
@@ -163,6 +172,20 @@ function sessionIsFinished(bundle = state.bundle): boolean {
 function applyLatestMs(t: number): void {
   if (!Number.isFinite(t)) return;
   if (!Number.isFinite(state.latestMs) || t > state.latestMs) state.latestMs = t;
+}
+
+function applyLatestLocation(t: number): void {
+  if (!Number.isFinite(t)) return;
+  if (!Number.isFinite(state.latestLocationMs) || t > state.latestLocationMs) state.latestLocationMs = t;
+}
+
+function liveDelayEngaged(): boolean {
+  return state.mode === "live" && state.liveDelayMs > 0 && Number.isFinite(state.latestLocationMs);
+}
+
+function liveFollowTarget(): number {
+  if (!liveDelayEngaged()) return state.end;
+  return liveDelayTarget(state.start, state.end, state.latestLocationMs, state.liveDelayMs);
 }
 
 function scheduleLiveSnap(): void {
@@ -208,6 +231,10 @@ function syncPlayableRange(scan = false): void {
   if (scan || !Number.isFinite(state.latestMs)) {
     state.latestMs = latestSampleMs(state.bundle);
   }
+  if (scan) state.latestLocationMs = latestLocationMs(state.bundle);
+  else if (!Number.isFinite(state.latestLocationMs) && state.bundle.locations?.length) {
+    state.latestLocationMs = latestLocationMs(state.bundle);
+  }
   if (Number.isFinite(state.latestMs) && state.latestMs > state.start) state.end = state.latestMs;
   else state.end = playableEndMs(state.start, state.bundle);
   if (state.end <= state.start) state.end = state.start + 1;
@@ -221,7 +248,7 @@ function syncPlayableRange(scan = false): void {
 export function applyLoadedClock(): void {
   syncPlayableRange(true);
   if (state.mode === "live" && !sessionIsFinished()) {
-    state.t = state.end;
+    state.t = liveFollowTarget();
     return;
   }
   state.t = historicalStartMs(state.start, state.end, state.bundle);
@@ -248,7 +275,7 @@ export function pinToLive(): void {
   syncPlayableRange();
   state.followLive = true;
   state.playing = true;
-  state.t = state.end;
+  state.t = liveFollowTarget();
   refreshSnap();
   emit(true);
 }
@@ -256,7 +283,13 @@ export function pinToLive(): void {
 export function setPlaying(playing: boolean): void {
   state.playing = playing;
   if (!playing) state.followLive = false;
-  else state.followLive = followLiveOnPlay(state.t, state.end, state.mode);
+  else {
+    state.followLive = followLiveOnPlay(state.t, state.end, state.mode, {
+      delayMs: state.liveDelayMs,
+      locationMs: state.latestLocationMs,
+      start: state.start,
+    });
+  }
   emit(true);
 }
 
@@ -308,7 +341,7 @@ export function setDataMode(mode: DataMode): void {
     syncPlayableRange();
     state.followLive = true;
     state.playing = true;
-    state.t = state.end;
+    state.t = liveFollowTarget();
   }
   syncLiveFeed();
   emit();
@@ -330,6 +363,18 @@ export function setUiScale(pref: UiScalePref): void {
 export function setShowLiveDebug(on: boolean): void {
   state.showLiveDebug = on;
   writeLiveDebug(on);
+  emit(true);
+}
+
+export function setLiveDelay(ms: LiveDelayMs): void {
+  state.liveDelayMs = ms;
+  writeLiveDelay(ms);
+  setMotionLiveDelay(state.mode === "live" ? ms : 0);
+  if (state.mode === "live" && state.followLive && state.bundle && !state.scrubbing) {
+    syncPlayableRange();
+    state.t = liveFollowTarget();
+    refreshSnap();
+  }
   emit(true);
 }
 
@@ -591,25 +636,33 @@ export function stepClock(dt: number): void {
     followLive: state.followLive,
     now: Date.now(),
     scrubbing: state.scrubbing,
+    liveDelayMs: state.liveDelayMs,
+    locationMs: state.latestLocationMs,
   });
   state.t = next.t;
   state.playing = next.playing;
   state.followLive = next.followLive;
-  if (state.mode === "live" && state.followLive) scheduleLiveSnap();
+  if (state.mode === "live" && state.followLive && !liveDelayEngaged()) scheduleLiveSnap();
   else {
     refreshSnap();
     emit();
   }
 }
 
-function tick(now: number): void {
-  const dt = now - lastTick;
-  lastTick = now;
+/** One animation frame: clock, then track icons and the pit circle. */
+export function advancePlayback(dt: number): void {
+  setMotionLiveDelay(state.mode === "live" ? state.liveDelayMs : 0);
   stepClock(dt);
   const moving = state.playing && !state.scrubbing;
   const trackMoved = stepCarMotion(state.t, moving, state.scrubbing);
   const circleMoved = stepCircleMotion(state.t, moving, state.scrubbing);
   if (trackMoved || circleMoved) notifyMotion();
+}
+
+function tick(now: number): void {
+  const dt = now - lastTick;
+  lastTick = now;
+  advancePlayback(dt);
   requestAnimationFrame(tick);
 }
 
@@ -671,6 +724,17 @@ export function applyLiveClock(_source: "poll" | "mqtt" | "ingest" = "ingest"): 
     state.t = Math.min(state.end, Math.max(state.start, held));
     return;
   }
+  if (liveDelayEngaged()) {
+    const target = liveFollowTarget();
+    if (Math.abs(target - held) >= LIVE_DELAY_HARD_MS) {
+      state.t = target;
+      refreshSnap();
+      emit(true);
+      return;
+    }
+    state.t = Math.min(state.end, Math.max(state.start, held));
+    return;
+  }
   state.t = state.end;
   scheduleLiveSnap();
 }
@@ -694,6 +758,7 @@ export function ingestLive(topic: string, payload: unknown, mode: "merge" | "rep
   }
   state.bundle = next;
   applyLatestMs(result.latestMs);
+  if (topicName === "v1/location") applyLatestLocation(result.latestMs);
   state.lastIngestAt = Date.now();
   applyLiveClock("mqtt");
   if (!(state.followLive && state.playing) || state.scrubbing) {

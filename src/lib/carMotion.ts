@@ -1,7 +1,8 @@
-import { indexLocations } from "../data/carLocation";
+import { bracketIndexed, indexLocations, locationOnTrack, type LocHit } from "../data/carLocation";
 import { isRaceOrSprint } from "../data/grid";
 import { pitLaneFracs } from "../data/pitlane";
-import type { SessionBundle, TimingSnapshot } from "../data/types";
+import type { LocationSample, SessionBundle, TimingSnapshot } from "../data/types";
+import { nearestFrac } from "../data/pitlane";
 import { placeTrackCar, wrap01, type PlaceCarOpts, type PlacedCar } from "./pitcircle";
 
 /** Exponential smoothing of frac/second. */
@@ -10,7 +11,10 @@ export const MOTION_EMA = 0.35;
 export const MOTION_MAX_RATE = 0.04;
 /** Do not predict more than this far past the last sample. */
 export const MOTION_MAX_LEAD = 0.045;
-/** Session seconds without a new sample before prediction stops. */
+/**
+ * Session seconds without a new sample before prediction stops and the icon dims.
+ * Live delay uses delay + 3s instead, so a normal OpenF1 batch pause does not dim the field.
+ */
 export const MOTION_SILENCE_S = 2.5;
 /** Only rewind when the sample is this far behind (scrub / teleport). */
 export const MOTION_BACK_ERR = 0.08;
@@ -31,6 +35,11 @@ let lastStepT = Number.NaN;
 const rawJumps: number[] = [];
 const shownJumps: number[] = [];
 const painters = new Map<string, () => void>();
+let motionDelayMs = 0;
+let motionTrack: [number, number][] = [];
+let motionLocs: Map<number, LocHit[]> | null = null;
+let motionLocSrc: LocationSample[] | null | undefined;
+const fracCache = new WeakMap<LocHit, number>();
 
 function pushJump(list: number[], value: number): void {
   if (!Number.isFinite(value) || value < 0) return;
@@ -48,11 +57,27 @@ export function forwardDelta(from: number, to: number): number {
   return wrap01(to - from);
 }
 
+export function setMotionLiveDelay(ms: number): void {
+  motionDelayMs = ms > 0 ? ms : 0;
+}
+
+export function liveMotionDelayMs(): number {
+  return motionDelayMs;
+}
+
+/** Fade / coast limit. Buffered live waits out the delay plus a 3s batch pause. */
+export function motionSilenceLimitS(): number {
+  return motionDelayMs > 0 ? motionDelayMs / 1000 + 3 : MOTION_SILENCE_S;
+}
+
 export function resetCarMotion(): void {
   cars.clear();
   lastStepT = Number.NaN;
   rawJumps.length = 0;
   shownJumps.length = 0;
+  motionTrack = [];
+  motionLocs = null;
+  motionLocSrc = undefined;
 }
 
 export function displayedFrac(n: number): number | null {
@@ -96,7 +121,39 @@ export function motionJumpSummary(): {
   };
 }
 
-export function placeOptsForSnap(bundle: SessionBundle, snap: TimingSnapshot): PlaceCarOpts {
+function motionLocIndex(samples: LocationSample[] | null | undefined): Map<number, LocHit[]> {
+  const src = samples ?? null;
+  if (motionLocs && src === motionLocSrc) return motionLocs;
+  motionLocSrc = src;
+  motionLocs = indexLocations(src);
+  return motionLocs;
+}
+
+function trackFrac(hit: LocHit): number {
+  const cached = fracCache.get(hit);
+  if (cached != null) return cached;
+  const frac = nearestFrac(motionTrack, hit.x, hit.y);
+  fracCache.set(hit, frac);
+  return frac;
+}
+
+/** Glide between the two GPS fixes surrounding `t`. Null when the buffer has run dry. */
+export function interpolatedTrackFrac(n: number, t: number): number | null {
+  if (motionDelayMs <= 0 || motionTrack.length < 2) return null;
+  const bracket = bracketIndexed(motionLocs?.get(n), t);
+  if (!bracket) return null;
+  if (!locationOnTrack(motionTrack, bracket.prev.x, bracket.prev.y)) return null;
+  if (!locationOnTrack(motionTrack, bracket.next.x, bracket.next.y)) return null;
+  const from = trackFrac(bracket.prev);
+  const to = trackFrac(bracket.next);
+  return wrap01(from + signedTrackDelta(from, to) * bracket.u);
+}
+
+export function placeOptsForSnap(
+  bundle: SessionBundle,
+  snap: TimingSnapshot,
+  locIndex?: Map<number, LocHit[]>,
+): PlaceCarOpts {
   const pits = pitLaneFracs(bundle);
   return {
     leaderProgress: snap.rows[0]?.progress ?? 0,
@@ -106,7 +163,7 @@ export function placeOptsForSnap(bundle: SessionBundle, snap: TimingSnapshot): P
     now: snap.now,
     track: bundle.track,
     locations: bundle.locations,
-    locIndex: indexLocations(bundle.locations),
+    locIndex: locIndex ?? indexLocations(bundle.locations),
     useRaceGaps: isRaceOrSprint(bundle.session),
   };
 }
@@ -166,7 +223,8 @@ export function syncCarMotion(
   t: number,
   playing: boolean,
 ): void {
-  const opts = placeOptsForSnap(bundle, snap);
+  motionTrack = bundle.track;
+  const opts = placeOptsForSnap(bundle, snap, motionLocIndex(bundle.locations));
   const seen = new Set<number>();
   for (const row of snap.rows) {
     const placed = placeTrackCar(row, opts);
@@ -205,20 +263,36 @@ export function stepCarMotion(t: number, playing: boolean, scrubbing: boolean): 
   const dt = (t - lastStepT) / 1000;
   lastStepT = t;
   if (dt <= 0) return false;
-  if (dt > 1.2) {
+  if (dt > 1.2 && motionDelayMs <= 0) {
     snapAllToTarget();
     return true;
   }
+  const silenceLimit = motionSilenceLimitS();
   let moved = false;
   for (const car of cars.values()) {
     const before = car.displayed;
+    if (car.source !== "pit" && motionDelayMs > 0) {
+      const glued = interpolatedTrackFrac(car.n, t);
+      if (glued != null) {
+        car.displayed = glued;
+        car.target = glued;
+        car.source = "location";
+        car.lastSampleT = t;
+        const jump = Math.abs(signedTrackDelta(before, car.displayed));
+        if (jump > 1e-6) {
+          pushJump(shownJumps, jump);
+          moved = true;
+        }
+        continue;
+      }
+    }
     const silence = (t - car.lastSampleT) / 1000;
     if (car.source === "pit") {
       car.displayed = car.target;
       car.rate = 0;
-    } else if (silence > MOTION_SILENCE_S) {
+    } else if (silence > silenceLimit) {
       car.rate = 0;
-      if (silence < MOTION_SILENCE_S + 4) moved = true;
+      if (silence < silenceLimit + 4) moved = true;
     } else {
       let delta = car.rate * dt;
       const predicted = wrap01(car.displayed + delta);
@@ -249,8 +323,9 @@ export function motionFade(n: number, nowT: number): number {
   const car = cars.get(n);
   if (!car) return 1;
   const silence = (nowT - car.lastSampleT) / 1000;
-  if (silence <= MOTION_SILENCE_S) return 1;
-  return Math.max(0.22, 1 - (silence - MOTION_SILENCE_S) / 3);
+  const limit = motionSilenceLimitS();
+  if (silence <= limit) return 1;
+  return Math.max(0.22, 1 - (silence - limit) / 3);
 }
 
 export function smoothedFrac(n: number, fallback: number): number {

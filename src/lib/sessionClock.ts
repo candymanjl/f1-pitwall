@@ -1,3 +1,4 @@
+import { locationTime } from "../data/carLocation";
 import { parseTs } from "./time";
 import type { SessionBundle } from "../data/types";
 
@@ -42,6 +43,17 @@ export function latestSampleMs(bundle: SessionBundle | null | undefined): number
     }
   }
   for (const row of bundle.carData ?? []) max = consider(max, row.date);
+  return Number.isFinite(max) && max > 0 ? max : NaN;
+}
+
+/** Newest GPS fix. Live delay anchors here, not on laps or intervals. */
+export function latestLocationMs(bundle: SessionBundle | null | undefined): number {
+  if (!bundle?.locations?.length) return NaN;
+  let max = -Infinity;
+  for (const row of bundle.locations) {
+    const t = locationTime(row);
+    if (Number.isFinite(t) && t > max) max = t;
+  }
   return Number.isFinite(max) && max > 0 ? max : NaN;
 }
 

@@ -91,6 +91,32 @@ export function indexLocations(samples: LocationSample[] | null | undefined): Ma
   return map;
 }
 
+/** Don't draw a straight glide across a GPS hole longer than this. */
+export const LOC_BRACKET_MAX_MS = 8_000;
+
+export type LocBracket = { prev: LocHit; next: LocHit; u: number };
+
+/**
+ * Samples on either side of `now`. `u` is 0 at the earlier sample and 1 at the later one.
+ * Missing either side means the playhead is outside the GPS that has arrived.
+ */
+export function bracketIndexed(list: LocHit[] | undefined, now: number): LocBracket | null {
+  if (!list || list.length < 2 || !Number.isFinite(now)) return null;
+  let lo = 0;
+  let hi = list.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid].t < now) lo = mid + 1;
+    else hi = mid;
+  }
+  const next = list[lo];
+  const prev = list[lo - 1];
+  if (!prev || !next || next.t < now || prev.t > now) return null;
+  const span = next.t - prev.t;
+  if (span <= 0 || span > LOC_BRACKET_MAX_MS) return null;
+  return { prev, next, u: (now - prev.t) / span };
+}
+
 export function nearestIndexed(list: LocHit[] | undefined, now: number): LocHit | null {
   if (!list?.length) return null;
   let lo = 0;
