@@ -7,7 +7,7 @@ vi.mock("./client", () => ({ apiGet, parseRetryAfterMs: () => 4000 }));
 import { AUTH_ACCESS_KEY, AUTH_EXPIRY_KEY, AUTH_USER_KEY, TOKEN_REFRESH_SKEW_MS, writeRelayUrl } from "../config";
 import { applyLiveMessage } from "./liveMerge";
 import { STINT_AFTER_PIT_MS, startLiveFeed, type MqttLike } from "./live";
-import { LOCATION_POLL_MS, MQTT_SILENCE_MS } from "./livePoll";
+import { LAPS_POLL_MS, LOCATION_POLL_MS, MQTT_SILENCE_MS } from "./livePoll";
 import type { SessionBundle } from "./types";
 
 function mockBroker() {
@@ -293,6 +293,39 @@ describe("OpenF1 MQTT even when a relay is set", () => {
     await vi.advanceTimersByTimeAsync(LOCATION_POLL_MS);
     for (let i = 0; i < 8; i++) await Promise.resolve();
     expect(apiGet.mock.calls.map((call) => call[0])).toContain("stints");
+    expect(modes.at(-1)).toBe("STREAM");
+    handle.stop();
+  });
+
+  it("refreshes /laps on a timer while MQTT stays green, without date_start>", async () => {
+    vi.useFakeTimers();
+    apiGet.mockResolvedValue([]);
+    const client = mockBroker();
+    const modes: string[] = [];
+    const handle = startLiveFeed({
+      username: "ada",
+      sessionKey: 99,
+      tabChannel: null,
+      getToken: async () => "tok",
+      connectMqtt: () => client,
+      onMessage: () => {},
+      onStatus: () => {},
+      onDebug: (debug) => modes.push(debug.mode),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    client.emit("connect");
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    client.emit(
+      "message",
+      "v1/location",
+      JSON.stringify({ date: "2025-10-26T20:10:00.000Z", driver_number: 1, x: 1, y: 2, session_key: 99 }),
+    );
+    apiGet.mockClear();
+    await vi.advanceTimersByTimeAsync(LAPS_POLL_MS + LOCATION_POLL_MS);
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    const lapCalls = apiGet.mock.calls.filter((call) => call[0] === "laps");
+    expect(lapCalls.length).toBeGreaterThan(0);
+    expect(lapCalls[0][1]).toEqual({ session_key: 99 });
     expect(modes.at(-1)).toBe("STREAM");
     handle.stop();
   });

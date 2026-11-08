@@ -33,7 +33,7 @@ const posSpec = LIVE_POLL_SPECS.find((s) => s.path === "position")!;
 const stintSpec = LIVE_POLL_SPECS.find((s) => s.path === "stints")!;
 
 describe("live incremental poll helpers", () => {
-  it("uses date_start> for laps and date> for position", () => {
+  it("polls laps as a session snapshot so late S3 and lap_duration can land", () => {
     const bundle = {
       laps: [{ date_start: "2025-10-26T20:10:00.000Z" }],
       positions: [{ date: "2025-10-26T20:10:04.000Z" }],
@@ -44,11 +44,11 @@ describe("live incremental poll helpers", () => {
       raceControl: [],
     } as unknown as SessionBundle;
     const cursors = seedLiveCursors(bundle);
-    expect(cursors.laps).toBe("2025-10-26T20:10:00.000Z");
+    expect(cursors.laps).toBeUndefined();
     expect(cursors.position).toBe("2025-10-26T20:10:04.000Z");
     expect(livePollParams(posSpec, 99, cursors, "x")["date>"]).toBe("2025-10-26T20:10:04.000Z");
-    expect(livePollParams(lapsSpec, 99, cursors, "x")["date_start>"]).toBe("2025-10-26T20:10:00.000Z");
-    expect(livePollParams(lapsSpec, 99, cursors, "x")["date>"]).toBeUndefined();
+    expect(livePollParams(lapsSpec, 99, cursors, "x")).toEqual({ session_key: 99 });
+    expect(livePollParams(lapsSpec, 99, cursors, "x")["date_start>"]).toBeUndefined();
     expect(livePollParams(stintSpec, 99, cursors, "x")).toEqual({ session_key: 99 });
   });
 

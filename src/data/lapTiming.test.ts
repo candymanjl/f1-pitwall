@@ -215,6 +215,54 @@ describe("buildLapTimingModel", () => {
     expect(model.inProgressLap).toBe(2);
   });
 
+  it("does not mark older laps in progress when a later lap has started, even with 3s delay", () => {
+    const start = Date.parse("2026-11-08T17:00:00.000Z");
+    const b = bundle({
+      drivers: [driver(4, "NOR", "McLaren", "FF8000"), driver(1, "VER", "Red Bull", "3671C6")],
+      laps: [4, 1].flatMap((n) => [
+        lap({
+          driver_number: n,
+          lap_number: 56,
+          date_start: new Date(start + 55 * 80_000).toISOString(),
+          lap_duration: null,
+          duration_sector_1: 19.2,
+          duration_sector_2: 38.8,
+          duration_sector_3: null,
+        }),
+        lap({
+          driver_number: n,
+          lap_number: 57,
+          date_start: new Date(start + 56 * 80_000).toISOString(),
+          lap_duration: null,
+          duration_sector_1: 19.3,
+          duration_sector_2: 38.7,
+          duration_sector_3: null,
+        }),
+        lap({
+          driver_number: n,
+          lap_number: 58,
+          date_start: new Date(start + 57 * 80_000).toISOString(),
+          lap_duration: null,
+          duration_sector_1: 19.1,
+          duration_sector_2: null,
+          duration_sector_3: null,
+        }),
+      ]),
+    });
+    const now = start + 57 * 80_000 + 20_000 - 3_000;
+    const model = buildLapTimingModel({ bundle: b, snap: null, selected: [4, 1], now, live: true });
+    expect(model.cells.get(4)?.get(56)?.inProgress).toBe(false);
+    expect(model.cells.get(4)?.get(57)?.inProgress).toBe(false);
+    expect(model.cells.get(1)?.get(56)?.inProgress).toBe(false);
+    expect(model.cells.get(1)?.get(57)?.inProgress).toBe(false);
+    expect(model.cells.get(4)?.get(58)?.inProgress).toBe(true);
+    expect(model.cells.get(1)?.get(58)?.inProgress).toBe(true);
+    expect(model.cells.get(4)?.get(56)?.time).toBeNull();
+    expect(model.cells.get(4)?.get(56)?.s1).toBe(19.2);
+    expect(model.cells.get(4)?.get(56)?.s3).toBeNull();
+    expect(model.inProgressLap).toBe(58);
+  });
+
   it("reveals S1 only while the replay clock is mid S2, including historical", () => {
     const start = Date.parse("2026-10-25T20:00:00.000Z");
     const lap10 = start + 18 * 60_000 + 47_000;
