@@ -62,20 +62,22 @@ async function stubWeatherApis(page: Page): Promise<void> {
     await route.fulfill({ status: 200, contentType: "image/png", body: PIXEL });
   });
   await page.route(/open-meteo\.com/, async (route) => {
-    const start = new Date().toISOString().slice(0, 13) + ":00";
+    const t0 = Math.floor(Date.now() / (15 * 60_000)) * 15 * 60_000;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         hourly: {
-          time: Array.from({ length: 12 }, (_, i) => {
-            const t = Date.parse(start + "Z") + i * 3600_000;
-            return new Date(t).toISOString().slice(0, 16);
-          }),
+          time: Array.from({ length: 12 }, (_, i) => new Date(t0 + i * 3600_000).toISOString().slice(0, 16)),
           precipitation_probability: [12, 15, 20, 32, 45, 52, 47, 38, 30, 22, 18, 14],
           precipitation: [0, 0.1, 0.4, 1.2, 0.8, 0.2, 0, 0, 0, 0.1, 0, 0],
           cloud_cover: [40, 50, 60, 80, 70, 55, 40, 30, 20, 25, 30, 35],
           wind_speed_10m: [3, 3.2, 3.5, 4, 3.8, 3.1, 2.8, 2.5, 2.4, 2.6, 2.9, 3],
+        },
+        minutely_15: {
+          time: Array.from({ length: 8 }, (_, i) => new Date(t0 + i * 15 * 60_000).toISOString().slice(0, 16)),
+          precipitation: [0, 0.2, 0.5, 0.9, 0.7, 0.3, 0.1, 0],
+          precipitation_probability: [8, 18, 34, 58, 49, 31, 16, 9],
         },
       }),
     });
@@ -195,10 +197,18 @@ test("Weather page replay: Mexico archive unavailable and Austin IEM radar", asy
     sessionKey: 9951,
   });
   await expect(page.locator(".page.weather")).toHaveAttribute("data-mode", "replay");
-  await expect(page.locator("img.wx-iem")).toBeVisible();
+  await expect(page.locator("img.wx-iem.on")).toBeVisible();
   await expect(page.getByText("Radar archive unavailable for this session")).toHaveCount(0);
+  await expect(page.locator("[data-radar-play]")).toBeVisible();
+  await expect(page.locator("[data-radar-time]")).toContainText("UTC");
   await page.screenshot({
     path: "/opt/cursor/artifacts/screenshots/weather_e2e_austin_1920.png",
+    fullPage: true,
+  });
+  await page.locator("[data-radar-play]").click();
+  await expect(page.locator(".wx-radar")).toHaveAttribute("data-radar-playing", "true");
+  await page.screenshot({
+    path: "/opt/cursor/artifacts/screenshots/weather_e2e_austin_playing_1920.png",
     fullPage: true,
   });
 
@@ -225,12 +235,36 @@ test("Weather page live: RainViewer radar panel", async ({ page }) => {
   });
   await page.locator("nav button[data-page='weather']").click();
   await expect(page.locator(".page.weather")).toHaveAttribute("data-mode", "live");
-  await expect(page.locator(".wx-mosaic")).toBeVisible();
+  await expect(page.locator(".wx-mosaic.on")).toBeVisible();
   await expect(page.getByRole("link", { name: "RainViewer" }).first()).toBeVisible();
   await expect(page.getByText(/Forecast rain probability/i)).toBeVisible();
   await expect(page.getByText("Radar archive unavailable for this session")).toHaveCount(0);
+  await expect(page.locator("[data-radar-play]")).toHaveText("Play");
+  await expect(page.locator("[data-radar-time]")).toContainText("UTC");
+  await expect(page.locator("[data-forecast='minute']")).toBeVisible();
+  await expect(page.getByText(/Estimated 1 minute line, interpolated from Open-Meteo 15 minute forecast/)).toBeVisible();
   await page.screenshot({
     path: "/opt/cursor/artifacts/screenshots/weather_e2e_live_1920.png",
+    fullPage: true,
+  });
+  await page.locator("[data-forecast='minute']").hover({ position: { x: 120, y: 40 } });
+  await expect(page.locator(".wx-minute-tip.on")).toContainText("estimated");
+  await page.screenshot({
+    path: "/opt/cursor/artifacts/screenshots/weather_e2e_live_forecast_1920.png",
+    fullPage: true,
+  });
+  await page.locator("[data-radar-speed='2']").click();
+  await page.locator("[data-radar-play]").click();
+  await expect(page.locator(".wx-radar")).toHaveAttribute("data-radar-playing", "true");
+  await expect(page.locator(".wx-radar")).toHaveAttribute("data-radar-index", "0");
+  await page.screenshot({
+    path: "/opt/cursor/artifacts/screenshots/weather_e2e_live_playing_1920.png",
+    fullPage: true,
+  });
+  await expect.poll(async () => page.locator(".wx-radar").getAttribute("data-radar-index")).not.toBe("0");
+  await expect(page.locator("[data-radar-time]")).toContainText("UTC");
+  await page.screenshot({
+    path: "/opt/cursor/artifacts/screenshots/weather_e2e_live_midloop_1920.png",
     fullPage: true,
   });
   await page.setViewportSize({ width: 1366, height: 768 });

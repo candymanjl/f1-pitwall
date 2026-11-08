@@ -1,24 +1,21 @@
 import { circuitCoord, hasIemRadar } from "../data/circuitCoords";
-import { IEM_CREDIT, IEM_HOME, iemWmsUrl, roundToRadarStep } from "../data/iemRadar";
+import { IEM_CREDIT, IEM_HOME, iemLoopTimes } from "../data/iemRadar";
 import {
   fetchArchive,
   fetchForecast,
+  interpolateMinutePoints,
   isoDateUtc,
+  laterHourlyForecast,
+  MINUTELY_NOTE,
+  nativeMinutelyInWindow,
   OPEN_METEO_CREDIT,
   OPEN_METEO_HOME,
-  upcomingForecast,
   type ArchiveHour,
-  type ForecastHour,
+  type ForecastPack,
+  type MinutePoint,
+  type MinutelySample,
 } from "../data/openMeteo";
-import {
-  fetchRainViewerCatalog,
-  radarTileWindow,
-  RAINVIEWER_CREDIT,
-  RAINVIEWER_HOME,
-  RAINVIEWER_ZOOM,
-  rainViewerTileUrl,
-  type RainViewerFrame,
-} from "../data/rainViewer";
+import { fetchRainViewerCatalog, RAINVIEWER_CREDIT, RAINVIEWER_HOME, type RainViewerFrame } from "../data/rainViewer";
 import { project, windArrowScreen } from "../data/track";
 import { derivedStraightWinds, geoNorthScreen } from "../data/windRelative";
 import { formatPressure } from "../data/weatherPressure";
@@ -29,9 +26,11 @@ import { formatClock, parseTs } from "../lib/time";
 import { fitWindArrow } from "../lib/windFlow";
 import { panel } from "../ui/panel";
 import { state } from "../state";
+import { mountRadarPlayer, type RadarPlayer } from "./weatherRadar";
 
+const EMPTY_FORECAST: ForecastPack = { hourly: [], minutely: [] };
 const rvCache: { at: number; frames: RainViewerFrame[]; inflight: boolean } = { at: 0, frames: [], inflight: false };
-const forecastCache = new Map<string, ForecastHour[]>();
+const forecastCache = new Map<string, ForecastPack>();
 const archiveCache = new Map<string, ArchiveHour[]>();
 
 function isLive(): boolean {
@@ -222,38 +221,80 @@ function creditLink(href: string, text: string): HTMLAnchorElement {
   return el("a", { href, target: "_blank", rel: "noopener noreferrer", text }) as HTMLAnchorElement;
 }
 
-function paintRadar(host: HTMLElement, frames: RainViewerFrame[], frameIndex: number, lat: number, lon: number): void {
-  const frame = frames[Math.max(0, Math.min(frames.length - 1, frameIndex))];
-  host.replaceChildren();
-  if (!frame) {
-    host.append(el("div", { class: "wx-empty", text: "No RainViewer frames." }));
-    return;
+function drawMinutelyForecast(
+  canvas: HTMLCanvasElement,
+  points: MinutePoint[],
+  natives: MinutelySample[],
+  now: number,
+): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const box = canvas.getBoundingClientRect();
+  const w = Math.max(1, Math.round(box.width) || 640);
+  const h = Math.max(1, Math.round(box.height) || 180);
+  canvas.width = w * devicePixelRatio;
+  canvas.height = h * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const pad = { l: 36, r: 10, t: 12, b: 28 };
+  const innerW = Math.max(1, w - pad.l - pad.r);
+  const innerH = Math.max(1, h - pad.t - pad.b);
+  const span = 60 * 60_000;
+  const xOf = (t: number) => pad.l + ((t - now) / span) * innerW;
+  const yOf = (prob: number) => pad.t + (1 - prob / 100) * innerH;
+  ctx.strokeStyle = "#1e293b";
+  ctx.lineWidth = 1;
+  for (const p of [0, 50, 100]) {
+    const y = yOf(p);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(w - pad.r, y);
+    ctx.stroke();
+    ctx.fillStyle = "#64748b";
+    ctx.font = "600 10px Titillium Web, sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(`${p}%`, pad.l - 4, y + 3);
   }
-  const win = radarTileWindow(lat, lon, RAINVIEWER_ZOOM, 3);
-  const mosaic = el("div", { class: "wx-mosaic", "data-radar": "rainviewer" });
-  mosaic.style.gridTemplateColumns = `repeat(${win.size}, 1fr)`;
-  for (let dy = 0; dy < win.size; dy++) {
-    for (let dx = 0; dx < win.size; dx++) {
-      const img = document.createElement("img");
-      img.alt = "";
-      img.decoding = "async";
-      img.src = rainViewerTileUrl(frame, win.z, win.x0 + dx, win.y0 + dy);
-      mosaic.append(img);
-    }
+  if (points.length) {
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const x = xOf(p.t);
+      const y = yOf(p.prob);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.lineTo(xOf(points[points.length - 1].t), h - pad.b);
+    ctx.lineTo(xOf(points[0].t), h - pad.b);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(37, 99, 235, 0.28)";
+    ctx.fill();
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const x = xOf(p.t);
+      const y = yOf(p.prob);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = "#60a5fa";
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
-  const map = el("div", { class: "wx-radar-map" });
-  const pin = el("div", { class: "wx-pin", title: "Circuit" });
-  pin.style.left = `${(win.pinX / win.size) * 100}%`;
-  pin.style.top = `${(win.pinY / win.size) * 100}%`;
-  map.append(mosaic, pin);
-  const ageMin = Math.max(0, Math.round((Date.now() / 1000 - frame.time) / 60));
-  host.append(
-    map,
-    el("div", { class: "wx-radar-meta" }, [
-      el("span", { text: `Frame age: ${ageMin} min · regional scale, not sector rain` }),
-      creditLink(RAINVIEWER_HOME, RAINVIEWER_CREDIT),
-    ]),
-  );
+  ctx.fillStyle = "#93c5fd";
+  for (const s of natives) {
+    if (s.prob == null) continue;
+    ctx.beginPath();
+    ctx.arc(xOf(s.t), yOf(s.prob), 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#e8edf7";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#8b93a7";
+  ctx.font = "600 10px Titillium Web, sans-serif";
+  ctx.textAlign = "center";
+  for (let m = 0; m <= 60; m += 10) {
+    ctx.fillText(`+${m}`, xOf(now + m * 60_000), h - 8);
+  }
 }
 
 export function mountWeather(parent: HTMLElement): { update: () => void } {
@@ -285,11 +326,19 @@ export function mountWeather(parent: HTMLElement): { update: () => void } {
   page.append(head, cards, main, credits);
   parent.append(page);
 
-  let rvIndex = -1;
   let lastKey = "";
-  let lastLayout = "";
+  let lastRadarLayout = "";
+  let lastForecastLayout = "";
+  let lastReplayLayout = "";
+  let lastIemLayout = "";
   let histCanvas: HTMLCanvasElement | null = null;
   let precipCanvas: HTMLCanvasElement | null = null;
+  let minuteCanvas: HTMLCanvasElement | null = null;
+  let minutePoints: MinutePoint[] = [];
+  let minuteNatives: MinutelySample[] = [];
+  let minuteNow = 0;
+  let rvPlayer: RadarPlayer | null = null;
+  let iemPlayer: RadarPlayer | null = null;
 
   const loadRemote = () => {
     const coord = circuitCoord(state.bundle?.session, state.bundle?.meeting);
@@ -314,10 +363,10 @@ export function mountWeather(parent: HTMLElement): { update: () => void } {
     if (live) {
       const key = `${coord.lat},${coord.lon}`;
       if (!forecastCache.has(key)) {
-        forecastCache.set(key, []);
+        forecastCache.set(key, EMPTY_FORECAST);
         void fetchForecast(coord.lat, coord.lon)
-          .then((hours) => {
-            forecastCache.set(key, hours);
+          .then((pack) => {
+            forecastCache.set(key, pack);
             if (page.isConnected) update();
           })
           .catch(() => undefined);
@@ -376,127 +425,102 @@ export function mountWeather(parent: HTMLElement): { update: () => void } {
     }
 
     const frames = rvCache.frames;
-    if (rvIndex < 0 && frames.length) rvIndex = frames.length - 1;
-    const hours = coord ? upcomingForecast(forecastCache.get(`${coord.lat},${coord.lon}`) ?? [], Date.now()) : [];
     const us = hasIemRadar(state.bundle?.session, state.bundle?.meeting);
     const archiveKey = coord ? `${coord.lat},${coord.lon},${isoDateUtc(state.start)}` : "";
     const archive = archiveCache.get(archiveKey) ?? [];
-    const frameTime = frames[rvIndex]?.time ?? 0;
-    const layout = live
-      ? `L:${coord?.name ?? ""}:${frames.length}:${frameTime}:${hours.length}`
-      : `R:${coord?.name ?? ""}:${us ? 1 : 0}:${roundToRadarStep(now)}:${archive.length}`;
-
-    if (layout !== lastLayout) {
-      lastLayout = layout;
-      histCanvas = null;
-      precipCanvas = null;
-      if (live) {
-        sidePanel.setTitle("Regional rain radar");
-        lowLeft.setTitle("Wind relative to the circuit");
-        lowRight.setTitle("Forecast rain probability");
-        const frameWrap = el("div", { class: "wx-radar" });
-        if (!coord) {
-          frameWrap.append(el("div", { class: "wx-empty", text: "Circuit location unknown — radar needs lat/lon." }));
-        } else if (!frames.length) {
-          frameWrap.append(el("div", { class: "wx-empty", text: "Loading RainViewer frames…" }));
-        } else {
-          paintRadar(frameWrap, frames, rvIndex, coord.lat, coord.lon);
-          const scrub = el("input", {
-            type: "range",
-            min: "0",
-            max: String(frames.length - 1),
-            value: String(rvIndex),
-            class: "wx-scrub",
-          }) as HTMLInputElement;
-          scrub.oninput = () => {
-            rvIndex = Number(scrub.value);
-            lastLayout = "";
-            update();
-          };
-          frameWrap.append(
-            el("div", { class: "wx-scrub-row" }, [
-              el("span", { text: "2 hours ago" }),
-              scrub,
-              el("span", { text: "Latest" }),
-            ]),
-            el("div", { class: "wx-scale" }, [
-              el("span", { text: "Light" }),
-              el("i", { class: "wx-scale-bar" }),
-              el("span", { text: "Heavy" }),
-            ]),
-          );
-        }
-        sideBody.replaceChildren(frameWrap);
-        const maxP = Math.max(1, ...hours.map((h) => h.prob ?? 0));
-        lowRight.body.replaceChildren(
-          el("p", { class: "wx-note", text: "Open-Meteo model · Upcoming hours · Not an observation" }),
-          el(
-            "div",
-            { class: "wx-bars", "data-forecast": String(hours.length) },
-            hours.map((h) => {
-              const bar = el("div", { class: "wx-bar" });
-              const fill = el("i");
-              fill.style.height = `${((h.prob ?? 0) / maxP) * 100}%`;
-              bar.append(fill, el("span", { text: `${h.prob ?? 0}%` }));
-              return bar;
-            }),
-          ),
-        );
-      } else {
-        sidePanel.setTitle("Session weather history");
-        lowLeft.setTitle("Regional history");
-        lowRight.setTitle("Precipitation history");
-        histCanvas = el("canvas", { class: "wx-hist" }) as HTMLCanvasElement;
-        const histWrap = el("div", { class: "wx-hist-wrap" }, [histCanvas]);
-        const strip = el("div", { class: "wx-rain-strip" });
-        const buckets = rainObservedBuckets(state.bundle?.weather, state.start, state.end, now);
-        for (const on of buckets) strip.append(el("i", { class: on ? "on" : "" }));
-        sideBody.replaceChildren(
-          el("p", { class: "wx-note", text: "OpenF1 observations · Replay cursor follows the session clock" }),
-          el("div", { class: "wx-legend" }, [
-            el("span", { class: "track", text: "Track temperature" }),
-            el("span", { class: "air", text: "Air temperature" }),
-          ]),
-          histWrap,
-          el("div", { class: "wx-rain-label", text: "Rain observed" }),
-          strip,
-          el("p", { class: "wx-note", text: "Last recorded sample is held until the next observation. No future leakage." }),
-        );
-        if (us && coord) {
-          const wrap = el("div", { class: "wx-iem-wrap" });
-          const img = document.createElement("img");
-          img.className = "wx-iem";
-          img.alt = "IEM NEXRAD replay radar";
-          img.src = iemWmsUrl(coord.lat, coord.lon, now);
-          const pin = el("div", { class: "wx-pin", title: "Circuit" });
-          pin.style.left = "50%";
-          pin.style.top = "50%";
-          wrap.append(img, pin);
-          lowLeft.body.replaceChildren(
-            el("p", { class: "wx-note" }, [
-              document.createTextNode("NEXRAD ~5 min frames · US circuits only · "),
-              creditLink(IEM_HOME, IEM_CREDIT),
-            ]),
-            wrap,
-          );
-          lowLeft.root.dataset.radar = "iem";
-        } else {
-          lowLeft.body.replaceChildren(
-            el("div", { class: "wx-empty", "data-radar": "none", text: "Radar archive unavailable for this session" }),
-            el("p", { class: "wx-note", text: "Open-Meteo hourly regional model is still shown. No live radar in replay." }),
-          );
-          lowLeft.root.dataset.radar = "none";
-        }
-        precipCanvas = el("canvas", { class: "wx-precip" }) as HTMLCanvasElement;
-        lowRight.body.replaceChildren(
-          el("p", { class: "wx-note", text: "Open-Meteo · Hourly totals in mm · Regional model, not measured track rainfall" }),
-          el("div", { class: "wx-precip-wrap" }, [precipCanvas]),
-          el("p", { class: "wx-axis", text: "Session start · Replay cursor · Session end" }),
-        );
-      }
-    }
+    const pack = coord ? (forecastCache.get(`${coord.lat},${coord.lon}`) ?? EMPTY_FORECAST) : EMPTY_FORECAST;
+    const wall = Date.now();
+    const radarLayout = live ? `L:${coord?.name ?? ""}:${frames.length}` : "";
+    const forecastLayout = live
+      ? `F:${pack.minutely.length}:${pack.hourly.length}:${Math.floor(wall / 60_000)}`
+      : "";
+    const replayLayout = live ? "" : `R:${coord?.name ?? ""}:${us ? 1 : 0}:${archive.length}`;
+    const iemTimes = !live && us && coord ? iemLoopTimes(now) : [];
+    const iemLayout = iemTimes.join(",");
 
     if (live) {
+      lastReplayLayout = "";
+      lastIemLayout = "";
+      iemPlayer?.destroy();
+      iemPlayer = null;
+      sidePanel.setTitle("Regional rain radar");
+      lowLeft.setTitle("Wind relative to the circuit");
+      lowRight.setTitle("Forecast rain probability");
+      if (radarLayout !== lastRadarLayout) {
+        lastRadarLayout = radarLayout;
+        if (!rvPlayer) {
+          rvPlayer = mountRadarPlayer();
+          sideBody.replaceChildren(rvPlayer.root);
+        }
+        if (!coord) rvPlayer.setEmpty("Circuit location unknown — radar needs lat/lon.", "loading");
+        else if (!frames.length) rvPlayer.setEmpty("Loading RainViewer frames…", "loading");
+        else rvPlayer.setRainViewer(frames, coord.lat, coord.lon);
+      }
+      if (forecastLayout !== lastForecastLayout) {
+        lastForecastLayout = forecastLayout;
+        minuteNow = wall;
+        minutePoints = interpolateMinutePoints(pack.minutely, wall);
+        minuteNatives = nativeMinutelyInWindow(pack.minutely, wall);
+        const later = laterHourlyForecast(pack.hourly, wall);
+        const kids: HTMLElement[] = [];
+        if (minutePoints.length) {
+          kids.push(el("p", { class: "wx-note", "data-forecast-note": "minute", text: MINUTELY_NOTE }));
+          minuteCanvas = el("canvas", { class: "wx-minute", "data-forecast": "minute" }) as HTMLCanvasElement;
+          const tip = el("div", { class: "wx-minute-tip" });
+          const wrap = el("div", { class: "wx-minute-wrap" }, [minuteCanvas, tip]);
+          wrap.onmousemove = (ev: MouseEvent) => {
+            const box = minuteCanvas?.getBoundingClientRect();
+            if (!box || !minutePoints.length) return;
+            const x = ev.clientX - box.left;
+            const padL = 36;
+            const innerW = Math.max(1, box.width - padL - 10);
+            const frac = (x - padL) / innerW;
+            const i = Math.round(Math.max(0, Math.min(minutePoints.length - 1, frac * (minutePoints.length - 1))));
+            const p = minutePoints[i];
+            if (!p) {
+              tip.classList.remove("on");
+              return;
+            }
+            const min = Math.round((p.t - minuteNow) / 60_000);
+            tip.classList.add("on");
+            tip.textContent = `+${min} min · ${p.prob.toFixed(0)}% estimated · ${p.precipMm.toFixed(1)} mm`;
+            tip.style.left = `${Math.min(box.width - 12, Math.max(8, x + 10))}px`;
+            tip.style.top = `${Math.max(8, ev.clientY - box.top - 28)}px`;
+          };
+          wrap.onmouseleave = () => tip.classList.remove("on");
+          kids.push(wrap);
+        } else {
+          minuteCanvas = null;
+          kids.push(el("p", { class: "wx-note", text: "Open-Meteo model · Upcoming hours · Not an observation" }));
+        }
+        if (later.length) {
+          if (minutePoints.length) {
+            kids.push(el("p", { class: "wx-note", text: "Later hours · Open-Meteo hourly · Not an observation" }));
+          }
+          const maxP = Math.max(1, ...later.map((h) => h.prob ?? 0));
+          kids.push(
+            el(
+              "div",
+              { class: "wx-bars", "data-forecast": String(later.length) },
+              later.map((h) => {
+                const bar = el("div", { class: "wx-bar" });
+                const fill = el("i");
+                fill.style.height = `${((h.prob ?? 0) / maxP) * 100}%`;
+                bar.append(fill, el("span", { text: `${h.prob ?? 0}%` }));
+                return bar;
+              }),
+            ),
+          );
+        }
+        kids.push(
+          el("p", { class: "wx-note" }, [
+            document.createTextNode("Source: "),
+            creditLink(OPEN_METEO_HOME, OPEN_METEO_CREDIT),
+          ]),
+        );
+        lowRight.body.replaceChildren(...kids);
+      }
+      if (minuteCanvas) drawMinutelyForecast(minuteCanvas, minutePoints, minuteNatives, minuteNow);
       lowLeft.body.replaceChildren(
         el("p", { class: "wx-note", text: "One circuit weather station · Derived components" }),
         ...derived.map((row) =>
@@ -513,6 +537,62 @@ export function mountWeather(parent: HTMLElement): { update: () => void } {
         ]),
       );
     } else {
+      lastRadarLayout = "";
+      lastForecastLayout = "";
+      rvPlayer?.destroy();
+      rvPlayer = null;
+      minuteCanvas = null;
+      sidePanel.setTitle("Session weather history");
+      lowLeft.setTitle("Regional history");
+      lowRight.setTitle("Precipitation history");
+      if (replayLayout !== lastReplayLayout) {
+        lastReplayLayout = replayLayout;
+        histCanvas = el("canvas", { class: "wx-hist" }) as HTMLCanvasElement;
+        const histWrap = el("div", { class: "wx-hist-wrap" }, [histCanvas]);
+        const strip = el("div", { class: "wx-rain-strip" });
+        const buckets = rainObservedBuckets(state.bundle?.weather, state.start, state.end, now);
+        for (const on of buckets) strip.append(el("i", { class: on ? "on" : "" }));
+        sideBody.replaceChildren(
+          el("p", { class: "wx-note", text: "OpenF1 observations · Replay cursor follows the session clock" }),
+          el("div", { class: "wx-legend" }, [
+            el("span", { class: "track", text: "Track temperature" }),
+            el("span", { class: "air", text: "Air temperature" }),
+          ]),
+          histWrap,
+          el("div", { class: "wx-rain-label", text: "Rain observed" }),
+          strip,
+          el("p", { class: "wx-note", text: "Last recorded sample is held until the next observation. No future leakage." }),
+        );
+        precipCanvas = el("canvas", { class: "wx-precip" }) as HTMLCanvasElement;
+        lowRight.body.replaceChildren(
+          el("p", { class: "wx-note", text: "Open-Meteo · Hourly totals in mm · Regional model, not measured track rainfall" }),
+          el("div", { class: "wx-precip-wrap" }, [precipCanvas]),
+          el("p", { class: "wx-axis", text: "Session start · Replay cursor · Session end" }),
+        );
+      }
+      if (us && coord) {
+        if (iemLayout !== lastIemLayout) {
+          lastIemLayout = iemLayout;
+          if (!iemPlayer) {
+            iemPlayer = mountRadarPlayer();
+            lowLeft.body.replaceChildren(
+              el("p", { class: "wx-note", text: "NEXRAD ~5 min frames · US circuits only · loop stays at or before the playhead" }),
+              iemPlayer.root,
+            );
+          }
+          iemPlayer.setIem(iemTimes, coord.lat, coord.lon);
+          lowLeft.root.dataset.radar = "iem";
+        }
+      } else if (lastIemLayout !== "none") {
+        lastIemLayout = "none";
+        iemPlayer?.destroy();
+        iemPlayer = null;
+        lowLeft.body.replaceChildren(
+          el("div", { class: "wx-empty", "data-radar": "none", text: "Radar archive unavailable for this session" }),
+          el("p", { class: "wx-note", text: "Open-Meteo hourly regional model is still shown. No live radar in replay." }),
+        );
+        lowLeft.root.dataset.radar = "none";
+      }
       if (histCanvas) drawHistory(histCanvas, now);
       if (precipCanvas) drawPrecip(precipCanvas, archive, now);
       const strip = sideBody.querySelector(".wx-rain-strip");
