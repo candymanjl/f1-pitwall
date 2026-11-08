@@ -459,7 +459,10 @@ svg.wx-track { width: 100%; flex: 1; min-height: 8rem; display: block; }
     repeating-linear-gradient(90deg, transparent, transparent 23px, #152033 24px),
     #0a1018;
 }
-.wx-mosaic img { width: 100%; height: 100%; object-fit: cover; mix-blend-mode: screen; }
+.wx-mosaic img {
+  width: 100%; height: 100%; object-fit: cover; mix-blend-mode: screen;
+  image-rendering: auto;
+}
 .wx-radar-ctrl {
   display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.55rem; color: var(--muted); font-size: 0.72rem;
 }
@@ -471,41 +474,42 @@ svg.wx-track { width: 100%; flex: 1; min-height: 8rem; display: block; }
 .wx-radar-btn.on, .wx-radar-btn[aria-pressed="true"] { background: #1d4ed8; border-color: #3b82f6; }
 .wx-radar-time { margin-left: auto; font-variant-numeric: tabular-nums; color: #cbd5e1; }
 .wx-radar-ctrl[hidden], .wx-scrub-row[hidden], .wx-scale[hidden], .wx-pin[hidden], .wx-radar-map[hidden],
-.wx-radar-btn[hidden], .wx-overlay-note[hidden] {
+.wx-radar-btn[hidden], .wx-range-bar[hidden] {
   display: none !important;
 }
 .wx-radar-scene {
   position: absolute; inset: 0;
   transform-origin: 0 0;
 }
-.wx-radar-overlay {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  pointer-events: none; z-index: 2; overflow: visible;
+.wx-radar-btn.wx-range-btn { text-transform: none; letter-spacing: 0.04em; }
+.wx-radar[data-radar-smooth="on"] .wx-mosaic img {
+  image-rendering: auto;
+  image-rendering: smooth;
 }
-.wx-radar-outline {
-  fill: none;
-  stroke: #f8fafc;
-  stroke-linejoin: round;
-  stroke-linecap: round;
+.wx-radar[data-radar-smooth="on"] .wx-radar-scene {
+  image-rendering: auto;
+  filter: blur(0.5px);
 }
-.wx-radar-car-lab {
-  fill: #f8fafc;
-  font-family: var(--cond);
-  font-weight: 700;
-  paint-order: stroke;
-  stroke: #0b1018;
-  stroke-width: 0.008;
+.wx-radar[data-radar-smooth="off"] .wx-mosaic img,
+.wx-radar[data-radar-smooth="off"] .wx-radar-scene {
+  image-rendering: auto;
+  filter: none;
 }
-.wx-overlay-note {
-  margin: 0 0.55rem 0.15rem;
-  color: #fde68a;
-  font-size: 0.7rem;
-}
-.wx-radar[data-radar-view="track"] .wx-mosaic img { image-rendering: pixelated; }
-.wx-radar[data-radar-view="track"] .wx-pin { display: none; }
 .wx-pin {
-  position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 99px;
-  background: #f8fafc; box-shadow: 0 0 0 3px #e10600; z-index: 3;
+  position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 99px;
+  background: #f8fafc; box-shadow: 0 0 0 1.5px rgba(225, 6, 0, 0.8); z-index: 3;
+  opacity: 0.88; pointer-events: none;
+}
+.wx-range-bar {
+  position: absolute; left: 0.45rem; right: 0.45rem; bottom: 0.4rem; z-index: 4;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem;
+  pointer-events: none; color: #e8edf7; font: 700 0.62rem var(--cond);
+  text-shadow: 0 1px 2px #070b12;
+}
+.wx-range-bar i {
+  display: block; height: 0; border-top: 2px solid #e8edf7;
+  border-left: 2px solid #e8edf7; border-right: 2px solid #e8edf7;
+  box-sizing: border-box; min-width: 1.5rem;
 }
 .wx-radar-meta, .wx-scrub-row, .wx-scale {
   display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;

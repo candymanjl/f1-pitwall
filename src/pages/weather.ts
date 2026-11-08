@@ -1,6 +1,4 @@
 import { circuitCoord, hasIemRadar } from "../data/circuitCoords";
-import { F1_CIRCUITS_CREDIT, F1_CIRCUITS_HOME } from "../data/geoCircuit";
-import { liveRadarOverlay } from "../data/radarOverlay";
 import { IEM_CREDIT, IEM_HOME, iemLoopTimes } from "../data/iemRadar";
 import {
   fetchArchive,
@@ -322,8 +320,7 @@ export function mountWeather(parent: HTMLElement): { update: () => void } {
     creditLink(OPEN_METEO_HOME, OPEN_METEO_CREDIT),
     document.createTextNode(" · "),
     creditLink(IEM_HOME, `${IEM_CREDIT} NEXRAD`),
-    document.createTextNode(" (US replays only) · circuit outlines "),
-    creditLink(F1_CIRCUITS_HOME, F1_CIRCUITS_CREDIT),
+    document.createTextNode(" (US replays only)"),
   ]);
   const main = el("div", { class: "wx-main" }, [trackPanel.root, sidePanel.root, lowLeft.root, lowRight.root]);
   page.append(head, cards, main, credits);
@@ -458,10 +455,6 @@ export function mountWeather(parent: HTMLElement): { update: () => void } {
         if (!coord) rvPlayer.setEmpty("Circuit location unknown — radar needs lat/lon.", "loading");
         else if (!frames.length) rvPlayer.setEmpty("Loading RainViewer frames…", "loading");
         else rvPlayer.setRainViewer(frames, coord.lat, coord.lon);
-      }
-      if (rvPlayer && coord && frames.length) {
-        const { overlay, note } = liveRadarOverlay(state.bundle, now);
-        rvPlayer.setOverlay(overlay, note);
       }
       if (forecastLayout !== lastForecastLayout) {
         lastForecastLayout = forecastLayout;

@@ -134,6 +134,11 @@ describe("weather page", () => {
     state.snap = null;
     state.mode = "historical";
     document.body.replaceChildren();
+    try {
+      localStorage.removeItem("f1pitwall.radarRange");
+    } catch {
+      /* ignore */
+    }
   });
 
   it("shows OpenF1 cards and archive-unavailable on a Mexico replay", () => {
@@ -179,6 +184,8 @@ describe("weather page", () => {
     expect(root.textContent).toMatch(/RainViewer/);
     expect(root.textContent).toMatch(/HEADWIND|TAILWIND|CROSSWIND/);
     expect(root.querySelector("[data-radar='none']")).toBeNull();
+    expect(root.querySelector("svg.wx-radar-overlay")).toBeNull();
+    expect(root.querySelector("[data-radar-outline]")).toBeNull();
   });
 
   it("loops RainViewer frames from Play and interpolates the next-hour forecast line", async () => {
@@ -214,6 +221,24 @@ describe("weather page", () => {
     expect(root.querySelector("[data-forecast-note='minute']")?.textContent).toMatch(/Model data, not radar/);
     expect(root.textContent).toMatch(/Later hours/);
     expect(root.textContent).toMatch(/Open-Meteo/);
+    expect(root.querySelector("svg.wx-radar-overlay, [data-radar-outline], [data-radar-car]")).toBeNull();
+    const btn50 = root.querySelector("button[data-radar-view='50']") as HTMLButtonElement;
+    const btn15 = root.querySelector("button[data-radar-view='15']") as HTMLButtonElement;
+    expect(btn50.textContent).toBe("50 mi");
+    expect(btn15.textContent).toBe("15 mi");
+    expect(player.dataset.radarView).toBe("50");
+    expect(player.dataset.radarSmooth).toBe("off");
+    expect(root.querySelector(".wx-mosaic img")?.getAttribute("src")).toMatch(/\/256\/7\//);
+    const scale50 = Number(player.dataset.radarScale);
+    btn15.click();
+    expect(player.dataset.radarView).toBe("15");
+    expect(player.dataset.radarSmooth).toBe("on");
+    expect(Number(player.dataset.radarScale)).toBeGreaterThan(scale50);
+    expect(root.querySelector("[data-radar-scalebar]")?.textContent).toMatch(/3 mi/);
+    btn50.click();
+    expect(player.dataset.radarView).toBe("50");
+    expect(player.dataset.radarSmooth).toBe("off");
+    expect(root.querySelector("[data-radar-scalebar]")?.textContent).toMatch(/10 mi/);
   });
 
   it("offers an IEM play/pause loop on an Austin replay", () => {
