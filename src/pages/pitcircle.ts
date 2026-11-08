@@ -4,18 +4,19 @@ import { teamColor, teamFill } from "../lib/colors";
 import { el } from "../lib/dom";
 import { MAP_CAR_R, MAP_CAR_R_SELECTED, MAP_LINE_WIDTH } from "../lib/mapMarks";
 import { followViewBox, MAP_FOLLOW_ZOOM } from "../lib/mapZoom";
-import { motionFade, placeOptsForSnap, setMotionPainter, smoothedFrac } from "../lib/carMotion";
+import { placeOptsForSnap, setMotionPainter } from "../lib/carMotion";
+import { circleFade, circleFrac } from "../lib/circleMotion";
 import {
   onTrackGaps,
   pointOnCircle,
   rejoinGapText,
   rejoinPreview,
-  placeTrackCar,
+  placeCircleCars,
   wedgePath,
   wrap01,
   type CircleCar,
 } from "../lib/pitcircle";
-import { appendDriverDot, moveDriverDot } from "../lib/svgcar";
+import { appendDriverDot } from "../lib/svgcar";
 import { formatDelta } from "../lib/time";
 import { panel } from "../ui/panel";
 import { mountTowerSplitter } from "../ui/splitter";
@@ -88,7 +89,7 @@ function carsOnCircle(): CircleCar[] {
   const lap = Math.max(1, snap.medianGreenLap);
   const bundle = state.bundle;
   const opts = bundle
-    ? placeOptsForSnap(bundle, snap)
+    ? { ...placeOptsForSnap(bundle, snap), preferLocation: false }
     : {
         leaderProgress: leaderProg,
         lapSec: lap,
@@ -96,15 +97,17 @@ function carsOnCircle(): CircleCar[] {
         pitExit,
         now: snap.now,
         useRaceGaps: false,
+        preferLocation: false,
       };
-  return snap.rows.flatMap((row) => {
-    const hit = placeTrackCar(row, opts);
+  const placed = placeCircleCars(snap.rows, opts);
+  return snap.rows.flatMap((row, i) => {
+    const hit = placed[i];
     if (!hit) return [];
     return [
       {
         driver: row.driver.driver_number,
         code: row.driver.name_acronym,
-        frac: smoothedFrac(row.driver.driver_number, hit.frac),
+        frac: circleFrac(row.driver.driver_number, hit.frac),
         inPit: row.inPit,
         retired: row.retired,
         pace: typeof row.lastLap === "number" && row.lastLap > 0 ? row.lastLap : snap.medianGreenLap,
@@ -270,7 +273,7 @@ function drawCircle(svg: SVGSVGElement, followZoom = false): void {
     dot.dataset.frac = car.frac.toFixed(4);
     dot.dataset.pit = car.inPit ? "1" : "0";
     if (car.place) dot.dataset.place = car.place;
-    dot.style.opacity = String(motionFade(car.driver, snap.now));
+    dot.style.opacity = String(circleFade(car.driver, snap.now));
   }
   svg.dataset.cars = String(running);
 
@@ -510,36 +513,7 @@ export function mountPitCircle(parent: HTMLElement): { update: () => void } {
   const draw = () => drawCircle(svg, followZoom);
   const paintMotion = () => {
     if (!svg.isConnected) return;
-    const snap = state.snap;
-    if (!snap) return;
-    const w = svg.clientWidth || 640;
-    const h = svg.clientHeight || 640;
-    const cx = w / 2;
-    const cy = h / 2;
-    const r = Math.min(w, h) * 0.34;
-    const pitR = r - 16;
-    const followN = state.selectedDriver ?? snap.rows[0]?.driver.driver_number ?? null;
-    let followX = cx;
-    let followY = cy;
-    for (const g of svg.querySelectorAll<SVGGElement>("g.car-hit[data-driver]")) {
-      const n = Number(g.getAttribute("data-driver"));
-      const frac = smoothedFrac(n, Number(g.getAttribute("data-frac")) || 0);
-      const inPit = g.dataset.pit === "1";
-      const rr = inPit ? pitR : r;
-      const { x, y } = pointOnCircle(cx, cy, rr, frac);
-      const lab = pointOnCircle(cx, cy, rr + 18, frac);
-      moveDriverDot(g, x, y, lab.x, lab.y);
-      g.style.opacity = String(motionFade(n, snap.now));
-      g.dataset.frac = frac.toFixed(4);
-      if (n === followN) {
-        followX = x;
-        followY = y;
-      }
-    }
-    if (followZoom) {
-      const box = followViewBox(followX, followY, w, h, MAP_FOLLOW_ZOOM);
-      svg.setAttribute("viewBox", `${box.x.toFixed(1)} ${box.y.toFixed(1)} ${box.w.toFixed(1)} ${box.h.toFixed(1)}`);
-    }
+    drawCircle(svg, followZoom);
   };
   setMotionPainter("pitcircle", paintMotion);
   zoomBtn.addEventListener("pointerdown", (ev) => {

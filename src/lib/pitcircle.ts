@@ -88,11 +88,11 @@ export type PlaceCarOpts = {
   locIndex?: Map<number, LocHit[]>;
   /** Race / sprint only. Practice and quali never use tower Gap/Int. */
   useRaceGaps?: boolean;
-  /** Track map / strip only. Pit circle never uses GPS in a race. */
+  /** Track map / strip only. Pit circle never uses GPS. */
   preferLocation?: boolean;
 };
 
-export type PlacedCar = { frac: number; source: "location" | "progress" | "gap" | "pit" };
+export type PlacedCar = { frac: number; source: "location" | "progress" | "gap" | "pit"; gapSec?: number };
 
 const RACE_GAP_MAX_SEC = 180;
 
@@ -177,20 +177,26 @@ export function placeTrackCar(row: TrackCarRow, opts: PlaceCarOpts): PlacedCar |
  * what made Mexico 2025 replay jitter after #30.
  */
 export function placeCircleCars(rows: TrackCarRow[], opts: PlaceCarOpts): Array<PlacedCar | null> {
+  const lapSec = Math.max(1, opts.lapSec);
   if (!opts.useRaceGaps) {
-    return rows.map((row) => placeTrackCar(row, { ...opts, preferLocation: true, useRaceGaps: false }));
+    return rows.map((row) => {
+      const hit = placeTrackCar(row, { ...opts, preferLocation: opts.preferLocation ?? true, useRaceGaps: false });
+      if (!hit || hit.source === "pit") return hit;
+      return { ...hit, gapSec: wrap01(opts.leaderProgress - hit.frac) * lapSec };
+    });
   }
   let prevGap: number | null = null;
   return rows.map((row) => {
     if (row.retired || row.inGarage || row.status === "GARAGE") return null;
     if (row.inPit) return { frac: wrap01(opts.pitEntry), source: "pit" };
-    const gapSec = raceGapSec(row, prevGap, opts.lapSec);
+    const gapSec = raceGapSec(row, prevGap, lapSec);
     if (gapSec != null) {
       prevGap = gapSec;
-      return { frac: gapFrac(opts.leaderProgress, gapSec, opts.lapSec), source: "gap" };
+      return { frac: gapFrac(opts.leaderProgress, gapSec, lapSec), source: "gap", gapSec };
     }
     if (canUseProgress(row)) {
-      return { frac: racingFrac(row.progress, row.pitOut, opts.pitExit), source: "progress" };
+      const frac = racingFrac(row.progress, row.pitOut, opts.pitExit);
+      return { frac, source: "progress", gapSec: wrap01(opts.leaderProgress - frac) * lapSec };
     }
     return null;
   });

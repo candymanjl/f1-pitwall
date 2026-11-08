@@ -214,10 +214,14 @@ test("smoothed icons glide on map, pit circle, and strip", async ({ page }) => {
   const pausedMap = await mapFracs(page);
   await page.locator("nav button[data-page='pitcircle']").click();
   await expect(page.locator("svg.circle")).toHaveAttribute("data-cars", "3");
-  const circleFracs = await page.locator("svg.circle g.car-hit").evaluateAll((nodes) =>
-    nodes.map((n) => Number(n.getAttribute("data-frac"))),
+  const circleCars = await page.locator("svg.circle g.car-hit").evaluateAll((nodes) =>
+    nodes.map((n) => ({
+      frac: Number(n.getAttribute("data-frac")),
+      place: n.getAttribute("data-place"),
+    })),
   );
-  expect(circleFracs[0]).toBeCloseTo(pausedMap[0], 3);
+  expect(circleCars.every((c) => c.place === "gap")).toBe(true);
+  expect(circleCars.length).toBe(3);
   await page.screenshot({
     path: "/opt/cursor/artifacts/screenshots/smooth_icons_circle_1920.png",
     fullPage: true,

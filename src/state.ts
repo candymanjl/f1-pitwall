@@ -28,6 +28,7 @@ import { emptyFetchProgress, type FetchProgress } from "./data/loadProgress";
 import { loadBundle, loadMeetings, loadSessions, refreshTimingData } from "./data/loadSession";
 import { fillMissingLapStarts, timingLooksSparse } from "./data/lapStarts";
 import { notifyMotion, resetCarMotion, stepCarMotion, syncCarMotion } from "./lib/carMotion";
+import { resetCircleMotion, stepCircleMotion, syncCircleMotion } from "./lib/circleMotion";
 import { followLiveFromScrub, followLiveOnPlay, stepPlayback } from "./lib/playback";
 import { historicalStartMs, isFinishedSession, latestSampleMs, playableEndMs } from "./lib/sessionClock";
 import { nextSelection } from "./lib/select";
@@ -185,10 +186,13 @@ function refreshSnap(): void {
   if (!state.bundle) {
     state.snap = null;
     resetCarMotion();
+    resetCircleMotion();
     return;
   }
   state.snap = snapshotAt(state.bundle, state.t);
-  syncCarMotion(state.bundle, state.snap, state.t, state.playing && !state.scrubbing);
+  const moving = state.playing && !state.scrubbing;
+  syncCarMotion(state.bundle, state.snap, state.t, moving);
+  syncCircleMotion(state.bundle, state.snap, state.t, moving);
 }
 
 export function setPage(page: PageId): void {
@@ -541,6 +545,7 @@ function applyPartialBundle(bundle: SessionBundle, first: boolean): void {
   state.bundle = laps === bundle.laps ? bundle : { ...bundle, laps };
   if (firstApply) {
     resetCarMotion();
+    resetCircleMotion();
     finishedRefreshKey = 0;
     state.lastIngestAt = 0;
     state.lapTimingDrivers = [];
@@ -601,9 +606,10 @@ function tick(now: number): void {
   const dt = now - lastTick;
   lastTick = now;
   stepClock(dt);
-  if (stepCarMotion(state.t, state.playing && !state.scrubbing, state.scrubbing)) {
-    notifyMotion();
-  }
+  const moving = state.playing && !state.scrubbing;
+  const trackMoved = stepCarMotion(state.t, moving, state.scrubbing);
+  const circleMoved = stepCircleMotion(state.t, moving, state.scrubbing);
+  if (trackMoved || circleMoved) notifyMotion();
   requestAnimationFrame(tick);
 }
 
