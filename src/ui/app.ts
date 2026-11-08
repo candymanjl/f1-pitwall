@@ -8,6 +8,7 @@ import { el } from "../lib/dom";
 import { formatLiveDebug } from "../data/livePoll";
 import { motionJumpSummary } from "../lib/carMotion";
 import { formatReplayBadge, formatSessionHeadline } from "../lib/sessionHeadline";
+import { bindMenuHold } from "./menuHold";
 import { applyLoadingOverlay, loadSessionButtonBusy, loadSessionButtonText, shouldShowLoadingOverlay } from "./overlays";
 import { openSettings } from "./settings";
 import { mountFlagSheet } from "./flagIcon";
@@ -265,14 +266,16 @@ export function boot(root: HTMLElement): void {
   const initial = location.hash.replace("#", "");
   if (PAGES.some((p) => p.id === initial)) state.page = initial as typeof state.page;
 
-  subscribe(() => {
+  const paintChrome = () => {
     if (!!state.bundle !== hadBundle) {
       hadBundle = !!state.bundle;
       currentPage = "";
     }
     syncSelects();
     renderPage();
-  });
+  };
+  const menuHold = bindMenuHold(document, paintChrome);
+  subscribe(() => menuHold.onUpdate());
 
   window.addEventListener("resize", () => {
     applyUiScale(state.uiScale);
