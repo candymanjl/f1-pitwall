@@ -7,22 +7,25 @@ import {
   playStartIndex,
   type RadarSpeed,
 } from "../data/radarLoop";
-import { F1_CIRCUITS_CREDIT, F1_CIRCUITS_HOME, lngLatToMosaicPct, type TileWindow } from "../data/geoCircuit";
-import type { RadarOverlay } from "../data/radarOverlay";
+import {
+  RADAR_RANGE_15,
+  RADAR_RANGE_50,
+  RADAR_TILES,
+  RAINVIEWER_MAX_ZOOM,
+  rangeScale,
+  readRadarRange,
+  scaleBarMiles,
+  writeRadarRange,
+  type RadarRangeMi,
+} from "../data/radarRange";
 import {
   radarTileWindow,
   RAINVIEWER_CREDIT,
   RAINVIEWER_HOME,
-  RAINVIEWER_ZOOM,
   rainViewerTileUrl,
   type RainViewerFrame,
 } from "../data/rainViewer";
 import { el } from "../lib/dom";
-
-export const RAINVIEWER_TRACK_ZOOM = 7;
-
-export type RadarView = "wide" | "track";
-export type { RadarCar, RadarOverlay } from "../data/radarOverlay";
 
 function creditLink(href: string, text: string): HTMLAnchorElement {
   return el("a", { href, target: "_blank", rel: "noopener noreferrer", text }) as HTMLAnchorElement;
@@ -32,7 +35,6 @@ export type RadarPlayer = {
   root: HTMLElement;
   setRainViewer: (frames: RainViewerFrame[], lat: number, lon: number) => void;
   setIem: (times: number[], lat: number, lon: number) => void;
-  setOverlay: (overlay: RadarOverlay | null, note?: string | null) => void;
   setEmpty: (message: string, kind?: "none" | "loading") => void;
   pause: () => void;
   destroy: () => void;
@@ -42,32 +44,39 @@ export function mountRadarPlayer(): RadarPlayer {
   const root = el("div", { class: "wx-radar", "data-radar-playing": "false" });
   const stack = el("div", { class: "wx-radar-stack" });
   const pin = el("div", { class: "wx-pin", title: "Circuit" });
-  const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  overlay.classList.add("wx-radar-overlay");
-  overlay.setAttribute("viewBox", "0 0 100 100");
-  overlay.setAttribute("preserveAspectRatio", "none");
-  overlay.setAttribute("aria-hidden", "true");
-  const scene = el("div", { class: "wx-radar-scene" }, [stack, overlay, pin]);
-  const map = el("div", { class: "wx-radar-map" }, [scene]);
+  const scene = el("div", { class: "wx-radar-scene" }, [stack]);
+  const rangeBarTick = el("i");
+  const rangeBarLab = el("span", { "data-radar-scalebar-label": "", text: "" });
+  const rangeBar = el("div", { class: "wx-range-bar", "data-radar-scalebar": "", hidden: "" }, [rangeBarTick, rangeBarLab]);
+  const map = el("div", { class: "wx-radar-map" }, [scene, pin, rangeBar]);
   const playBtn = el("button", { type: "button", class: "wx-radar-btn", "data-radar-play": "play", text: "Play" });
   const speed1 = el("button", { type: "button", class: "wx-radar-btn on", "data-radar-speed": "1", "aria-pressed": "true", text: "1x" });
   const speed2 = el("button", { type: "button", class: "wx-radar-btn", "data-radar-speed": "2", "aria-pressed": "false", text: "2x" });
-  const wideBtn = el("button", { type: "button", class: "wx-radar-btn on", "data-radar-view": "wide", "aria-pressed": "true", text: "Wide" });
-  const trackBtn = el("button", { type: "button", class: "wx-radar-btn", "data-radar-view": "track", "aria-pressed": "false", text: "Track" });
+  const mi50 = el("button", {
+    type: "button",
+    class: "wx-radar-btn wx-range-btn",
+    "data-radar-view": "50",
+    text: "50 mi",
+  });
+  const mi15 = el("button", {
+    type: "button",
+    class: "wx-radar-btn wx-range-btn",
+    "data-radar-view": "15",
+    text: "15 mi",
+  });
   const timeEl = el("span", { class: "wx-radar-time", "data-radar-time": "", text: "—" });
-  const ctrl = el("div", { class: "wx-radar-ctrl" }, [playBtn, speed1, speed2, wideBtn, trackBtn, timeEl]);
-  const overlayNote = el("p", { class: "wx-overlay-note", hidden: "" });
+  const ctrl = el("div", { class: "wx-radar-ctrl" }, [playBtn, speed1, speed2, mi50, mi15, timeEl]);
   const meta = el("div", { class: "wx-radar-meta" });
   const scrub = el("input", { type: "range", min: "0", max: "0", value: "0", class: "wx-scrub", "data-radar-scrub": "" }) as HTMLInputElement;
   const startLab = el("span", { "data-radar-start": "", text: "" });
   const endLab = el("span", { "data-radar-end": "", text: "" });
   const scrubRow = el("div", { class: "wx-scrub-row" }, [startLab, scrub, endLab]);
-  const scale = el("div", { class: "wx-scale" }, [
+  const legend = el("div", { class: "wx-scale" }, [
     el("span", { text: "Light" }),
     el("i", { class: "wx-scale-bar" }),
     el("span", { text: "Heavy" }),
   ]);
-  root.append(map, ctrl, overlayNote, meta, scrubRow, scale);
+  root.append(map, ctrl, meta, scrubRow, legend);
 
   let playing = false;
   let speed: RadarSpeed = 1;
@@ -79,122 +88,40 @@ export function mountRadarPlayer(): RadarPlayer {
   let creditHref = RAINVIEWER_HOME;
   let creditText = RAINVIEWER_CREDIT;
   let ageKind: "rv" | "iem" | "none" = "none";
-  let view: RadarView = "wide";
-  let lastWin: TileWindow | null = null;
-  let lastFrames: RainViewerFrame[] = [];
+  let range: RadarRangeMi = readRadarRange();
+  let lastWin: { z: number; size: number; pinX: number; pinY: number } | null = null;
   let lastLat = 0;
-  let lastLon = 0;
-  let lastOverlay: RadarOverlay | null = null;
-  let lastOverlayNote: string | null = null;
 
-  const rvZoom = () => (view === "track" ? RAINVIEWER_TRACK_ZOOM : RAINVIEWER_ZOOM);
-
-  const setViewButtons = () => {
-    wideBtn.classList.toggle("on", view === "wide");
-    trackBtn.classList.toggle("on", view === "track");
-    wideBtn.setAttribute("aria-pressed", view === "wide" ? "true" : "false");
-    trackBtn.setAttribute("aria-pressed", view === "track" ? "true" : "false");
-    root.dataset.radarView = view;
+  const setRangeButtons = () => {
+    mi50.classList.toggle("on", range === RADAR_RANGE_50);
+    mi15.classList.toggle("on", range === RADAR_RANGE_15);
+    mi50.setAttribute("aria-pressed", range === RADAR_RANGE_50 ? "true" : "false");
+    mi15.setAttribute("aria-pressed", range === RADAR_RANGE_15 ? "true" : "false");
+    root.dataset.radarView = String(range);
+    root.dataset.radarSmooth = range === RADAR_RANGE_15 ? "on" : "off";
   };
 
-  const sceneTransform = (pts: Array<{ x: number; y: number }>) => {
-    if (view !== "track" || pts.length < 2) {
+  const applyRangeTransform = () => {
+    if (ageKind !== "rv" || !lastWin) {
       scene.style.transform = "";
+      rangeBar.hidden = true;
       return;
     }
     const box = map.getBoundingClientRect();
     const w = box.width || 1;
     const h = box.height || 1;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const p of pts) {
-      const x = (p.x / 100) * w;
-      const y = (p.y / 100) * h;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
-    const bw = Math.max(0.25, maxX - minX);
-    const bh = Math.max(0.25, maxY - minY);
-    const pad = Math.max(bw, bh) * 0.2;
-    const scale = Math.min(w / (bw + pad * 2), h / (bh + pad * 2)) * 0.92;
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    scene.style.transform = `translate(${w / 2 - cx * scale}px, ${h / 2 - cy * scale}px) scale(${scale})`;
-  };
-
-  const paintOverlay = (data: RadarOverlay | null, note: string | null) => {
-    lastOverlay = data;
-    lastOverlayNote = note;
-    overlay.replaceChildren();
-    overlay.removeAttribute("title");
-    delete overlay.dataset.fit;
-    if (!data || !lastWin) {
-      root.dataset.radarOverlay = "off";
-      overlayNote.textContent = note ?? "";
-      overlayNote.hidden = !note;
-      scene.style.transform = "";
-      return;
-    }
-    root.dataset.radarOverlay = "on";
-    overlayNote.textContent = note ?? "";
-    overlayNote.hidden = !note;
-    overlay.dataset.fit = data.fitLabel;
-    overlay.setAttribute("title", data.fitLabel);
-    const tip = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    tip.textContent = data.fitLabel;
-    overlay.append(tip);
-    const pts = data.outline.map(([lon, lat]) => lngLatToMosaicPct(lat, lon, lastWin!));
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const p of pts) {
-      minX = Math.min(minX, p.x);
-      minY = Math.min(minY, p.y);
-      maxX = Math.max(maxX, p.x);
-      maxY = Math.max(maxY, p.y);
-    }
-    const span = Math.max(0.04, Math.min(maxX - minX, maxY - minY));
-    const strokeW = span * 0.035;
-    const carR = span * 0.045;
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("class", "wx-radar-outline");
-    path.setAttribute("data-radar-outline", "");
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke-width", strokeW.toFixed(4));
-    path.setAttribute(
-      "d",
-      pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(" ") + " Z",
-    );
-    overlay.append(path);
-    for (const car of data.cars) {
-      const p = lngLatToMosaicPct(car.lat, car.lon, lastWin);
-      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      g.setAttribute("data-radar-car", String(car.n));
-      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      c.setAttribute("cx", p.x.toFixed(3));
-      c.setAttribute("cy", p.y.toFixed(3));
-      c.setAttribute("r", carR.toFixed(4));
-      c.setAttribute("fill", car.color);
-      c.setAttribute("stroke", "#f8fafc");
-      c.setAttribute("stroke-width", (carR * 0.35).toFixed(4));
-      g.append(c);
-      if (view === "track") {
-        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        t.setAttribute("x", (p.x + carR * 1.6).toFixed(3));
-        t.setAttribute("y", (p.y - carR * 1.1).toFixed(3));
-        t.setAttribute("class", "wx-radar-car-lab");
-        t.setAttribute("font-size", (span * 0.07).toFixed(3));
-        t.textContent = car.code;
-        g.append(t);
-      }
-      overlay.append(g);
-    }
-    sceneTransform(pts);
+    const s = rangeScale(lastLat, range, lastWin.z, lastWin.size);
+    const pinX = (lastWin.pinX / lastWin.size) * w;
+    const pinY = (lastWin.pinY / lastWin.size) * h;
+    scene.style.transform = `translate(${w / 2 - pinX * s}px, ${h / 2 - pinY * s}px) scale(${s})`;
+    root.dataset.radarScale = s.toFixed(3);
+    const barMi = scaleBarMiles(range);
+    rangeBarLab.textContent = `${barMi} mi`;
+    rangeBarTick.style.width = `${(barMi / range) * 100}%`;
+    rangeBar.hidden = false;
+    pin.style.left = "50%";
+    pin.style.top = "50%";
+    pin.hidden = false;
   };
 
   const clearTimer = () => {
@@ -234,7 +161,6 @@ export function mountRadarPlayer(): RadarPlayer {
       kids.push("NEXRAD ~5 min frames · US circuits only · loop stays at or before the playhead");
     }
     kids.push(creditLink(creditHref, creditText));
-    if (lastOverlay) kids.push(creditLink(F1_CIRCUITS_HOME, F1_CIRCUITS_CREDIT));
     meta.replaceChildren(...kids.map((c) => (typeof c === "string" ? el("span", { text: c }) : c)));
   };
 
@@ -288,11 +214,11 @@ export function mountRadarPlayer(): RadarPlayer {
     show(next);
   });
 
-  const setPin = (leftPct: number, topPct: number) => {
-    pin.style.left = `${leftPct}%`;
-    pin.style.top = `${topPct}%`;
-    pin.hidden = false;
-  };
+  const applyRangeTransformSafe = () => applyRangeTransform();
+  const ro =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(applyRangeTransformSafe)
+      : { observe: () => undefined, disconnect: () => undefined };
 
   const applyFrames = (id: string, times: number[], nodes: HTMLElement[], keepMs: number | null) => {
     const first = !identity;
@@ -318,48 +244,44 @@ export function mountRadarPlayer(): RadarPlayer {
   const api: RadarPlayer = {
     root,
     setRainViewer(frames, lat, lon) {
-      lastFrames = frames;
       lastLat = lat;
-      lastLon = lon;
       const times = frames.map((f) => f.time * 1000);
-      const z = rvZoom();
+      const z = RAINVIEWER_MAX_ZOOM;
       const id = `rv:${lat},${lon}:${z}:${times.join(",")}`;
       creditHref = RAINVIEWER_HOME;
       creditText = RAINVIEWER_CREDIT;
       ageKind = "rv";
       startLab.textContent = "2 hours ago";
       endLab.textContent = "Latest";
-      wideBtn.hidden = false;
-      trackBtn.hidden = false;
+      mi50.hidden = false;
+      mi15.hidden = false;
       ctrl.hidden = false;
       scrubRow.hidden = false;
-      scale.hidden = false;
+      legend.hidden = false;
       map.hidden = false;
       pin.hidden = false;
-      setViewButtons();
-      if (id === identity) return;
-      const keep = frameTimes[index] ?? null;
-      const win = radarTileWindow(lat, lon, z, 3);
-      lastWin = win;
-      const nodes = frames.map((frame) => {
-        const mosaic = el("div", { class: "wx-mosaic wx-radar-layer", "data-radar": "rainviewer" });
-        mosaic.style.gridTemplateColumns = `repeat(${win.size}, 1fr)`;
-        for (let dy = 0; dy < win.size; dy++) {
-          for (let dx = 0; dx < win.size; dx++) {
-            const img = document.createElement("img");
-            img.alt = "";
-            img.decoding = "async";
-            img.src = rainViewerTileUrl(frame, win.z, win.x0 + dx, win.y0 + dy);
-            mosaic.append(img);
+      setRangeButtons();
+      if (id !== identity) {
+        const keep = frameTimes[index] ?? null;
+        const win = radarTileWindow(lat, lon, z, RADAR_TILES);
+        lastWin = win;
+        const nodes = frames.map((frame) => {
+          const mosaic = el("div", { class: "wx-mosaic wx-radar-layer", "data-radar": "rainviewer" });
+          mosaic.style.gridTemplateColumns = `repeat(${win.size}, 1fr)`;
+          for (let dy = 0; dy < win.size; dy++) {
+            for (let dx = 0; dx < win.size; dx++) {
+              const img = document.createElement("img");
+              img.alt = "";
+              img.decoding = "async";
+              img.src = rainViewerTileUrl(frame, win.z, win.x0 + dx, win.y0 + dy);
+              mosaic.append(img);
+            }
           }
-        }
-        return mosaic;
-      });
-      setPin((win.pinX / win.size) * 100, (win.pinY / win.size) * 100);
-      applyFrames(id, times, nodes, keep);
-    },
-    setOverlay(data, note = null) {
-      paintOverlay(data, note ?? data?.note ?? null);
+          return mosaic;
+        });
+        applyFrames(id, times, nodes, keep);
+      }
+      applyRangeTransform();
     },
     setIem(times, lat, lon) {
       const id = `iem:${lat},${lon}:${times.join(",")}`;
@@ -368,14 +290,18 @@ export function mountRadarPlayer(): RadarPlayer {
       ageKind = "iem";
       startLab.textContent = "−60 min";
       endLab.textContent = "Playhead";
-      wideBtn.hidden = true;
-      trackBtn.hidden = true;
+      mi50.hidden = true;
+      mi15.hidden = true;
       ctrl.hidden = false;
       scrubRow.hidden = false;
-      scale.hidden = false;
+      legend.hidden = false;
       map.hidden = false;
       pin.hidden = false;
-      paintOverlay(null, null);
+      lastWin = null;
+      scene.style.transform = "";
+      rangeBar.hidden = true;
+      root.dataset.radarSmooth = "off";
+      delete root.dataset.radarView;
       if (id === identity) return;
       const keep = frameTimes[index] ?? null;
       const nodes = times.map((t) => {
@@ -386,7 +312,8 @@ export function mountRadarPlayer(): RadarPlayer {
         img.src = iemWmsUrl(lat, lon, t);
         return img;
       });
-      setPin(50, 50);
+      pin.style.left = "50%";
+      pin.style.top = "50%";
       applyFrames(id, times, nodes, keep);
     },
     setEmpty(message, kind: "none" | "loading" = "loading") {
@@ -400,12 +327,14 @@ export function mountRadarPlayer(): RadarPlayer {
       pin.hidden = true;
       ctrl.hidden = true;
       scrubRow.hidden = true;
-      scale.hidden = true;
-      paintOverlay(null, null);
+      legend.hidden = true;
+      rangeBar.hidden = true;
+      scene.style.transform = "";
       meta.replaceChildren();
       timeEl.textContent = "—";
       root.dataset.radarPlaying = "false";
       root.dataset.radarIndex = "0";
+      root.dataset.radarSmooth = "off";
     },
     pause,
     destroy() {
@@ -414,21 +343,24 @@ export function mountRadarPlayer(): RadarPlayer {
       identity = "";
       frameTimes = [];
       layers = [];
-      lastFrames = [];
-      lastOverlay = null;
+      ro.disconnect();
     },
   };
-  const applyView = (next: RadarView) => {
-    if (view === next) return;
-    view = next;
-    setViewButtons();
-    if (ageKind === "rv" && lastFrames.length) {
-      identity = "";
-      api.setRainViewer(lastFrames, lastLat, lastLon);
-      paintOverlay(lastOverlay, lastOverlayNote);
+
+  const applyRange = (next: RadarRangeMi) => {
+    if (range === next) {
+      applyRangeTransform();
+      return;
     }
+    range = next;
+    writeRadarRange(range);
+    setRangeButtons();
+    applyRangeTransform();
   };
-  wideBtn.addEventListener("click", () => applyView("wide"));
-  trackBtn.addEventListener("click", () => applyView("track"));
+  mi50.addEventListener("click", () => applyRange(RADAR_RANGE_50));
+  mi15.addEventListener("click", () => applyRange(RADAR_RANGE_15));
+
+  ro.observe(map);
+  setRangeButtons();
   return api;
 }
