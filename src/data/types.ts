@@ -244,6 +244,7 @@ export type PageId =
   | "laptiming"
   | "telemetry"
   | "racetrace"
+  | "weather"
   | "pitcircle"
   | "tyres"
   | "strategy";
@@ -254,6 +255,7 @@ export const PAGES: { id: PageId; label: string }[] = [
   { id: "laptiming", label: "Lap timing" },
   { id: "telemetry", label: "Telemetry" },
   { id: "racetrace", label: "Race trace" },
+  { id: "weather", label: "Weather" },
   { id: "pitcircle", label: "Pit circle" },
   { id: "tyres", label: "Tyres" },
   { id: "strategy", label: "Strategy" },
