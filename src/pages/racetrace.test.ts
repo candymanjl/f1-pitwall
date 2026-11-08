@@ -1,6 +1,7 @@
 /** @vitest-environment happy-dom */
 import { afterEach, describe, expect, it } from "vitest";
 import type { Driver, SessionBundle, TimingSnapshot } from "../data/types";
+import { RACE_TRACE_Y_KEY } from "../data/raceTrace";
 import { state } from "../state";
 import { mountRaceTrace } from "./racetrace";
 
@@ -26,6 +27,11 @@ describe("race trace controls", () => {
     state.selectedDrivers = [];
     state.selectedDriver = null;
     state.hiddenDrivers = [];
+    try {
+      localStorage.removeItem(RACE_TRACE_Y_KEY);
+    } catch {
+      /* ignore */
+    }
     document.body.replaceChildren();
   });
 
@@ -116,5 +122,106 @@ describe("race trace controls", () => {
     api.update();
     expect(root.querySelector<HTMLElement>(".trace-ref-list")?.hidden).toBe(true);
     expect(root.querySelector(".trace-ref-btn .trace-ref-code")?.textContent).toBe("HAM");
+  });
+
+  it("toggles Position Y-axis, persists it, and hides gap sub-modes", () => {
+    const drivers = [driver(1, "VER"), driver(44, "HAM")];
+    const start = Date.parse("2025-10-26T20:00:00.000Z");
+    state.bundle = {
+      meeting: {
+        meeting_key: 1,
+        meeting_name: "Mexico City Grand Prix",
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        date_start: new Date(start).toISOString(),
+        year: 2025,
+      },
+      session: {
+        session_key: 1,
+        meeting_key: 1,
+        session_name: "Race",
+        session_type: "Race",
+        date_start: new Date(start).toISOString(),
+        date_end: "2025-10-26T22:00:00.000Z",
+        circuit_short_name: "Mexico City",
+        country_name: "Mexico",
+        location: "Mexico City",
+        year: 2025,
+      },
+      weekendSessions: [],
+      drivers,
+      laps: [
+        {
+          driver_number: 1,
+          lap_number: 1,
+          date_start: new Date(start).toISOString(),
+          lap_duration: 80,
+          duration_sector_1: 22,
+          duration_sector_2: 29,
+          duration_sector_3: 29,
+          is_pit_out_lap: false,
+          segments_sector_1: null,
+          segments_sector_2: null,
+          segments_sector_3: null,
+          i1_speed: null,
+          i2_speed: null,
+          st_speed: null,
+        },
+        {
+          driver_number: 44,
+          lap_number: 1,
+          date_start: new Date(start + 400).toISOString(),
+          lap_duration: 80,
+          duration_sector_1: 22,
+          duration_sector_2: 29,
+          duration_sector_3: 29,
+          is_pit_out_lap: false,
+          segments_sector_1: null,
+          segments_sector_2: null,
+          segments_sector_3: null,
+          i1_speed: null,
+          i2_speed: null,
+          st_speed: null,
+        },
+      ],
+      intervals: [],
+      positions: [
+        { date: new Date(start + 80_000).toISOString(), driver_number: 1, position: 1 },
+        { date: new Date(start + 80_400).toISOString(), driver_number: 44, position: 2 },
+      ],
+      stints: [],
+      weekendStints: [],
+      pits: [],
+      weather: [],
+      raceControl: [],
+      track: [],
+      corners: [],
+      sectorFracs: [0.3, 0.4, 0.3],
+    } as SessionBundle;
+    state.snap = {
+      now: start + 90_000,
+      rows: [],
+      leaderLap: 1,
+      medianGreenLap: 80,
+      weather: null,
+      bestSectors: { s1: null, s2: null, s3: null },
+      flagMode: "green",
+      scBands: [],
+      raceLaps: 71,
+    } as TimingSnapshot;
+    const root = document.createElement("div");
+    document.body.append(root);
+    const api = mountRaceTrace(root);
+    api.update();
+    expect(root.querySelector(".page.racetrace")?.getAttribute("data-y-axis")).toBe("gap");
+    expect(root.querySelector<HTMLElement>(".y-axis")?.hidden).toBe(false);
+    root.querySelector<HTMLButtonElement>("button[data-y-axis='position']")!.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true }),
+    );
+    expect(localStorage.getItem(RACE_TRACE_Y_KEY)).toBe("position");
+    expect(root.querySelector(".page.racetrace")?.getAttribute("data-y-axis")).toBe("position");
+    expect(root.querySelector<HTMLElement>(".y-axis")?.hidden).toBe(true);
+    expect(root.querySelector("button[data-y-axis='position']")?.classList.contains("on")).toBe(true);
   });
 });

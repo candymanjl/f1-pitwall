@@ -264,6 +264,28 @@ main { flex: 1; min-height: 0; padding: 0.625rem 0.625rem 0; display: flex; }
 }
 .brush-hint { color: var(--muted); font-size: 0.6875rem; padding: 0.3rem 0.1rem 0; }
 .page.racetrace { grid-template-columns: minmax(0, 1fr) 13.75rem; }
+.y-axis-kind { display: flex; gap: 0.375rem; padding: 0.5rem 0.5rem 0.15rem; }
+.y-axis-kind button { flex: 1; }
+.drivers[hidden],
+.trace-ref[hidden],
+.trace-tip[hidden] {
+  display: none !important;
+}
+.trace-tip {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  padding: 0.3rem 0.5rem;
+  background: #10141e;
+  border: 1px solid #2a3144;
+  border-radius: 0.25rem;
+  color: var(--text);
+  font-family: var(--cond);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
 .page.racetrace > .panel:first-child { min-width: 0; z-index: 0; }
 .page.racetrace > .panel.racetrace-side {
   position: relative;
