@@ -331,16 +331,37 @@ function lastOwnSector(laps: Lap[], which: Which, before: Lap | null): number | 
   return time;
 }
 
+/** First mini-sector boundary for this sector, as a fraction of the lap. */
+function sectorFirstFrac(which: Which, ends: SectorEnds, count: number): number {
+  const { start, end } = sectorSpan(which, ends);
+  return start + (end - start) / Math.max(1, count);
+}
+
+/** True while the car's track position is still inside this sector. */
+function gpsInsideSector(frac: number, which: Which, ends: SectorEnds): boolean {
+  const { start, end } = sectorSpan(which, ends);
+  return frac + 1e-9 >= start && frac < end - 1e-4;
+}
+
+/** A finished sector whose colour list has not arrived yet. Same colour on every block. */
+function colourFromSectorTime(kind: SectorKind, slots: number): MiniCode[] {
+  const code = miniForKind(kind);
+  return Array.from({ length: Math.max(0, slots) }, () => code);
+}
+
 /**
  * Sector times and mini-sectors for one driver at the replay clock.
- * A finished lap keeps every block, including the last S3 segment, until the
- * car is past the first S1 mini-sector of the next lap. That moment lights
- * block 1 and clears the rest. A sector time stays on the previous lap until
- * the new one completes.
+ * Each sector's blocks follow the same lap as that sector's time. The finished
+ * coloured row stays up until this car passes the first S1 block of the new lap.
+ * After that, S2 and S3 keep the previous colours until the car enters them.
+ * A finished sector with no colour list takes purple, green, or yellow from its
+ * time. Grey is only the part of a sector the car is still inside.
  *
- * Live laps often have no sector times yet. GPS progress lights the blocks;
- * a copied sector time is the backup. `now` is the playback clock, which in
- * live mode is the delayed clock.
+ * A GPS reading that is still in S3 stays on the previous lap until the position
+ * wraps back near the line. One sector of time is not enough to call that a new lap.
+ * Live laps often have no sector times yet. GPS progress lights the blocks the car
+ * has reached; a copied sector time is the backup when GPS is missing. `now` is the
+ * playback clock, which in live mode is the delayed clock.
  */
 export function driverTimingAt(
   laps: Lap[],
@@ -362,17 +383,16 @@ export function driverTimingAt(
   };
   const ends = reliableSectorEnds(fix?.sectorFracs);
   const gps = ends && typeof fix?.progress === "number" && Number.isFinite(fix.progress) ? ((fix.progress % 1) + 1) % 1 : null;
+  const start = cur ? parseTs(cur.date_start) : Number.NaN;
+  const elapsed = Number.isFinite(start) ? (now - start) / 1000 : Infinity;
 
   const holdFinished = (() => {
-    if (!cur || !prev) return false;
-    const start = parseTs(cur.date_start);
-    if (!Number.isFinite(start) || now < start) return false;
-    const elapsed = (now - start) / 1000;
+    if (!cur || !prev || !Number.isFinite(start) || now < start) return false;
     if (gps != null && ends) {
-      const count = segmentCount(cur, "s1", slots.s1);
-      const first = ends.s1 / Math.max(1, count);
-      const early = elapsed < (estimates.s1 ?? 45);
-      if (gps >= ends.s2 && early) return true;
+      const first = sectorFirstFrac("s1", ends, segmentCount(cur, "s1", slots.s1));
+      const lapEst = (estimates.s1 ?? 25) + (estimates.s2 ?? 35) + (estimates.s3 ?? 20);
+      const s3StartsAt = ends.s2 * lapEst;
+      if (gps >= ends.s2 && elapsed + 1e-9 < s3StartsAt) return true;
       return gps + 1e-9 < first;
     }
     const firstEnd = miniDoneAt(cur, "s1", 0, slots.s1, estimates);
@@ -400,26 +420,38 @@ export function driverTimingAt(
     s2: readout("s2"),
     s3: readout("s3"),
     minis: (() => {
-      const lap = holdFinished ? prev : cur ?? prev;
-      if (!lap) {
-        return { s1: emptyMinis(slots.s1), s2: emptyMinis(slots.s2), s3: emptyMinis(slots.s3) };
+      const heldLap = (which: Which, lap: Lap | null): MiniCode[] => {
+        if (!lap) return emptyMinis(slots[which]);
+        const painted = fullMinis(lap, which, slots[which]);
+        return which === "s1" ? fillS1Block1(painted, lap, slots.s1, now, personal.s1, overall.s1) : painted;
+      };
+      if (!cur) {
+        return { s1: heldLap("s1", prev), s2: heldLap("s2", prev), s3: heldLap("s3", prev) };
       }
       const paint = (which: Which): MiniCode[] => {
-        if (holdFinished) {
-          const painted = fullMinis(lap, which, slots[which]);
-          return which === "s1" ? fillS1Block1(painted, lap, slots.s1, now, personal.s1, overall.s1) : painted;
+        if (holdFinished) return heldLap(which, prev);
+        const count = segmentCount(cur, which, slots[which]);
+        if (flags[which] && hasRealCodes(cur, which)) {
+          const painted = paintCodes(cur, which, slots[which], slots[which]);
+          return which === "s1" ? fillS1Block1(painted, cur, slots.s1, now, personal.s1, overall.s1) : painted;
         }
-        const revealed =
-          gps != null && ends
-            ? Math.max(
-                revealedByProgress(gps, which, ends, segmentCount(lap, which, slots[which])),
-                flags[which] ? slots[which] : 0,
-              )
-            : revealedMinis(lap, which, now, slots[which], estimates);
-        if (!hasRealCodes(lap, which)) return provisionalMinis(revealed, slots[which]);
-        const painted = paintCodes(lap, which, slots[which], revealed);
-        if (which !== "s1") return painted;
-        return fillS1Block1(painted, lap, revealed, now, personal.s1, overall.s1);
+        if (flags[which]) {
+          const inside = gps != null && ends != null && gpsInsideSector(gps, which, ends);
+          if (inside) return provisionalMinis(revealedByProgress(gps, which, ends, count), slots[which]);
+          const kind = classify(durationOf(cur, which), personal[which], overall[which]);
+          return colourFromSectorTime(kind, slots[which]);
+        }
+        if (gps != null && ends != null) {
+          if (gps + 1e-9 < sectorFirstFrac(which, ends, count)) return heldLap(which, prev);
+          const revealed = revealedByProgress(gps, which, ends, count);
+          if (!hasRealCodes(cur, which)) return provisionalMinis(revealed, slots[which]);
+          const painted = paintCodes(cur, which, slots[which], revealed);
+          return which === "s1" ? fillS1Block1(painted, cur, revealed, now, personal.s1, overall.s1) : painted;
+        }
+        const revealed = revealedMinis(cur, which, now, slots[which], estimates);
+        if (!hasRealCodes(cur, which)) return provisionalMinis(revealed, slots[which]);
+        const painted = paintCodes(cur, which, slots[which], revealed);
+        return which === "s1" ? fillS1Block1(painted, cur, revealed, now, personal.s1, overall.s1) : painted;
       };
       return { s1: paint("s1"), s2: paint("s2"), s3: paint("s3") };
     })(),

@@ -284,12 +284,13 @@ describe("live mini-sectors from GPS, with a lap-time backup", () => {
     expect(seen(0.12).minis.s1).toEqual([SEG_PROVISIONAL, null, null]);
     expect(seen(0.22).minis.s1).toEqual([SEG_PROVISIONAL, SEG_PROVISIONAL, null]);
     expect(seen(0.31).minis.s1).toEqual([SEG_PROVISIONAL, SEG_PROVISIONAL, SEG_PROVISIONAL]);
-    expect(seen(0.31).minis.s2.every((code) => code == null)).toBe(true);
+    expect(seen(0.31).minis.s2).toEqual([SEG_YELLOW, SEG_OVERALL]);
+    expect(seen(0.31).minis.s3).toEqual([SEG_YELLOW, SEG_YELLOW]);
 
     const intoS2 = seen(0.55);
     expect(intoS2.minis.s1.every((code) => code === SEG_PROVISIONAL)).toBe(true);
     expect(intoS2.minis.s2).toEqual([SEG_PROVISIONAL, null]);
-    expect(intoS2.minis.s3.every((code) => code == null)).toBe(true);
+    expect(intoS2.minis.s3).toEqual([SEG_YELLOW, SEG_YELLOW]);
 
     const intoS3 = seen(0.9);
     expect(intoS3.minis.s2).toEqual([SEG_PROVISIONAL, SEG_PROVISIONAL]);
@@ -348,8 +349,8 @@ describe("live mini-sectors from GPS, with a lap-time backup", () => {
 
     const opened = driverTimingAt(finished, 1, lap3 + 2_000, wide, { progress: 0.12, sectorFracs: LIVE_SPLIT });
     expect(opened.minis.s1).toEqual([SEG_PROVISIONAL, null, null]);
-    expect(opened.minis.s2.every((code) => code == null)).toBe(true);
-    expect(opened.minis.s3.every((code) => code == null)).toBe(true);
+    expect(opened.minis.s2).toEqual([SEG_PERSONAL, SEG_YELLOW]);
+    expect(opened.minis.s3).toEqual([SEG_OVERALL, SEG_YELLOW]);
   });
 
   it("falls back to the driver's last sector time when GPS is missing", () => {
@@ -398,23 +399,29 @@ describe("live mini-sectors from GPS, with a lap-time backup", () => {
 
   it("walks a 3.7 Hz trace through every sector without lighting a block early", () => {
     const step = 1000 / 3.7;
-    let prev = 0;
+    const previous = {
+      s2: [SEG_YELLOW, SEG_OVERALL],
+      s3: [SEG_YELLOW, SEG_YELLOW],
+    };
     let sawS1 = false;
     let sawS2 = false;
     let sawS3 = false;
     for (let elapsed = 0; elapsed < 88_000; elapsed += step) {
       const progress = elapsed / 90_000;
       const view = at(progress, lap2 + elapsed);
-      if (progress < 0.1) continue;
-      const lit = [...view.minis.s1, ...view.minis.s2, ...view.minis.s3].filter((code) => code != null).length;
-      expect(lit).toBeGreaterThanOrEqual(prev);
-      prev = lit;
+      const s2First = 0.3 + 0.42 / slots.s2;
+      const s3First = 0.72 + 0.28 / slots.s3;
+      if (progress + 1e-9 < s2First) expect(view.minis.s2).toEqual(previous.s2);
+      if (progress + 1e-9 < s3First) expect(view.minis.s3).toEqual(previous.s3);
+      if (progress < 0.1) {
+        expect(view.minis.s1.every((code) => code !== SEG_PROVISIONAL)).toBe(true);
+        continue;
+      }
       if (view.minis.s1.some((code) => code === SEG_PROVISIONAL)) sawS1 = true;
       if (view.minis.s2.some((code) => code === SEG_PROVISIONAL)) sawS2 = true;
       if (view.minis.s3.some((code) => code === SEG_PROVISIONAL)) sawS3 = true;
     }
     expect(sawS1 && sawS2 && sawS3).toBe(true);
-    expect(prev).toBeGreaterThanOrEqual(slots.s1 + slots.s2 + 1);
   });
 
   it("keeps replay colours when GPS is present and the segment codes already exist", () => {
@@ -483,5 +490,133 @@ describe("live mini-sectors from GPS, with a lap-time backup", () => {
     const view = driverTimingAt(rows, 1, now, slots, { progress, sectorFracs: LIVE_SPLIT });
     expect(view.minis.s1.filter((code) => code === SEG_PROVISIONAL).length).toBeGreaterThan(0);
     expect(gpsProgressForMinis(1, now + 6_000)).toBeNull();
+  });
+});
+
+/**
+ * Sao Paulo lap 44: cars on different laps. Blocks for a sector stay with the
+ * lap whose time is in that column. Grey only covers the ground the car is on.
+ */
+describe("lapped cars keep sector colours with the sector time", () => {
+  const split: [number, number, number] = [0.3, 0.42, 0.28];
+  const now = Date.parse("2026-11-08T18:00:00.000Z");
+  const prevColours = {
+    s1: [SEG_OVERALL, SEG_YELLOW, SEG_PERSONAL, SEG_YELLOW, SEG_YELLOW, SEG_YELLOW, SEG_YELLOW, SEG_YELLOW],
+    s2: [SEG_YELLOW, SEG_OVERALL, SEG_YELLOW, SEG_YELLOW, SEG_PERSONAL, SEG_YELLOW, SEG_YELLOW, SEG_YELLOW],
+    s3: [SEG_YELLOW, SEG_PERSONAL, SEG_YELLOW, SEG_YELLOW, SEG_YELLOW, SEG_YELLOW],
+  };
+
+  function done(driver: number, lapNo: number, startMs: number): Lap {
+    return lap({
+      driver_number: driver,
+      lap_number: lapNo,
+      date_start: new Date(startMs).toISOString(),
+      lap_duration: 71.5,
+      duration_sector_1: 25,
+      duration_sector_2: 32,
+      duration_sector_3: 14.5,
+      segments_sector_1: prevColours.s1,
+      segments_sector_2: prevColours.s2,
+      segments_sector_3: prevColours.s3,
+    });
+  }
+
+  function open(driver: number, lapNo: number, startMs: number, sectors: { s1?: number; s2?: number } = {}): Lap {
+    return lap({
+      driver_number: driver,
+      lap_number: lapNo,
+      date_start: new Date(startMs).toISOString(),
+      lap_duration: null,
+      duration_sector_1: sectors.s1 ?? null,
+      duration_sector_2: sectors.s2 ?? null,
+      duration_sector_3: null,
+      segments_sector_1: null,
+      segments_sector_2: null,
+      segments_sector_3: null,
+    });
+  }
+
+  function at(driver: number, rows: Lap[], progress: number) {
+    return driverTimingAt(rows, driver, now, sessionMiniSlots(rows), { progress, sectorFracs: split });
+  }
+
+  it("keeps the full previous lap at 3% and opens only the first S1 block at 6%", () => {
+    const atThree = at(1, [done(1, 43, now - 2_100 - 71_500), open(1, 44, now - 2_100)], 0.03);
+    expect(atThree.minis.s1).toEqual(prevColours.s1);
+    expect(atThree.minis.s2).toEqual(prevColours.s2);
+    expect(atThree.minis.s3).toEqual(prevColours.s3);
+    expect(atThree.s1.held && atThree.s2.held && atThree.s3.held).toBe(true);
+
+    const atSix = at(27, [done(27, 43, now - 4_300 - 71_500), open(27, 44, now - 4_300)], 0.06);
+    expect(atSix.minis.s1).toEqual([SEG_PROVISIONAL, null, null, null, null, null, null, null]);
+    expect(atSix.minis.s2).toEqual(prevColours.s2);
+    expect(atSix.minis.s3).toEqual(prevColours.s3);
+    expect(atSix.s1.held && atSix.s2.held && atSix.s3.held).toBe(true);
+  });
+
+  it("colours a finished S1 from its time while S2 is grey only as far as the car", () => {
+    const view = at(43, [done(43, 42, now - 40_000 - 71_500), open(43, 43, now - 40_000, { s1: 26.4 })], 0.52);
+    expect(view.minis.s1.every((code) => code === SEG_YELLOW)).toBe(true);
+    expect(view.minis.s2).toEqual([SEG_PROVISIONAL, SEG_PROVISIONAL, SEG_PROVISIONAL, SEG_PROVISIONAL, null, null, null, null]);
+    expect(view.minis.s3).toEqual(prevColours.s3);
+    expect(view.s1).toMatchObject({ time: 26.4, held: false });
+    expect(view.s2.held).toBe(true);
+    expect(view.s3.held).toBe(true);
+  });
+
+  it("colours a lap 43 car's finished S1 and S2 while S3 stays grey up to the car", () => {
+    const view = at(16, [done(16, 42, now - 62_000 - 71_500), open(16, 43, now - 62_000, { s1: 24.2, s2: 33.1 })], 0.85);
+    expect(view.minis.s1.every((code) => code === SEG_OVERALL)).toBe(true);
+    expect(view.minis.s2.every((code) => code === SEG_YELLOW)).toBe(true);
+    expect(view.minis.s3).toEqual([SEG_PROVISIONAL, SEG_PROVISIONAL, null, null, null, null]);
+    expect(view.s1.held).toBe(false);
+    expect(view.s2.held).toBe(false);
+    expect(view.s3.held).toBe(true);
+  });
+
+  it("colours ALB's finished S1 and S2 when the colour list has not arrived", () => {
+    const view = at(23, [done(23, 41, now - 60_000 - 71_500), open(23, 42, now - 60_000, { s1: 24.6, s2: 33.4 })], 0.78);
+    expect(view.minis.s1.every((code) => code === SEG_OVERALL)).toBe(true);
+    expect(view.minis.s2.every((code) => code === SEG_YELLOW)).toBe(true);
+    expect(view.minis.s3[0]).toBe(SEG_PROVISIONAL);
+    expect(view.minis.s3.slice(1).every((code) => code == null)).toBe(true);
+    expect(view.minis.s1).not.toContain(SEG_PROVISIONAL);
+    expect(view.minis.s2).not.toContain(SEG_PROVISIONAL);
+  });
+
+  it("keeps the previous coloured row when GPS is still in S3 30 seconds after the new lap", () => {
+    const view = at(23, [done(23, 41, now - 30_000 - 71_500), open(23, 42, now - 30_000)], 0.9);
+    expect(view.minis.s1).toEqual(prevColours.s1);
+    expect(view.minis.s2).toEqual(prevColours.s2);
+    expect(view.minis.s3).toEqual(prevColours.s3);
+    expect(view.minis.s1).not.toContain(SEG_PROVISIONAL);
+  });
+
+  it("grows grey S1 blocks for a leader with no sector times, and keeps a recorded lap's colours", () => {
+    const early = at(1, [done(1, 43, now - 8_600 - 71_500), open(1, 44, now - 8_600)], 0.12);
+    const later = at(1, [done(1, 43, now - 15_700 - 71_500), open(1, 44, now - 15_700)], 0.22);
+    const earlyGrey = early.minis.s1.filter((code) => code === SEG_PROVISIONAL).length;
+    const laterGrey = later.minis.s1.filter((code) => code === SEG_PROVISIONAL).length;
+    expect(earlyGrey).toBeGreaterThan(0);
+    expect(laterGrey).toBeGreaterThan(earlyGrey);
+    expect(early.minis.s2).toEqual(prevColours.s2);
+    expect(later.minis.s3).toEqual(prevColours.s3);
+
+    const lap2 = parseTs("2025-10-26T20:01:20.000Z");
+    const recorded = driverTimingAt(laps, 1, lap2 + (28.5 + 32.1 + 9.5) * 1000, sessionMiniSlots(laps), {
+      progress: 0.9,
+      sectorFracs: split,
+    });
+    expect(recorded.minis.s1).toEqual([SEG_OVERALL, SEG_YELLOW, SEG_YELLOW]);
+    expect(recorded.minis.s2).toEqual([SEG_PERSONAL, SEG_YELLOW]);
+    expect(recorded.minis.s3).toEqual([SEG_YELLOW, null]);
+    expect(recorded.minis.s1).not.toContain(SEG_PROVISIONAL);
+  });
+
+  it("leaves a finished sector grey only while the car is still inside it", () => {
+    const view = at(43, [done(43, 42, now - 28_000 - 71_500), open(43, 43, now - 28_000, { s1: 25.5 })], 0.2);
+    expect(view.minis.s1.filter((code) => code === SEG_PROVISIONAL).length).toBeGreaterThan(0);
+    expect(view.minis.s1).not.toContain(SEG_YELLOW);
+    expect(view.s1).toMatchObject({ time: 25.5, held: false });
   });
 });
