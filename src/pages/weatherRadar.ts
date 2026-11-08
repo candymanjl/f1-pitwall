@@ -10,16 +10,17 @@ import {
 import {
   RADAR_RANGE_15,
   RADAR_RANGE_50,
-  RADAR_TILES,
   RAINVIEWER_MAX_ZOOM,
+  radarMosaicFor,
+  radarZoomTransform,
   rangeScale,
   readRadarRange,
   scaleBarMiles,
   writeRadarRange,
+  type RadarMosaic,
   type RadarRangeMi,
 } from "../data/radarRange";
 import {
-  radarTileWindow,
   RAINVIEWER_CREDIT,
   RAINVIEWER_HOME,
   rainViewerTileUrl,
@@ -89,7 +90,7 @@ export function mountRadarPlayer(): RadarPlayer {
   let creditText = RAINVIEWER_CREDIT;
   let ageKind: "rv" | "iem" | "none" = "none";
   let range: RadarRangeMi = readRadarRange();
-  let lastWin: { z: number; size: number; pinX: number; pinY: number } | null = null;
+  let lastWin: RadarMosaic | null = null;
   let lastLat = 0;
 
   const setRangeButtons = () => {
@@ -110,10 +111,9 @@ export function mountRadarPlayer(): RadarPlayer {
     const box = map.getBoundingClientRect();
     const w = box.width || 1;
     const h = box.height || 1;
-    const s = rangeScale(lastLat, range, lastWin.z, lastWin.size);
-    const pinX = (lastWin.pinX / lastWin.size) * w;
-    const pinY = (lastWin.pinY / lastWin.size) * h;
-    scene.style.transform = `translate(${w / 2 - pinX * s}px, ${h / 2 - pinY * s}px) scale(${s})`;
+    const s = rangeScale(lastLat, range, lastWin.z, lastWin.cols);
+    const zoom = radarZoomTransform(w, h, lastWin, s);
+    scene.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`;
     root.dataset.radarScale = s.toFixed(3);
     const barMi = scaleBarMiles(range);
     rangeBarLab.textContent = `${barMi} mi`;
@@ -263,17 +263,20 @@ export function mountRadarPlayer(): RadarPlayer {
       setRangeButtons();
       if (id !== identity) {
         const keep = frameTimes[index] ?? null;
-        const win = radarTileWindow(lat, lon, z, RADAR_TILES);
+        const win = radarMosaicFor(lat, lon, RADAR_RANGE_50, z);
         lastWin = win;
+        const n = 2 ** win.z;
         const nodes = frames.map((frame) => {
           const mosaic = el("div", { class: "wx-mosaic wx-radar-layer", "data-radar": "rainviewer" });
-          mosaic.style.gridTemplateColumns = `repeat(${win.size}, 1fr)`;
-          for (let dy = 0; dy < win.size; dy++) {
-            for (let dx = 0; dx < win.size; dx++) {
+          mosaic.style.gridTemplateColumns = `repeat(${win.cols}, minmax(0, 1fr))`;
+          mosaic.style.gridTemplateRows = `repeat(${win.rows}, minmax(0, 1fr))`;
+          for (let dy = 0; dy < win.rows; dy++) {
+            for (let dx = 0; dx < win.cols; dx++) {
               const img = document.createElement("img");
               img.alt = "";
               img.decoding = "async";
-              img.src = rainViewerTileUrl(frame, win.z, win.x0 + dx, win.y0 + dy);
+              const x = win.x0 + dx;
+              img.src = rainViewerTileUrl(frame, win.z, ((x % n) + n) % n, win.y0 + dy);
               mosaic.append(img);
             }
           }
